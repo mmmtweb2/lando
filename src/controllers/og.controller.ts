@@ -1,0 +1,91 @@
+import { Request, Response } from 'express';
+import { readFile } from 'fs/promises';
+import path from 'path';
+import { supabase } from '../config/supabase';
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function loadHtmlShell(): Promise<string> {
+  const distPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
+  try {
+    return await readFile(distPath, 'utf-8');
+  } catch {
+    // Dev mode fallback — crawlers only need the <head>; the JS bundle handles the rest
+    return `<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tirnoer Digital</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>`;
+  }
+}
+
+export async function servePageWithOgTags(req: Request, res: Response): Promise<void> {
+  const { slug } = req.params;
+
+  const { data: page, error } = await supabase
+    .from('landing_pages')
+    .select('business_name, vibe, ai_content, user_images, logo_url')
+    .eq('slug', slug)
+    .single();
+
+  if (error || !page) {
+    // Not found — let the SPA handle the 404 UI
+    const shell = await loadHtmlShell();
+    res.status(200).setHeader('Content-Type', 'text/html').send(shell);
+    return;
+  }
+
+  // Parse first image URL
+  let firstImage: string = '';
+  try {
+    const imgs: string[] = Array.isArray(page.user_images)
+      ? page.user_images
+      : typeof page.user_images === 'string'
+        ? JSON.parse(page.user_images)
+        : [];
+    firstImage = imgs[0] ?? page.logo_url ?? '';
+  } catch {
+    firstImage = page.logo_url ?? '';
+  }
+
+  const description: string =
+    (page.ai_content as { hero?: { slogan?: string } })?.hero?.slogan ||
+    (page.ai_content as { about?: { content?: string } })?.about?.content?.slice(0, 150) ||
+    (page.vibe as string | undefined) ||
+    'דף נחיתה מקצועי';
+
+  const title = `${page.business_name} | Tirnoer Digital`;
+
+  const ogTags = `
+    <title>${escapeHtml(title)}</title>
+    <meta property="og:title" content="${escapeHtml(page.business_name as string)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:type" content="website" />
+    ${firstImage ? `<meta property="og:image" content="${escapeHtml(firstImage)}" />` : ''}
+    <meta property="og:locale" content="he_IL" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(page.business_name as string)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    ${firstImage ? `<meta name="twitter:image" content="${escapeHtml(firstImage)}" />` : ''}`;
+
+  const shell = await loadHtmlShell();
+
+  // Replace the generic <title> and inject OG tags before </head>
+  const html = shell
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
+    .replace('</head>', `${ogTags}\n  </head>`);
+
+  res.status(200).setHeader('Content-Type', 'text/html').send(html);
+}
