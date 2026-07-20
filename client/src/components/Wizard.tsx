@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useUser } from '../context/UserContext';
+import { LandoBot } from './Lando';
+import { authFetch } from '../lib/api';
 import {
   Building2,
   Phone,
@@ -16,6 +18,7 @@ import {
   FileText,
   Mail,
   Link2,
+  Loader2,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,6 +38,7 @@ interface FormState {
   facebook_url: string;
   instagram_url: string;
   external_link: string;
+  cta_type: 'whatsapp' | 'email' | 'phone' | 'link';
   enable_form: boolean;
   include_testimonials: boolean;
   logo: File | null;
@@ -204,7 +208,7 @@ function ToggleSwitch({
       onClick={() => onChange(!checked)}
       className="flex items-center gap-3 w-full rounded-xl border-2 px-4 py-3 transition-colors text-right"
       style={{
-        borderColor: checked ? '#6366f1' : '#e2e8f0',
+        borderColor: checked ? '#2E63F6' : '#e2e8f0',
         backgroundColor: checked ? '#eef2ff' : '#ffffff',
       }}
     >
@@ -356,7 +360,7 @@ function ColorPickerRow({
           />
           <input
             type="color"
-            value={isValid ? value : '#6366f1'}
+            value={isValid ? value : '#2E63F6'}
             onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer disabled:cursor-not-allowed"
@@ -372,7 +376,7 @@ function ColorPickerRow({
               onChange('');
             }
           }}
-          placeholder="#6366f1"
+          placeholder="#2E63F6"
           disabled={disabled}
           dir="ltr"
           maxLength={7}
@@ -595,7 +599,7 @@ function ImageSourceCards({ value, onChange }: { value: ImageSource; onChange: (
 // ─── Idle skeleton preview ────────────────────────────────────────────────────
 
 function IdleSkeletonPreview({ businessName, designStyle }: { businessName: string; designStyle: DesignStyle }) {
-  const pal = PREVIEW_PALETTE[designStyle] ?? { from: '#6366f1', to: '#8b5cf6' };
+  const pal = PREVIEW_PALETTE[designStyle] ?? { from: '#2E63F6', to: '#6FE7FF' };
   const gradient = `linear-gradient(150deg, ${pal.from}, ${pal.to})`;
   const displayName = businessName.trim() || 'שם העסק שלכם';
 
@@ -677,30 +681,38 @@ const LOADING_PHASES = [
 ];
 
 function LoadingPreview({ designStyle }: { designStyle: DesignStyle }) {
-  const pal = PREVIEW_PALETTE[designStyle] ?? { from: '#6366f1', to: '#8b5cf6' };
+  const pal = PREVIEW_PALETTE[designStyle] ?? { from: '#2E63F6', to: '#6FE7FF' };
   const gradient = `linear-gradient(150deg, ${pal.from}, ${pal.to})`;
   const [phaseIndex, setPhaseIndex] = useState(0);
+  const [progress, setProgress] = useState(6);
 
   useEffect(() => {
     const id = setInterval(() => {
-      setPhaseIndex((prev) => (prev + 1) % LOADING_PHASES.length);
-    }, 4000);
+      // Advance phases but hold on the last one — never loop back to "analyzing".
+      setPhaseIndex((prev) => Math.min(prev + 1, LOADING_PHASES.length - 1));
+    }, 3500);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    // Simulated ease-out progress: quick at first, slowing toward ~93% where it
+    // holds until the real result arrives and this component unmounts.
+    const id = setInterval(() => {
+      setProgress((p) => (p >= 93 ? p : p + Math.max(0.5, (93 - p) * 0.045)));
+    }, 350);
     return () => clearInterval(id);
   }, []);
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-white px-6">
-      {/* Pulsing icon with ring */}
+      {/* Lando accompanies the build */}
       <div className="relative flex items-center justify-center">
         <div
-          className="absolute w-20 h-20 rounded-full opacity-20 animate-ping"
+          className="absolute w-24 h-24 rounded-full opacity-20 animate-ping"
           style={{ background: gradient }}
         />
-        <div
-          className="relative z-10 rounded-full p-4"
-          style={{ background: gradient }}
-        >
-          <Sparkles size={28} className="text-white" />
+        <div className="relative z-10 lando-hover">
+          <LandoBot mood="loading" size={112} />
         </div>
       </div>
 
@@ -717,7 +729,18 @@ function LoadingPreview({ designStyle }: { designStyle: DesignStyle }) {
             {LOADING_PHASES[phaseIndex]}
           </motion.p>
         </AnimatePresence>
-        <p className="text-xs text-slate-400">עוד כמה שניות</p>
+        <p className="text-xs text-slate-400">עוד כמה שניות…</p>
+      </div>
+
+      {/* Progress bar — gives a concrete "it's working" signal over the ~25s build */}
+      <div className="w-full max-w-xs flex flex-col gap-1.5">
+        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-[width] duration-300 ease-out"
+            style={{ background: gradient, width: `${progress}%` }}
+          />
+        </div>
+        <span className="text-[11px] font-medium text-slate-400 text-center">{Math.round(progress)}%</span>
       </div>
 
       {/* Bouncing dots */}
@@ -761,6 +784,7 @@ export default function Wizard() {
     facebook_url: '',
     instagram_url: '',
     external_link: '',
+    cta_type: 'whatsapp',
     enable_form: false,
     include_testimonials: false,
     logo: null,
@@ -785,6 +809,18 @@ export default function Wizard() {
     }, 400);
     return () => clearTimeout(t);
   }, [result]);
+
+  // On mobile the progress lives in the preview pane below the form — when
+  // generation starts, scroll it into view so the user sees it working
+  // (instead of staring at a disabled button).
+  useEffect(() => {
+    if (!loading) return;
+    if (window.innerWidth >= 1024) return;
+    const t = setTimeout(() => {
+      previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   if (!isAuthReady || !user) return null;
 
@@ -811,6 +847,7 @@ export default function Wizard() {
   async function submit() {
     setLoading(true);
     setError(null);
+    if (!user) { setError('צריך להתחבר כדי ליצור דף'); setLoading(false); return; }
     try {
       // Resolve the effective image_source — if user toggled "wants images" but
       // form.image_source is still 'none', default to 'stock'.
@@ -834,6 +871,7 @@ export default function Wizard() {
       if (form.facebook_url.trim())   fd.append('facebook_url', form.facebook_url.trim());
       if (form.instagram_url.trim())  fd.append('instagram_url', form.instagram_url.trim());
       if (form.external_link.trim())  fd.append('external_link', form.external_link.trim());
+      fd.append('cta_type', form.cta_type);
       // Brand colors
       if (form.auto_extract_colors) {
         fd.append('auto_extract_colors', 'true');
@@ -846,7 +884,7 @@ export default function Wizard() {
         form.user_images.forEach((img) => fd.append('user_images', img));
       }
 
-      const res = await fetch('/api/landing', { method: 'POST', body: fd });
+      const res = await authFetch('/api/landing', { method: 'POST', body: fd });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `שגיאה ${res.status}`);
@@ -961,6 +999,21 @@ export default function Wizard() {
 
     // ── Step 3: Contact & Links ───────────────────────────────────────────────
     <Step key="step-contact" title="קשר ולינקים" subtitle="פרטי קשר ורשתות חברתיות (הכל אופציונלי)">
+      <Field label="כפתור הפעולה הראשי בדף יפנה אל:" icon={<ExternalLink size={15} />}>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { v: 'whatsapp', label: 'וואטסאפ' },
+            { v: 'phone', label: 'טלפון' },
+            { v: 'email', label: 'אימייל' },
+            { v: 'link', label: 'קישור חיצוני' },
+          ] as { v: FormState['cta_type']; label: string }[]).map((o) => (
+            <button key={o.v} type="button" onClick={() => update('cta_type', o.v)}
+              className={`px-3 py-2 rounded-xl border text-sm font-medium transition ${form.cta_type === o.v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </Field>
       {goalLabels.externalLinkLabel && (
         <Field label={goalLabels.externalLinkLabel} icon={<ExternalLink size={15} />}>
           <input className={inputCls} placeholder={goalLabels.externalLinkPlaceholder} type="url" dir="ltr"
@@ -1033,12 +1086,15 @@ export default function Wizard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 py-6 px-4" dir="rtl">
+    <div className="min-h-screen py-6 px-4" dir="rtl" style={{ background: 'var(--bg)' }}>
       <div className="max-w-6xl mx-auto">
-        {/* Page header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-800">SnapPage ✦</h1>
-          <p className="text-sm text-slate-500 mt-1">בונה דפי נחיתה חכם עם בינה מלאכותית</p>
+        {/* Page header — Lando greets and reacts to what's happening */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="lando-hover">
+            <LandoBot mood={result ? 'success' : error ? 'error' : 'request'} size={96} />
+          </div>
+          <h1 className="text-2xl font-extrabold mt-1" style={{ color: 'var(--navy)' }}>בואו נבנה את הדף שלכם</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>ספרו ללנדו על העסק — והוא בונה את השאר</p>
         </div>
 
         {/* Two-column grid — RTL: first child = right (form), second child = left (preview) */}
@@ -1071,7 +1127,7 @@ export default function Wizard() {
                   to={`/p/${result.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-indigo-700 transition"
+                  className="flex items-center gap-2 rounded-xl bg-[#2E63F6] px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-[#1E4FD6] transition"
                 >
                   <ExternalLink size={16} />
                   פתח את הדף שלי
@@ -1107,13 +1163,18 @@ export default function Wizard() {
 
                   {step < STEPS.length - 1 ? (
                     <button onClick={() => go(step + 1)} disabled={!canNext}
-                      className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                      className="flex-1 rounded-xl bg-[#2E63F6] py-2.5 text-sm font-semibold text-white hover:bg-[#1E4FD6] disabled:opacity-40 disabled:cursor-not-allowed transition">
                       הבא
                     </button>
                   ) : (
                     <button onClick={submit} disabled={loading}
-                      className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition">
-                      צור את האתר שלי ✦
+                      className="flex-1 rounded-xl bg-[#2E63F6] py-2.5 text-sm font-semibold text-white hover:bg-[#1E4FD6] disabled:opacity-80 transition flex items-center justify-center gap-2">
+                      {loading ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          בונה את הדף שלך…
+                        </>
+                      ) : 'צור את האתר שלי ✦'}
                     </button>
                   )}
                 </div>
@@ -1134,7 +1195,7 @@ export default function Wizard() {
                 <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
               </div>
               <span className="flex-1 text-center text-gray-500 text-[11px] font-medium truncate">
-                {uiMode === 'success' && result ? `snappage.ai/p/${result.slug}` : 'תצוגה מקדימה בזמן אמת'}
+                {uiMode === 'success' && result ? `lando.ai/p/${result.slug}` : 'תצוגה מקדימה בזמן אמת'}
               </span>
             </div>
 

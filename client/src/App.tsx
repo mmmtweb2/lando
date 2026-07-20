@@ -7,6 +7,7 @@ import { UserProvider, useUser } from './context/UserContext';
 import type { UserProfile } from './context/UserContext';
 
 import Wizard          from './components/Wizard';
+import MarketingLanding from './pages/MarketingLanding';
 import LandingViewer   from './pages/LandingViewer';
 import AdminDashboard  from './pages/AdminDashboard';
 import Login           from './pages/Login';
@@ -39,6 +40,12 @@ function SyncAuth() {
   const { user: portalUser, setUser, setIsAuthReady } = useUser();
 
   useEffect(() => {
+    // Capture the referral code from the URL early — it survives the magic-link redirect.
+    const urlRef = new URLSearchParams(window.location.search).get('ref');
+    if (urlRef) localStorage.setItem('pending_ref', urlRef);
+  }, []);
+
+  useEffect(() => {
     if (authLoading) return;
 
     if (!authUser) {
@@ -55,21 +62,22 @@ function SyncAuth() {
     const fallback: UserProfile = {
       email: authUser.email!,
       affiliate_code: '',
-      ai_image_credits: 0,
+      credits: 0,
       earned_coupons: 0,
       signup_discount: false,
       referred_by_code: null,
     };
 
+    const pendingRef = localStorage.getItem('pending_ref') ?? undefined;
     fetch('/api/users/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: authUser.email }),
+      body: JSON.stringify({ email: authUser.email, ref: pendingRef }),
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((profile: UserProfile | null) => { setUser(profile ?? fallback); })
       .catch(() => { setUser(fallback); })
-      .finally(() => setIsAuthReady(true));
+      .finally(() => { setIsAuthReady(true); localStorage.removeItem('pending_ref'); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.email, authLoading]);
 
@@ -85,7 +93,8 @@ export default function App() {
         <BrowserRouter>
           <SyncAuth />
           <Routes>
-            <Route path="/"          element={<Wizard />} />
+            <Route path="/"          element={<MarketingLanding />} />
+            <Route path="/create"    element={<Wizard />} />
             <Route path="/login"     element={<Login />} />
             <Route path="/portal"    element={<ClientPortal />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />

@@ -36,7 +36,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, vibe, ai_content, user_images, logo_url')
+    .select('business_name, ai_content, user_images, logo_url')
     .eq('slug', slug)
     .single();
 
@@ -50,20 +50,24 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // Parse first image URL
   let firstImage: string = '';
   try {
-    const imgs: string[] = Array.isArray(page.user_images)
-      ? page.user_images
-      : typeof page.user_images === 'string'
-        ? JSON.parse(page.user_images)
-        : [];
-    firstImage = imgs[0] ?? page.logo_url ?? '';
+    const parsed: unknown =
+      typeof page.user_images === 'string' ? JSON.parse(page.user_images) : page.user_images;
+    if (Array.isArray(parsed)) {
+      firstImage = (parsed as string[]).find(Boolean) ?? '';
+    } else if (parsed && typeof parsed === 'object') {
+      const store = parsed as { hero_image_url?: string; icon_urls?: string[] };
+      firstImage = store.hero_image_url || store.icon_urls?.find(Boolean) || '';
+    }
+    firstImage = firstImage || page.logo_url || '';
   } catch {
     firstImage = page.logo_url ?? '';
   }
 
   const description: string =
+    (page.ai_content as { seo_description?: string })?.seo_description ||
+    (page.ai_content as { hero?: { subtitle?: string } })?.hero?.subtitle ||
     (page.ai_content as { hero?: { slogan?: string } })?.hero?.slogan ||
     (page.ai_content as { about?: { content?: string } })?.about?.content?.slice(0, 150) ||
-    (page.vibe as string | undefined) ||
     'דף נחיתה מקצועי';
 
   const title = `${page.business_name} | Tirnoer Digital`;

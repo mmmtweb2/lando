@@ -1,9 +1,9 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 export interface UserProfile {
   email: string;
   affiliate_code: string;
-  ai_image_credits: number;
+  credits: number;
   earned_coupons: number;
   signup_discount: boolean;
   referred_by_code: string | null;

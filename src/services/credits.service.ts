@@ -1,22 +1,22 @@
 import { supabase } from '../config/supabase';
+import { ensureUserProfile } from './profile.service';
 
 /**
  * Checks the user's credit balance and atomically deducts `cost` credits.
  * Throws "Insufficient credits" (HTTP 402) if balance < cost.
- * Returns the new balance after deduction.
+ * Admins are never charged (used for internal testing / generation).
+ * Creates the profile if missing (self-healing). Returns the resulting balance.
  */
 export async function checkAndDeductCredits(email: string, cost: number): Promise<number> {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('credits')
-    .eq('email', email)
-    .single();
+  const normalized = email.trim().toLowerCase();
+  const profile = await ensureUserProfile(normalized);
+  const current = profile.credits ?? 0;
 
-  if (error || !data) {
-    throw new Error('User profile not found');
+  // Admins generate for free — no balance check, no deduction.
+  if (profile.is_admin) {
+    return current;
   }
 
-  const current = (data as { credits: number }).credits ?? 0;
   if (current < cost) {
     throw new Error('Insufficient credits');
   }
@@ -25,7 +25,7 @@ export async function checkAndDeductCredits(email: string, cost: number): Promis
   const { data: updated, error: updateErr } = await supabase
     .from('user_profiles')
     .update({ credits: current - cost })
-    .eq('email', email)
+    .eq('email', normalized)
     .gte('credits', cost)
     .select('credits')
     .single();

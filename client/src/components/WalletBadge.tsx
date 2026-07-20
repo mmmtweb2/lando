@@ -1,5 +1,6 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/api';
 
 interface WalletBadgeProps {
   email: string | null | undefined;
@@ -13,16 +14,15 @@ export default function WalletBadge({ email, refreshKey = 0, className = '', onL
 
   useEffect(() => {
     if (!email) return;
-    supabase
-      .from('user_profiles')
-      .select('credits')
-      .eq('email', email)
-      .maybeSingle()
-      .then(({ data }) => {
-        const c = (data as { credits?: number } | null)?.credits ?? 0;
+    authFetch('/api/users/credits')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { credits?: number } | null) => {
+        if (data == null) return; // not logged in / no access → hide badge
+        const c = data.credits ?? 0;
         setCredits(c);
         onLoad?.(c);
-      });
+      })
+      .catch(() => { /* keep badge hidden on error */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email, refreshKey]);
 
@@ -31,22 +31,26 @@ export default function WalletBadge({ email, refreshKey = 0, className = '', onL
   const low = credits <= 2;
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold select-none ${className}`}
+    <motion.span
+      whileHover={{ scale: 1.12, rotate: [0, -5, 5, -3, 0] }}
+      whileTap={{ scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold select-none cursor-default border-2 ${className}`}
       title={`${credits} קרדיטים זמינים`}
       style={{
         background: low
-          ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
-          : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          ? '#FF7A6B'
+          : '#2E63F6',
+        borderColor: low ? 'rgba(255,122,107,0.45)' : 'rgba(111,231,255,0.7)',
         color: '#fff',
         boxShadow: low
-          ? '0 0 10px rgba(239,68,68,0.35)'
-          : '0 0 10px rgba(99,102,241,0.4)',
+          ? '0 0 16px rgba(255,122,107,0.4), inset 0 1px 0 rgba(255,255,255,0.25)'
+          : '0 0 16px rgba(46,99,246,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
       }}
     >
-      <span className="text-amber-300">✦</span>
+      <span className="text-yellow-300">✦</span>
       {credits}
       <span className="opacity-80 font-medium">קרדיטים</span>
-    </span>
+    </motion.span>
   );
 }

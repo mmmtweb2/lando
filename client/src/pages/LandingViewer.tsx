@@ -2,9 +2,11 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Globe, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Globe, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
+import { authFetch } from '../lib/api';
+import { LandoMark } from '../components/Lando';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,7 @@ interface AiContent {
     address?: string;
     cta_text?: string;         // v1 compat
     whatsapp_message?: string;
+    cta_type?: string;         // user-chosen CTA target: whatsapp|email|phone|link
   };
   // v2
   design_system?: {
@@ -145,7 +148,7 @@ function getTheme(vibe?: ThemeVibe): ThemeConfig {
   switch (vibe) {
     case 'luxury':  return { cardRadius: 'rounded-none', badgeRadius: 'rounded-sm',   cardBase: 'border border-stone-200 shadow-none', fallbackBg: 'bg-stone-50' };
     case 'warm':    return { cardRadius: 'rounded-3xl',  badgeRadius: 'rounded-2xl',  cardBase: 'border border-amber-100 shadow-md',   fallbackBg: 'bg-amber-50' };
-    case 'playful': return { cardRadius: 'rounded-3xl',  badgeRadius: 'rounded-full', cardBase: 'border-2 border-violet-100 shadow-md', fallbackBg: 'bg-violet-50' };
+    case 'playful': return { cardRadius: 'rounded-3xl',  badgeRadius: 'rounded-full', cardBase: 'border-2 border-[#E4EAFB] shadow-md', fallbackBg: 'bg-[#EEF1FB]' };
     case 'tech':    return { cardRadius: 'rounded-lg',   badgeRadius: 'rounded-md',   cardBase: 'border border-slate-200',              fallbackBg: 'bg-slate-50' };
     default:        return { cardRadius: 'rounded-xl',   badgeRadius: 'rounded-xl',   cardBase: 'border border-slate-100 shadow-sm',   fallbackBg: 'bg-gray-50' };
   }
@@ -227,7 +230,7 @@ function BrandPatternPlaceholder({
 }) {
   return (
     <div
-      className={`relative overflow-hidden ${className}`}
+      className={`overflow-hidden ${/\babsolute\b/.test(className) ? '' : 'relative'} ${className}`}
       style={{
         background: `linear-gradient(145deg, ${primaryColor}12 0%, ${secondaryColor}1e 60%, ${primaryColor}08 100%)`,
         ...style,
@@ -295,7 +298,7 @@ function EditableImage({
 
   return (
     <div
-      className={`relative overflow-hidden ${className}`}
+      className={`overflow-hidden ${/\babsolute\b/.test(className) ? '' : 'relative'} ${className}`}
       style={style}
       onMouseEnter={() => editable && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -412,7 +415,7 @@ function ImageSelectorModal({
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`/api/landing/${pageId}/regenerate-image-ai`, {
+      const r = await authFetch(`/api/landing/${pageId}/regenerate-image-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slot, prompt: promptText.trim() }),
@@ -426,6 +429,32 @@ function ImageSelectorModal({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'שגיאה ביצירת תמונה');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Regenerate ALL images as one coherent set (4 credits). The backend rebuilds
+  // hero + service icons from the stored prompts in the same style.
+  async function handleFullSet() {
+    if (busy || credits < 4) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await authFetch(`/api/landing/${pageId}/regenerate-image-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFullSet: true }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? 'שגיאה ביצירת הסט');
+      }
+      const data = await r.json() as { url: string; user_images: string };
+      onImageUpdated(data.url, data.user_images);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה ביצירת הסט');
     } finally {
       setBusy(false);
     }
@@ -505,19 +534,24 @@ function ImageSelectorModal({
                   </button>
 
                   <button
-                    disabled
-                    title="בקרוב!"
-                    className="flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-200 bg-slate-50 text-right opacity-50 cursor-not-allowed"
+                    disabled={busy || credits < 4}
+                    onClick={handleFullSet}
+                    title="יצירה מחדש של כל התמונות בסגנון אחיד"
+                    className="flex items-center gap-4 p-4 rounded-2xl border-2 transition text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      borderColor: credits >= 4 ? primaryColor : '#e2e8f0',
+                      backgroundColor: credits >= 4 ? `${primaryColor}08` : undefined,
+                    }}
                   >
-                    <div className="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center shadow-sm flex-shrink-0">
-                      <Sparkles size={22} color="#94a3b8" />
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0"
+                      style={{ backgroundColor: credits >= 4 ? primaryColor : '#e2e8f0' }}>
+                      <Sparkles size={22} color={credits >= 4 ? '#fff' : '#94a3b8'} />
                     </div>
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800 text-sm">צור סט תמונות מלא (4 ✦)</span>
-                        <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">בקרוב</span>
-                      </div>
-                      <span className="text-xs text-slate-400">יצירת כל התמונות בבת אחת</span>
+                      <span className="font-bold text-slate-800 text-sm">צור סט תמונות מלא (4 ✦)</span>
+                      <span className="text-xs leading-tight" style={{ color: credits >= 4 ? primaryColor : '#94a3b8' }}>
+                        {credits >= 4 ? 'יוצר את כל התמונות בסגנון אחיד' : 'דרושים 4 קרדיטים'}
+                      </span>
                     </div>
                   </button>
                 </div>
@@ -616,7 +650,7 @@ function SectionEditorWrapper({
         <button
           onClick={onToggleHide}
           title="הסתר סקציה"
-          className="absolute top-3 left-3 z-[25] opacity-0 group-hover/section:opacity-100 transition-all duration-150 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/45 hover:bg-red-500 text-white text-xs font-bold shadow-lg backdrop-blur-sm"
+          className="absolute top-3 left-3 z-[25] opacity-100 md:opacity-0 md:group-hover/section:opacity-100 transition-all duration-150 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/45 hover:bg-red-500 text-white text-xs font-bold shadow-lg backdrop-blur-sm"
         >
           <EyeOff size={12} />
           הסתר
@@ -645,14 +679,14 @@ function EditableText({
 }) {
   const elRef = useRef<HTMLElement>(null);
 
-  // Set text content once when editing mode activates — intentionally excludes `value`
-  // from deps so user edits aren't reset on every keystroke.
+  // Sync text content when entering edit mode AND when `value` changes externally
+  // (e.g. after an AI rewrite). Skip while THIS field is focused so active typing
+  // isn't reset on every keystroke.
   useLayoutEffect(() => {
-    if (isEditing && elRef.current) {
+    if (isEditing && elRef.current && document.activeElement !== elRef.current) {
       elRef.current.textContent = value;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing]);
+  }, [isEditing, value]);
 
   if (!isEditing) {
     const Static = Tag as React.ElementType;
@@ -678,7 +712,7 @@ function EditableText({
     onBlur: (e: React.FocusEvent<HTMLElement>) => {
       e.currentTarget.style.boxShadow = 'inset 0 0 0 2px rgba(148,163,184,0.45)';
       const text = (e.currentTarget.textContent ?? '').trim();
-      if (text) onCommit(text);
+      onCommit(text);
     },
     onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); }
@@ -795,13 +829,13 @@ export default function LandingViewer() {
 
   // ── Checkout / paywall state ─────────────────────────────────────────────
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'modal' | 'paying' | 'done'>('idle');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   // ── Wallet credits ────────────────────────────────────────────────────────
   const [credits, setCredits] = useState<number>(0);
   const [creditsRefreshKey, setCreditsRefreshKey] = useState<number>(0);
+  const [rewriteStatus, setRewriteStatus] = useState<'idle' | 'rewriting'>('idle');
+  const [colorOverrides, setColorOverrides] = useState<{ primary?: string; accent?: string }>({});
 
   // ── FAQ accordion open index ──────────────────────────────────────────────
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -832,7 +866,7 @@ export default function LandingViewer() {
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
-      <Loader2 size={36} className="animate-spin text-indigo-500" />
+      <Loader2 size={36} className="animate-spin text-[#2E63F6]" />
       <p className="text-sm text-slate-500" dir="rtl">טוען את הדף...</p>
     </div>
   );
@@ -841,7 +875,7 @@ export default function LandingViewer() {
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center" dir="rtl">
       <p className="text-5xl">😕</p>
       <h1 className="text-xl font-bold text-slate-700">{error ?? 'הדף לא נמצא'}</h1>
-      <Link to="/" className="mt-2 text-sm text-indigo-600 hover:underline">← צור דף חדש</Link>
+      <Link to="/create" className="mt-2 text-sm text-[#2E63F6] hover:underline">← צור דף חדש</Link>
     </div>
   );
 
@@ -864,18 +898,27 @@ export default function LandingViewer() {
     setEdits((prev) => ({ ...prev, [path]: value }));
 
   async function checkout() {
+    if (!page) return;
     setCheckoutStatus('paying');
+    setCheckoutError(null);
     try {
-      const r = await fetch(`/api/landing/${page.id}/publish`, {
+      // Start a real SUMIT payment; we get back a secure redirect URL and send
+      // the user there. Publishing happens on the server after payment is
+      // verified (on return), so we never handle card data ourselves.
+      const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'publish', reference: page.id }),
       });
-      if (!r.ok) throw new Error('Payment failed');
-      const data = await r.json() as { status: string; published_at: string; expires_at: string };
-      setPage((prev) => prev ? { ...prev, status: 'published', published_at: data.published_at, expires_at: data.expires_at } : prev);
-      setCheckoutStatus('done');
-    } catch {
-      setCheckoutStatus('idle');
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? 'פתיחת התשלום נכשלה. נסו שוב.');
+      }
+      const data = await r.json() as { redirectUrl: string };
+      window.location.href = data.redirectUrl;
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : 'פתיחת התשלום נכשלה. נסו שוב.');
+      setCheckoutStatus('modal');
     }
   }
 
@@ -902,8 +945,20 @@ export default function LandingViewer() {
     if (!page) return;
     setSaveStatus('saving');
     const updated = applyEdits(page.ai_content, edits);
+    // Merge global palette edits (primary drives both primary+secondary for coherence).
+    if (colorOverrides.primary) {
+      updated.design_system = { ...updated.design_system, primary_color: colorOverrides.primary, secondary_color: colorOverrides.primary };
+    }
+    if (colorOverrides.accent) {
+      updated.design_system = { ...updated.design_system, accent_color: colorOverrides.accent };
+      updated.color_palette = {
+        primary: updated.color_palette?.primary ?? primary,
+        secondary_accent: colorOverrides.accent,
+        surface_bg: updated.color_palette?.surface_bg ?? '#ffffff',
+      };
+    }
     try {
-      const r = await fetch(`/api/landing/${page.id}`, {
+      const r = await authFetch(`/api/landing/${page.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ai_content: updated }),
@@ -912,6 +967,7 @@ export default function LandingViewer() {
       const data = await r.json() as Pick<LandingPage, 'ai_content'>;
       setPage((prev) => prev ? { ...prev, ai_content: data.ai_content } : prev);
       setEdits({});
+      setColorOverrides({});
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
     } catch {
@@ -920,13 +976,43 @@ export default function LandingViewer() {
     }
   }
 
+  // AI rewrite: scope 'hero' = the main heading (1 credit), 'all' = full page (3 credits).
+  async function handleRewrite(scope: 'hero' | 'all') {
+    if (!page || !user?.email || rewriteStatus === 'rewriting') return;
+    setRewriteStatus('rewriting');
+    try {
+      const r = await authFetch(`/api/landing/${page.id}/regenerate-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          sectionName: scope === 'all' ? 'all' : 'hero',
+          cost: scope === 'all' ? 3 : 1,
+        }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? 'שגיאה בכתיבה מחדש');
+      }
+      const data = await r.json() as { ai_content: AiContent; credits: number };
+      setPage((prev) => (prev ? { ...prev, ai_content: data.ai_content } : prev));
+      setCredits(data.credits);
+      setCreditsRefreshKey((k) => k + 1);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'שגיאה בכתיבה מחדש');
+    } finally {
+      setRewriteStatus('idle');
+    }
+  }
+
   async function toggleSectionVisibility(blockId: string) {
+    if (!page) return;
     const newHidden = hiddenSections.includes(blockId)
       ? hiddenSections.filter((id) => id !== blockId)
       : [...hiddenSections, blockId];
     setHiddenSections(newHidden);
     setPage((prev) => prev ? { ...prev, ai_content: { ...prev.ai_content, hidden_sections: newHidden } } : prev);
-    void fetch(`/api/landing/${page.id}`, {
+    void authFetch(`/api/landing/${page.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ai_content: { ...page.ai_content, hidden_sections: newHidden } }),
@@ -961,9 +1047,9 @@ export default function LandingViewer() {
   const ds    = ai_content.design_system;
   const hints = ai_content.design_hints;
 
-  const primary   = sanitizeHex(ds?.primary_color   ?? hints?.primary_color);
-  const secondary = sanitizeHex(ds?.secondary_color ?? hints?.secondary_color);
-  const accent    = sanitizeHex(ds?.accent_color    ?? hints?.accent_color);
+  const primary   = sanitizeHex(colorOverrides.primary ?? ds?.primary_color   ?? hints?.primary_color);
+  const secondary = sanitizeHex(colorOverrides.primary ?? ds?.secondary_color ?? hints?.secondary_color);
+  const accent    = sanitizeHex(colorOverrides.accent  ?? ds?.accent_color    ?? hints?.accent_color);
   const onPrimary = textOnColor(primary);
 
   const fontRaw  = ds?.font_style ?? hints?.font_style;
@@ -1002,19 +1088,22 @@ export default function LandingViewer() {
   const bgLightTint = ds?.bg_light_tint;
   const bgColors    = (hints?.bg_style?.colors ?? []).map(sanitizeHex);
 
+  // Alternating section backgrounds create distinct "zones" as you scroll.
+  // For v2 pages (single light tint) we alternate white ↔ tint instead of using
+  // the same tint for every band — otherwise the whole page reads as one flat surface.
   let sectionBg: React.CSSProperties | undefined = bgLightTint
-    ? { backgroundColor: bgLightTint }
+    ? { backgroundColor: '#ffffff' }
     : bgColors.length >= 2
       ? { backgroundImage: `linear-gradient(135deg, ${bgColors[0]}, ${bgColors[1]})` }
       : bgColors.length === 1
         ? { backgroundColor: bgColors[0] }
-        : undefined;
+        : { backgroundColor: '#ffffff' };
 
   let sectionBgAlt: React.CSSProperties | undefined = bgLightTint
     ? { backgroundColor: bgLightTint }
     : bgColors.length >= 2
       ? { backgroundImage: `linear-gradient(135deg, ${bgColors[1]}, ${bgColors[0]})` }
-      : sectionBg;
+      : { backgroundColor: '#f1f5f9' };
 
   // background_effect: 'textured' → layer a subtle dot grid over every section bg
   if (backgroundEffect === 'textured') {
@@ -1041,7 +1130,7 @@ export default function LandingViewer() {
   } as const;
   const { heading: headingFont, body: bodyFont } = FONT_PAIRS[typographyPairing];
   const secondaryAccent = sanitizeHex(
-    ai_content.color_palette?.secondary_accent ?? ds?.accent_color ?? hints?.accent_color
+    colorOverrides.accent ?? ai_content.color_palette?.secondary_accent ?? ds?.accent_color ?? hints?.accent_color
   );
 
   // Unify services list: v2 = services_or_benefits, v1 = services
@@ -1057,25 +1146,48 @@ export default function LandingViewer() {
     ? `linear-gradient(135deg, ${primary} 0%, ${secondary} 100%)`
     : `linear-gradient(150deg, ${primary} 0%, ${secondary}cc 100%)`;
 
+  // White hero text only reads if BOTH gradient ends are dark; otherwise (light
+  // palette) the gradient has light regions and white text vanishes — use dark text.
+  const heroOnGradient =
+    textOnColor(primary) === '#ffffff' && textOnColor(secondary) === '#ffffff' ? '#ffffff' : '#1e293b';
+  const heroCtaOverride = {
+    color: heroOnGradient,
+    background: heroOnGradient === '#ffffff' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
+    border: `2px solid ${heroOnGradient === '#ffffff' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.2)'}`,
+  };
+
   const techCard = vibe === 'tech'
     ? { boxShadow: `0 4px 24px ${primary}22`, backgroundImage: `linear-gradient(135deg, #ffffff, ${primary}0a)` }
     : undefined;
 
   const phone = ai_content.contact?.phone || phone_number;
+  const ctaEmail = ai_content.contact?.email || '';
   const waUrl = buildWhatsAppUrl(phone, ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`);
 
-  // If page has an external payment/donation link and the goal calls for it, use it as primary CTA
-  const useExternalLink =
-    !!page.external_link && (page.page_goal === 'donation' || page.page_goal === 'direct_sale');
-  const primaryCtaHref = useExternalLink ? page.external_link! : waUrl;
+  // Primary CTA target chosen by the user (whatsapp/email/phone/link). Falls back to
+  // legacy behavior (external link for donation/direct_sale, else WhatsApp).
+  const ctaMethod: 'whatsapp' | 'email' | 'phone' | 'link' =
+    (ai_content.contact?.cta_type as 'whatsapp' | 'email' | 'phone' | 'link' | undefined)
+    ?? (page.external_link && (page.page_goal === 'donation' || page.page_goal === 'direct_sale') ? 'link' : 'whatsapp');
+
+  const primaryCtaHref =
+    ctaMethod === 'email' && ctaEmail ? `mailto:${ctaEmail}`
+    : ctaMethod === 'phone' ? `tel:${phone}`
+    : ctaMethod === 'link' && page.external_link ? page.external_link
+    : waUrl;
+
+  // Non-WhatsApp methods use the brand-color styling; WhatsApp keeps its green.
+  const useExternalLink = ctaMethod !== 'whatsapp';
 
   const btnR = vibe === 'luxury' ? '2px' : vibe === 'tech' ? '8px' : '14px';
 
   const divider = <div className="w-12 h-1 mx-auto mt-3" style={{ backgroundImage: `linear-gradient(to right, ${primary}, ${accent})`, borderRadius: '4px' }} />;
 
-  const ctaIcon = useExternalLink
-    ? <ExternalLinkIcon size={20} />
-    : <WhatsAppIcon size={20} />;
+  const ctaIcon =
+    ctaMethod === 'whatsapp' ? <WhatsAppIcon size={20} />
+    : ctaMethod === 'email' ? <Mail size={20} />
+    : ctaMethod === 'phone' ? <Phone size={20} />
+    : <ExternalLinkIcon size={20} />;
 
   function ghostCta(extra?: React.CSSProperties) {
     return (
@@ -1285,7 +1397,7 @@ export default function LandingViewer() {
               <p className="text-xs font-black tracking-[0.3em] uppercase text-center mb-12" style={{ color: primary }}>
                 השירותים שלנו
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 items-stretch">
                 {services.map((s, i) => {
                   const img = isAiFormat ? iconUrls[i] : legacyImages[i + 2];
                   return (
@@ -1294,17 +1406,17 @@ export default function LandingViewer() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true, margin: '-80px' }}
                       transition={{ duration: 0.6, delay: i * 0.14, ease: EASE_SMOOTH }}
-                      className={`flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 backdrop-blur-sm border border-white/60 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl ${i === 0 ? 'shadow-xl' : 'shadow-md'}`}>
+                      className={`h-full flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 backdrop-blur-sm border border-white/60 shadow-md transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl`}>
                       <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
-                        className={`w-full ${i === 0 ? 'h-72 md:h-80' : 'h-52 md:h-60'}`}
+                        className="w-full h-56 md:h-64"
                         isEditingMode={isEditingMode} canEdit={!!canEdit}
                         onEditClick={() => openImageModal(`service_${i}`)} />
                       <div className="flex flex-col gap-3 p-5">
-                        <span className={`font-black tabular-nums ${i === 0 ? 'text-7xl' : 'text-5xl'}`} style={{ color: `${primary}${i === 0 ? '35' : '22'}` }}>
+                        <span className="font-black tabular-nums text-5xl" style={{ color: `${primary}22` }}>
                           {String(i + 1).padStart(2, '0')}
                         </span>
                         <div className="w-8 h-px" style={{ backgroundColor: primary }} />
-                        <EditableText as="h3" className={`font-bold text-slate-800 ${i === 0 ? 'text-lg' : ''}`}
+                        <EditableText as="h3" className="font-bold text-slate-800"
                           value={getEdit(`services.${i}.title`, s.title)}
                           onCommit={(v) => setEdit(`services.${i}.title`, v)}
                           isEditing={isEditingMode} />
@@ -1787,8 +1899,14 @@ export default function LandingViewer() {
         }
         <div className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.08) 0%, transparent 60%)' }} />
-        <motion.div variants={V.classic.item} className="relative z-10 flex flex-col items-center gap-5 max-w-xl mx-auto py-20"
-          style={{ color: heroImageUrl ? '#ffffff' : onPrimary }}>
+        <motion.div variants={V.classic.item} className="relative z-10 flex flex-col items-center gap-5 max-w-xl mx-auto my-16 py-12 px-8 rounded-3xl"
+          style={{
+            color: heroImageUrl ? '#ffffff' : heroOnGradient,
+            background: heroImageUrl ? 'rgba(15,23,42,0.55)' : undefined,
+            backdropFilter: heroImageUrl ? 'blur(3px)' : undefined,
+            WebkitBackdropFilter: heroImageUrl ? 'blur(3px)' : undefined,
+            boxShadow: heroImageUrl ? '0 20px 60px rgba(0,0,0,0.35)' : undefined,
+          }}>
           {logo_url && (
             <img src={logo_url} alt={business_name} className="h-24 w-24 object-contain shadow-xl"
               style={{ borderRadius: vibe === 'luxury' ? '4px' : '16px', background: 'rgba(255,255,255,0.2)', padding: '8px' }} />
@@ -1808,7 +1926,7 @@ export default function LandingViewer() {
           )}
           {heroImageUrl
             ? ghostCta({ color: '#ffffff', background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.45)' })
-            : ghostCta()
+            : ghostCta(heroCtaOverride)
           }
         </motion.div>
       </motion.section>
@@ -1825,7 +1943,7 @@ export default function LandingViewer() {
             onEditClick={() => openImageModal('hero')} />
         </motion.div>
         <motion.div className="flex flex-col justify-center gap-5 px-8 sm:px-14 py-16 order-first lg:order-last"
-          style={{ background: heroBg, color: onPrimary }}
+          style={{ background: heroBg, color: heroOnGradient }}
           variants={V.split.right} initial="hidden" animate="visible">
           {logo_url && (
             <img src={logo_url} alt={business_name} className="h-14 w-14 object-contain self-end"
@@ -1844,7 +1962,7 @@ export default function LandingViewer() {
               onCommit={(v) => setEdit('hero.subtitle', v)}
               isEditing={isEditingMode} />
           )}
-          {ghostCta()}
+          {ghostCta(heroCtaOverride)}
         </motion.div>
       </section>
     );
@@ -1920,8 +2038,8 @@ export default function LandingViewer() {
                     isEditingMode={isEditingMode} canEdit={!!canEdit}
                     onEditClick={() => openImageModal(`service_${i}`)} />
                   <div className="flex flex-col gap-3 p-5">
-                    <span className={`font-black tabular-nums ${i === 0 ? 'text-7xl' : 'text-5xl'}`}
-                      style={{ color: `${primary}${i === 0 ? '35' : '22'}` }}>
+                    <span className="font-black tabular-nums text-5xl"
+                      style={{ color: `${primary}22` }}>
                       {String(i + 1).padStart(2, '0')}
                     </span>
                     <div className="w-8 h-px" style={{ backgroundColor: primary }} />
@@ -2102,9 +2220,9 @@ export default function LandingViewer() {
               {ctaIcon}{ctaText}
             </motion.a>
 
-            {/* Micro trust line */}
+            {/* Micro trust line — niche-neutral so it fits any business (shop, clinic, agency…) */}
             <p className="text-xs opacity-60 tracking-wide" style={{ color: onPrimary }}>
-              ללא עלויות נסתרות · פגישה ראשונה ללא התחייבות
+              מענה אישי ומהיר · שירות אמין ומקצועי
             </p>
           </motion.div>
         </div>
@@ -2371,6 +2489,7 @@ export default function LandingViewer() {
   async function handleLeadSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (isDraft || leadSubmitting) return;
+    if (!page) return;
 
     setLeadSubmitting(true);
     setLeadError(null);
@@ -2627,10 +2746,8 @@ export default function LandingViewer() {
       {/* Viral credit line */}
       <div className={`bg-white py-4 text-center ${toolbarVisible ? 'pb-20' : ''}`}>
         <a href="/" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-          </svg>
-          נוצר באמצעות Tirnoer Digital
+          <LandoMark size={16} />
+          נוצר באמצעות Lando
         </a>
       </div>
 
@@ -2699,59 +2816,21 @@ export default function LandingViewer() {
                 </div>
               </div>
 
-              {/* Card form */}
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500 tracking-wide">מספר כרטיס אשראי</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="1234 5678 9012 3456"
-                    maxLength={19}
-                    value={cardNumber}
-                    disabled={checkoutStatus === 'paying'}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
-                      setCardNumber(raw.replace(/(.{4})/g, '$1 ').trim());
-                    }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 transition font-mono tracking-widest disabled:opacity-50"
-                    dir="ltr"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500 tracking-wide">תוקף</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="MM/YY"
-                      maxLength={5}
-                      value={cardExpiry}
-                      disabled={checkoutStatus === 'paying'}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/\D/g, '').slice(0, 4);
-                        setCardExpiry(raw.length > 2 ? `${raw.slice(0, 2)}/${raw.slice(2)}` : raw);
-                      }}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 transition font-mono tracking-widest disabled:opacity-50"
-                      dir="ltr"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500 tracking-wide">CVV</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="123"
-                      maxLength={3}
-                      value={cardCvv}
-                      disabled={checkoutStatus === 'paying'}
-                      onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300 transition font-mono tracking-widest disabled:opacity-50"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
+              {/* Secure redirect notice — card details are entered on SUMIT's
+                  secure page, never here (PCI-safe). */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex items-start gap-3">
+                <span className="text-xl leading-none mt-0.5">🔐</span>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  התשלום מתבצע בעמוד המאובטח של <span className="font-semibold">סאמיט</span>. נעביר אותך לשם להזנת פרטי הכרטיס, וחשבונית מס תישלח אליך אוטומטית.
+                </p>
               </div>
+
+              {/* Error message — surfaces a failed publish instead of silently closing */}
+              {checkoutError && (
+                <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 text-center">
+                  {checkoutError}
+                </div>
+              )}
 
               {/* Pay CTA */}
               <button
@@ -2765,9 +2844,9 @@ export default function LandingViewer() {
                       <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
                       <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
                     </svg>
-                    מעבד תשלום...
+                    מעביר לתשלום מאובטח...
                   </>
-                ) : 'שלם עכשיו — 249 ש״ח'}
+                ) : 'המשך לתשלום מאובטח — 249 ש״ח'}
               </button>
 
               <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
@@ -2794,33 +2873,47 @@ export default function LandingViewer() {
       {/* ── Edit toolbar — shown only to page owner / admin ─────────────────── */}
       {toolbarVisible && (
         <div className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between px-5 py-3 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_24px_rgba(0,0,0,0.08)]">
-          <button
-            onClick={() => {
-              if (isEditingMode) setEdits({});
-              setIsEditingMode((v) => !v);
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95"
-            style={{
-              backgroundColor: isEditingMode ? '#f1f5f9' : primary,
-              color: isEditingMode ? '#475569' : textOnColor(primary),
-            }}>
-            <Pencil size={15} />
-            {isEditingMode ? 'ביטול עריכה' : 'עריכת דף'}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/dashboard"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 transition active:scale-95">
+              <LayoutDashboard size={15} />
+              לאזור אישי
+            </Link>
+            <button
+              onClick={() => {
+                if (isEditingMode) setEdits({});
+                setIsEditingMode((v) => !v);
+              }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95"
+              style={{
+                backgroundColor: isEditingMode ? '#f1f5f9' : primary,
+                color: isEditingMode ? '#475569' : textOnColor(primary),
+              }}>
+              <Pencil size={15} />
+              {isEditingMode ? 'ביטול עריכה' : 'עריכת דף'}
+            </button>
+          </div>
 
           {isEditingMode && (
             <div className="flex items-center gap-3 min-w-0">
               {/* AI rewrite buttons — coming soon */}
-              <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
-                <button disabled title="בקרוב!"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 bg-slate-100 opacity-60 cursor-not-allowed">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => handleRewrite('hero')}
+                  disabled={rewriteStatus === 'rewriting'}
+                  title="כתיבה מחדש של הכותרת הראשית"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Sparkles size={12} />
-                  כתיבה מחדש (1 ✦)
+                  {rewriteStatus === 'rewriting' ? 'כותב...' : 'כתיבה מחדש לכותרת (1 ✦)'}
                 </button>
-                <button disabled title="בקרוב!"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 bg-slate-100 opacity-60 cursor-not-allowed">
+                <button
+                  onClick={() => handleRewrite('all')}
+                  disabled={rewriteStatus === 'rewriting'}
+                  title="כתיבה מחדש של כל תוכן הדף"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Sparkles size={12} />
-                  כתיבה מחדש הכל (3 ✦)
+                  {rewriteStatus === 'rewriting' ? 'כותב...' : 'כתיבה מחדש הכל (3 ✦)'}
                 </button>
               </div>
               {saveStatus === 'saved' && (
@@ -2831,7 +2924,7 @@ export default function LandingViewer() {
               )}
               <button
                 onClick={save}
-                disabled={saveStatus === 'saving' || Object.keys(edits).length === 0}
+                disabled={saveStatus === 'saving' || (Object.keys(edits).length === 0 && !colorOverrides.primary && !colorOverrides.accent)}
                 className="flex-shrink-0 flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   backgroundColor: saveStatus === 'saving' ? '#94a3b8' : '#22c55e',
@@ -2841,6 +2934,26 @@ export default function LandingViewer() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Global palette editor — owner only, in edit mode */}
+      {isEditingMode && (
+        <div className="fixed top-20 left-4 z-50 w-44 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl p-4 flex flex-col gap-3" dir="rtl">
+          <p className="text-xs font-bold text-slate-700">🎨 צבעי הדף</p>
+          <label className="flex items-center justify-between text-sm text-slate-600">
+            ראשי
+            <input type="color" value={primary}
+              onChange={(e) => setColorOverrides((c) => ({ ...c, primary: e.target.value }))}
+              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
+          </label>
+          <label className="flex items-center justify-between text-sm text-slate-600">
+            הדגשה
+            <input type="color" value={secondaryAccent}
+              onChange={(e) => setColorOverrides((c) => ({ ...c, accent: e.target.value }))}
+              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
+          </label>
+          <p className="text-[11px] text-slate-400 leading-tight">השינוי נשמר עם "שמור שינויים"</p>
         </div>
       )}
     </div>

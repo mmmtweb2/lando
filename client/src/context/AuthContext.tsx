@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -25,17 +25,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
-
-      // Task 4: upsert a minimal user_profiles row so the user always has a profile record.
-      // Only inserts; existing rows (with affiliate_code etc.) are untouched.
-      if (event === 'SIGNED_IN' && session?.user?.email) {
-        await supabase
-          .from('user_profiles')
-          .upsert({ email: session.user.email }, { onConflict: 'email', ignoreDuplicates: true });
-      }
+      // Profile rows are created server-side (via /api/users/auth and the
+      // self-healing ensureUserProfile). The browser can't insert into
+      // user_profiles under RLS, so we don't attempt it here.
     });
 
     return () => subscription.unsubscribe();

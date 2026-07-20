@@ -4,8 +4,47 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* ─── Lando brand palette (source of truth for the whole system) ─── */
+  --navy: #0E2148;     /* text, outlines, dark elements */
+  --screen: #132A54;   /* deep face-screen blue */
+  --blue: #2E63F6;     /* primary brand */
+  --blue-600: #1E4FD6; /* primary hover */
+  --shell: #E9EEFB;    /* light shell surface */
+  --glow: #6FE7FF;     /* cyan energy accent */
+  --warn: #FF7A6B;     /* error/coral */
+  --ok: #5AE6A8;       /* success/mint */
+  --bg: #E0E6F4;       /* page background — deeper periwinkle, softer on the eye */
+  --muted: #5A6B8C;    /* secondary text */
+}
+
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #f1f5f9;
+  font-family: 'Heebo', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--navy);
+}
+
+/* ─── Lando character animations (used app-wide) ─── */
+@keyframes landoPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+.lando-pulse { animation: landoPulse 3.6s ease-in-out infinite; }
+@keyframes landoBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+.lando-bob { animation: landoBob 2.8s ease-in-out infinite; }
+@keyframes landoBlink { 0%,100%{opacity:.25} 40%{opacity:1} }
+.lando-blink { animation: landoBlink 1.7s ease-in-out infinite; }
+@keyframes landoFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+.lando-float { animation: landoFloat 3.4s ease-in-out infinite; }
+@keyframes landoShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 40%{transform:translateX(4px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(2px)} }
+.lando-shake { animation: landoShake .5s ease-in-out 1; }
+@keyframes landoBobY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+.lando-hover { animation: landoBobY 5.5s ease-in-out infinite; }
+@keyframes landoBlob { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(16px,-18px) scale(1.06)} 66%{transform:translate(-14px,14px) scale(0.95)} }
+.lando-blob { animation: landoBlob 26s ease-in-out infinite; }
+@keyframes glowPulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.glow-pulse { animation: glowPulse 3.8s ease-in-out infinite; }
+@keyframes landoRipple { 0%{transform:scale(0.6);opacity:.5} 100%{transform:scale(2.4);opacity:0} }
+.lando-ripple { animation: landoRipple 5.5s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lando-pulse,.lando-bob,.lando-blink,.lando-float,.lando-shake,.lando-hover,.lando-blob,.glow-pulse,.lando-ripple { animation: none; }
 }

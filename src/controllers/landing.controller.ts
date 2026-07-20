@@ -1,10 +1,11 @@
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { generateAiContent, regenerateSectionText, type AiContent } from '../services/ai.service';
+import { generateAiContent, regenerateSectionText, checkBusinessCoherence, type AiContent } from '../services/ai.service';
 import { processAndSave, generateFalImage } from '../services/image.service';
 import { processMockPayment } from '../services/payment.service';
 import { checkAndDeductCredits } from '../services/credits.service';
+import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -21,17 +22,17 @@ export async function getAllLandingPages(_req: Request, res: Response): Promise<
 }
 
 export async function getMyPages(req: Request, res: Response): Promise<void> {
-  const { email } = req.query as { email?: string };
-
+  // Identity comes from the verified token (requireAuth), not a spoofable query param.
+  const email = req.authEmail;
   if (!email) {
-    res.status(400).json({ error: 'email query param required' });
+    res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, created_at, logo_url, image_source, status')
-    .eq('owner_email', email.trim().toLowerCase())
+    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at')
+    .eq('owner_email', email)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -40,6 +41,43 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
   }
 
   res.json(data ?? []);
+}
+
+// Leads for all pages owned by the authenticated user. Routed through the backend
+// (service-role) so the browser never needs direct DB access to the leads table.
+export async function getMyLeads(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) {
+    res.status(401).json({ error: 'נדרשת התחברות.' });
+    return;
+  }
+
+  const { data: pages, error: pagesErr } = await supabase
+    .from('landing_pages')
+    .select('id')
+    .eq('owner_email', email);
+  if (pagesErr) {
+    res.status(500).json({ error: pagesErr.message });
+    return;
+  }
+
+  const ids = (pages ?? []).map((p) => (p as { id: string }).id);
+  if (ids.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select('id, name, phone, email, message, created_at, landing_page_id, landing_pages(business_name, slug)')
+    .in('landing_page_id', ids)
+    .order('created_at', { ascending: false });
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json(leads ?? []);
 }
 
 export async function updateLandingPage(req: Request, res: Response): Promise<void> {
@@ -109,6 +147,16 @@ function generateSlug(): string {
     .join('');
 }
 
+// Builds a service-image prompt matched to the page's chosen style (photo vs icon),
+// keeping the whole set coherent. `imageStyle` comes from ai_content.design_tokens.image_style,
+// which the AI sets based on the niche (photo for food/beauty/etc., icon for tech/digital).
+function buildServiceImagePrompt(subject: string, imageStyle: string | undefined, primaryColorHex: string): string {
+  if (imageStyle === 'photo') {
+    return `Professional cinematic photograph of ${subject}, photorealistic, rich natural lighting, shallow depth of field, no text, no watermark, landscape orientation.`;
+  }
+  return `A sleek, modern 3D icon of ${subject}, glassmorphism style, minimalist UI asset, vibrant lighting, solid clean background matching hex ${primaryColorHex}. No text.`;
+}
+
 export async function createLandingPage(req: Request, res: Response): Promise<void> {
   console.log('=== NEW REQUEST TO /api/landing ===');
   console.log('req.body:', req.body);
@@ -136,6 +184,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       owner_email,
       page_goal,
       external_link,
+      cta_type,
       primary_color,
       secondary_color,
       auto_extract_colors,
@@ -156,6 +205,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       owner_email?: string;
       page_goal?: string;
       external_link?: string;
+      cta_type?: string;
       primary_color?: string;
       secondary_color?: string;
       auto_extract_colors?: string;
@@ -175,6 +225,14 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Coherence gate — reject obvious gibberish BEFORE spending credits or AI cost.
+    const coherent = await checkBusinessCoherence(business_name, user_provided_text || about_business);
+    if (!coherent) {
+      console.log('[LANDING] Coherence gate BLOCKED — input is not a real business');
+      res.status(422).json({ error: 'לא הצלחנו להבין את תיאור העסק. נסו לתאר את העסק בצורה ברורה ומפורטת יותר.' });
+      return;
+    }
+
     // Safe null coercion — undefined is rejected by pg; explicit null is required
     const safeEmail = email || null;
     const safeAddress = address || null;
@@ -184,16 +242,18 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     const safeFacebookUrl   = facebook_url   || null;
     const safeInstagramUrl  = instagram_url  || null;
     const safeEnableForm    = enable_form === 'true';
-    const safeOwnerEmail     = owner_email ? owner_email.trim().toLowerCase() : null;
+    // Owner is the AUTHENTICATED user (verified token), never the spoofable body field.
+    const safeOwnerEmail     = req.authEmail ?? (owner_email ? owner_email.trim().toLowerCase() : null);
     const safeExternalLink   = external_link?.trim() || null;
     const safePageGoal       = page_goal || null;
+    const safeCtaType        = ['whatsapp', 'email', 'phone', 'link'].includes(cta_type ?? '') ? cta_type! : 'whatsapp';
     const safeAutoExtract         = auto_extract_colors === 'true';
     const safeIncludeTestimonials = include_testimonials === 'true';
     const safePrimaryColor   = /^#[0-9a-fA-F]{6}$/.test(primary_color ?? '') ? primary_color : undefined;
     const safeSecondaryColor = /^#[0-9a-fA-F]{6}$/.test(secondary_color ?? '') ? secondary_color : undefined;
 
     // ── AI image credit gate ───────────────────────────────────────────────
-    let aiUserProfile: { ai_image_credits: number; is_admin: boolean } | null = null;
+    let aiUserProfile: { credits: number; is_admin: boolean } | null = null;
 
     if (image_source === 'ai') {
       console.log('[LANDING] AI image requested — checking credit gate for:', safeOwnerEmail);
@@ -204,27 +264,22 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         return;
       }
 
-      const { data: profile, error: profileErr } = await supabase
-        .from('user_profiles')
-        .select('ai_image_credits, is_admin')
-        .eq('email', safeOwnerEmail)
-        .single();
-
-      console.log('[LANDING] Profile lookup result:', profile, '| error:', profileErr?.message ?? null);
-
-      if (!profile) {
-        console.log('[LANDING] Credit gate BLOCKED — profile not found');
-        res.status(403).json({ error: 'User profile not found' });
+      let profile: MinimalProfile;
+      try {
+        profile = await ensureUserProfile(safeOwnerEmail);
+      } catch (e) {
+        console.error('[LANDING] Credit gate — profile load/create failed:', e);
+        res.status(500).json({ error: 'Could not load or create user profile' });
         return;
       }
 
-      if (!profile.is_admin && (profile.ai_image_credits ?? 0) <= 0) {
-        console.log('[LANDING] Credit gate BLOCKED — insufficient credits:', profile.ai_image_credits);
+      if (!profile.is_admin && (profile.credits ?? 0) <= 0) {
+        console.log('[LANDING] Credit gate BLOCKED — insufficient credits:', profile.credits);
         res.status(403).json({ error: 'Insufficient AI credits' });
         return;
       }
 
-      console.log('[LANDING] Credit gate PASSED — is_admin:', profile.is_admin, '| credits:', profile.ai_image_credits);
+      console.log('[LANDING] Credit gate PASSED — is_admin:', profile.is_admin, '| credits:', profile.credits);
       aiUserProfile = profile;
     }
 
@@ -242,7 +297,17 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         );
       }
 
-      const slug = generateSlug();
+      // Generate a unique slug, retrying on the rare random collision.
+      let slug = generateSlug();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: clash } = await supabase
+          .from('landing_pages')
+          .select('id')
+          .eq('slug', slug)
+          .maybeSingle();
+        if (!clash) break;
+        slug = generateSlug();
+      }
 
       // 3. AI content — 2-step prompt chain (copywriter → mapping)
       const aiInput: Parameters<typeof generateAiContent>[0] = {
@@ -268,6 +333,16 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       }
       const ai_content = await generateAiContent(aiInput);
 
+      // Coherence gate: if the AI couldn't make sense of the business input,
+      // don't burn image-generation cost — ask the user to clarify instead.
+      if (ai_content.page_strategy?.detected_goal === 'UNCLEAR_INPUT') {
+        res.status(422).json({ error: 'לא הצלחנו להבין את תיאור העסק. נסו לתאר אותו בצורה ברורה ומפורטת יותר.' });
+        return;
+      }
+
+      // Persist the user-chosen CTA target inside ai_content so the viewer renders the right button.
+      ai_content.contact = { ...(ai_content.contact ?? {}), cta_type: safeCtaType };
+
       // serializedImages holds the final JSON written to user_images column.
       // AI format: { hero_image_url, icon_urls } — decoded by LandingViewer as object.
       // Upload/Stock format: string[]              — decoded by LandingViewer as array.
@@ -278,12 +353,10 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         const heroPrompt = ai_content.hero?.hero_image_prompt;
         const serviceItems = ai_content.services_or_benefits ?? [];
         const primaryColorHex = ai_content.design_system?.primary_color ?? '#4f46e5';
+        const imageStyle = ai_content.design_tokens?.image_style;
         const serviceImagePrompts = serviceItems
           .slice(0, Math.min(serviceItems.length, 3))
-          .map((s) => {
-            const keyword = s.service_icon_keyword ?? s.title;
-            return `A sleek, modern 3D icon of ${keyword}, glassmorphism style, minimalist UI asset, vibrant lighting, solid clean background matching hex ${primaryColorHex}. No text.`;
-          });
+          .map((s) => buildServiceImagePrompt(s.service_icon_keyword ?? s.title, imageStyle, primaryColorHex));
 
         console.log('[LANDING] Fal.ai batch — hero prompt:', !!heroPrompt, '| service prompts:', serviceImagePrompts.length);
 
@@ -298,9 +371,11 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
         const hero_image_url =
           heroResult.status === 'fulfilled' ? heroResult.value : null;
-        const icon_urls = iconResults
-          .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-          .map((r) => r.value);
+        // Keep one slot per service (aligned to the service cards). A failed
+        // image becomes '' so the remaining images don't shift into the wrong card.
+        const icon_urls = iconResults.map((r) =>
+          r.status === 'fulfilled' ? (r.value ?? '') : '',
+        );
 
         // Log any failures for debugging
         settled.forEach((r, i) => {
@@ -319,7 +394,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         if (aiUserProfile && !aiUserProfile.is_admin && safeOwnerEmail) {
           await supabase
             .from('user_profiles')
-            .update({ ai_image_credits: Math.max(0, aiUserProfile.ai_image_credits - 1) })
+            .update({ credits: Math.max(0, aiUserProfile.credits - 1) })
             .eq('email', safeOwnerEmail);
         }
       }
@@ -350,12 +425,16 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
           }
         }
 
-        if (stockUrls.length > 0) serializedImages = JSON.stringify(stockUrls);
+        // Reserve slots [0]=hero and [1]=decorative (both empty → clean gradient
+        // hero, no random decorative image); the stock images fill the 3 service cards.
+        if (stockUrls.length > 0) serializedImages = JSON.stringify(['', '', ...stockUrls]);
       }
 
       // 4c. User-uploaded images
       if (image_source === 'upload' && uploadedImageUrls.length > 0) {
-        serializedImages = JSON.stringify(uploadedImageUrls);
+        // Same slot convention as stock: [0]=hero, [1]=decorative reserved (empty);
+        // uploaded images fill the service cards.
+        serializedImages = JSON.stringify(['', '', ...uploadedImageUrls]);
       }
 
       console.log('[LANDING] serializedImages length:', serializedImages?.length ?? 0);
@@ -392,6 +471,19 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         return;
       }
 
+      // Grant the page's editing allowance: +10 credits to the owner per page created.
+      if (safeOwnerEmail) {
+        try {
+          const owner = await ensureUserProfile(safeOwnerEmail);
+          await supabase
+            .from('user_profiles')
+            .update({ credits: (owner.credits ?? 0) + 10 })
+            .eq('email', safeOwnerEmail);
+        } catch (grantErr) {
+          console.error('[LANDING] credit grant failed (page still created):', grantErr);
+        }
+      }
+
       res.status(201).json(data);
     } catch (error) {
       console.error('=== CRITICAL ERROR ===', error);
@@ -412,23 +504,19 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
   }
 }
 
-export async function publishLandingPage(req: Request, res: Response): Promise<void> {
-  const { id } = req.params;
+export interface PublishedPage {
+  id: string;
+  slug: string;
+  status: string;
+  published_at: string;
+  expires_at: string;
+}
 
-  let result;
-  try {
-    result = await processMockPayment(id, 249);
-  } catch (err) {
-    console.error('[PUBLISH] Payment processor threw:', err);
-    res.status(402).json({ error: 'Payment failed' });
-    return;
-  }
-
-  if (!result.success) {
-    res.status(402).json({ error: 'Payment declined' });
-    return;
-  }
-
+/**
+ * Marks a page published for one year. Shared by the (legacy mock) publish
+ * endpoint and the real SUMIT payment-return handler. Returns null on failure.
+ */
+export async function publishPageById(id: string): Promise<PublishedPage | null> {
   const now = new Date();
   const expiresAt = new Date(now);
   expiresAt.setFullYear(expiresAt.getFullYear() + 1);
@@ -444,11 +532,36 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
     .select('id, slug, status, published_at, expires_at')
     .single();
 
-  if (error) {
-    res.status(500).json({ error: error.message });
+  if (error || !data) {
+    console.error('[PUBLISH] update failed:', error?.message);
+    return null;
+  }
+  return data as PublishedPage;
+}
+
+// Legacy mock-payment publish endpoint. The real flow now goes through
+// /api/payments (SUMIT redirect); kept for admin/testing only.
+export async function publishLandingPage(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+
+  let result;
+  try {
+    result = await processMockPayment(id, 249);
+  } catch (err) {
+    console.error('[PUBLISH] Payment processor threw:', err);
+    res.status(402).json({ error: 'Payment failed' });
+    return;
+  }
+  if (!result.success) {
+    res.status(402).json({ error: 'Payment declined' });
     return;
   }
 
+  const data = await publishPageById(id);
+  if (!data) {
+    res.status(500).json({ error: 'Publish failed' });
+    return;
+  }
   res.json({ ...data, transactionId: result.transactionId });
 }
 
@@ -585,10 +698,10 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
       const serviceItems = content.services_or_benefits ?? content.services ?? [];
       const primaryColorHex = content.design_system?.primary_color ?? '#4f46e5';
 
-      const servicePrompts = serviceItems.slice(0, 3).map((s) => {
-        const keyword = s.service_icon_keyword ?? s.title;
-        return `A sleek, modern 3D icon of ${keyword}, glassmorphism style, minimalist UI asset, vibrant lighting, solid clean background matching hex ${primaryColorHex}. No text.`;
-      });
+      const imageStyle = content.design_tokens?.image_style;
+      const servicePrompts = serviceItems.slice(0, 3).map((s) =>
+        buildServiceImagePrompt(s.service_icon_keyword ?? s.title, imageStyle, primaryColorHex),
+      );
 
       console.log(`[regenerateImageAi] Full set — hero: ${!!heroPrompt}, services: ${servicePrompts.length}`);
 
@@ -603,16 +716,25 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
 
       const heroResult = settled[0];
       firstUrl = heroResult.status === 'fulfilled' ? heroResult.value : null;
-      const iconUrls = settled.slice(1)
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-        .map((r) => r.value);
+      const iconUrls = settled.slice(1).map((r) =>
+        r.status === 'fulfilled' ? (r.value ?? '') : '',
+      );
 
       serialized = JSON.stringify({ hero_image_url: firstUrl, icon_urls: iconUrls } satisfies AiStore);
     } else {
-      // Single slot regeneration
-      const url = await generateFalImage(prompt!.trim(), 'landscape_4_3');
+      // Single slot regeneration. For SERVICE icons, lock the user's subject into
+      // the SAME style template as the original set (3D glassmorphism icon, matching
+      // palette color, no text) so swapping one image doesn't break set coherence.
+      // The hero is a standalone photo — keep its prompt free.
+      const slotName = slot!.trim();
+      const pageContent = (page as { ai_content?: AiContent }).ai_content;
+      const primaryColorHex = pageContent?.design_system?.primary_color ?? '#4f46e5';
+      const finalPrompt = slotName.startsWith('service_')
+        ? buildServiceImagePrompt(prompt!.trim(), pageContent?.design_tokens?.image_style, primaryColorHex)
+        : prompt!.trim();
+      const url = await generateFalImage(finalPrompt, 'landscape_4_3');
       firstUrl = url;
-      const updatedStore = applyImageSlot(current, slot!.trim(), url);
+      const updatedStore = applyImageSlot(current, slotName, url);
       serialized = JSON.stringify(updatedStore);
     }
 

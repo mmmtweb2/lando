@@ -4,11 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, FileText, Users, LogOut,
-  CheckCircle, Clock,
+  CheckCircle, Clock, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
-import { supabase } from '../lib/supabase';
+import { authFetch } from '../lib/api';
+import { LandoMark, LandoBot } from '../components/Lando';
 import LeadsTable, { type LeadRow } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
@@ -32,6 +33,7 @@ type ActiveTab = 'pages' | 'leads';
 
 const cardItem = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
 const cardContainer = { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
+const springTap = { type: 'spring', stiffness: 400, damping: 10 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,20 +45,25 @@ function formatDate(iso: string) {
 
 function NavItem({ icon, label, active = false }: { icon: ReactNode; label: string; active?: boolean }) {
   return (
-    <button className={`flex items-center gap-2.5 w-full rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-      active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+    <button className={`flex items-center gap-2.5 w-full rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+      active
+        ? 'bg-[#E4EAFB] text-[#1E4FD6]'
+        : 'text-slate-500 hover:bg-[#EEF1FB] hover:text-[#1E4FD6]'
     }`}>
-      <span className={active ? 'text-indigo-500' : ''}>{icon}</span>
+      <span className={active ? 'text-[#2E63F6]' : ''}>{icon}</span>
       {label}
     </button>
   );
 }
 
-function StatCard({ label, value, icon, color = 'text-slate-700' }: {
-  label: string; value: string; icon: ReactNode; color?: string;
+function StatCard({ label, value, icon, color = 'text-slate-700', bg = 'bg-white' }: {
+  label: string; value: string; icon: ReactNode; color?: string; bg?: string;
 }) {
   return (
-    <motion.div variants={cardItem} className="rounded-2xl bg-white border border-slate-100 shadow-sm p-5 flex flex-col gap-2">
+    <motion.div
+      variants={cardItem}
+      className={`rounded-3xl ${bg} border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-2`}
+    >
       <div className={color}>{icon}</div>
       <p className={`text-2xl font-black ${color}`}>{value}</p>
       <p className="text-xs text-slate-500">{label}</p>
@@ -67,19 +74,19 @@ function StatCard({ label, value, icon, color = 'text-slate-700' }: {
 function StatusBadge({ status }: { status: PageRow['status'] }) {
   if (status === 'published') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-2.5 py-1 flex-shrink-0">
-        <CheckCircle size={10} />פורסם
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 flex-shrink-0">
+        <CheckCircle size={10} /> פורסם
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-1 flex-shrink-0">
-      <Clock size={10} />טיוטה
+    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-600 text-xs font-bold px-2.5 py-1 flex-shrink-0">
+      <Clock size={10} /> טיוטה
     </span>
   );
 }
 
-// ─── Tab bar ─────────────────────────────────────────────────────────────────
+// ─── Tab bar (pill toggles) ───────────────────────────────────────────────────
 
 interface TabBarProps {
   active: ActiveTab;
@@ -90,24 +97,26 @@ interface TabBarProps {
 
 function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
   const tabs: { id: ActiveTab; label: string; count: number }[] = [
-    { id: 'pages', label: 'הדפים שלי', count: pageCount },
-    { id: 'leads', label: 'תיבת לידים', count: leadCount },
+    { id: 'pages', label: '🗂️ הדפים שלי', count: pageCount },
+    { id: 'leads', label: '📥 לידים', count: leadCount },
   ];
   return (
-    <div className="flex gap-0 border-b border-slate-200">
+    <div className="flex gap-1.5 bg-[#E4EAFB]/60 rounded-full p-1.5">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-full transition-all ${
             active === tab.id
-              ? 'border-indigo-500 text-indigo-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+              ? 'bg-white text-[#1E4FD6] shadow-sm shadow-blue-200'
+              : 'text-[#8CA0D6] hover:text-[#2E63F6]'
           }`}
         >
           {tab.label}
-          <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-            active === tab.id ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-black ${
+            active === tab.id
+              ? 'bg-[#E4EAFB] text-[#1E4FD6]'
+              : 'bg-white/60 text-[#8CA0D6]'
           }`}>
             {tab.count}
           </span>
@@ -119,14 +128,16 @@ function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
 
 // ─── Page cards ───────────────────────────────────────────────────────────────
 
-function PageGrid({ pages }: { pages: PageRow[] }) {
+function PageGrid({ pages, onDelete }: { pages: PageRow[]; onDelete: (id: string, name: string) => void }) {
   if (pages.length === 0) {
     return (
-      <div className="rounded-2xl border-2 border-dashed border-slate-200 p-12 flex flex-col items-center gap-3 text-center">
-        <Globe size={28} className="text-slate-300" />
-        <p className="text-sm text-slate-500">עדיין לא יצרת דפי נחיתה</p>
-        <Link to="/" className="text-sm font-medium text-indigo-600 hover:underline">
-          צור את הדף הראשון שלך ✦
+      <div className="rounded-3xl border-2 border-dashed border-[#C6D2F2] bg-[#EEF1FB]/40 p-12 flex flex-col items-center gap-3 text-center">
+        <div className="lando-hover"><LandoBot mood="default" size={96} /></div>
+        <p className="text-sm font-bold text-[#1E4FD6]">
+          לבנות דף נחיתה? זה משחק ילדים (שמביא כסף אמיתי).
+        </p>
+        <Link to="/create" className="text-sm font-bold text-[#2E63F6] hover:text-[#0E2148] underline underline-offset-2 transition">
+          בוא נתחיל! 🚀
         </Link>
       </div>
     );
@@ -139,37 +150,47 @@ function PageGrid({ pages }: { pages: PageRow[] }) {
       {pages.map((p) => (
         <motion.div
           key={p.id} variants={cardItem}
-          className="rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition p-5 flex flex-col gap-3"
+          whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(168,85,247,0.15)' }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-3"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {p.logo_url ? (
                 <img
                   src={p.logo_url} alt={p.business_name}
-                  className="w-10 h-10 rounded-xl object-contain bg-slate-50 flex-shrink-0"
+                  className="w-10 h-10 rounded-2xl object-contain bg-[#EEF1FB] flex-shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-[#E4EAFB] flex items-center justify-center text-[#2E63F6] font-black text-sm flex-shrink-0">
                   {p.business_name.charAt(0)}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="font-semibold text-slate-800 text-sm truncate">{p.business_name}</p>
+                <p className="font-bold text-slate-800 text-sm truncate">{p.business_name}</p>
                 <p className="text-xs text-slate-400 font-mono">/p/{p.slug}</p>
               </div>
             </div>
             <StatusBadge status={p.status} />
           </div>
           <p className="text-xs text-slate-400">{formatDate(p.created_at)}</p>
-          <div className="mt-auto pt-1 border-t border-slate-50">
+          <div className="mt-auto pt-2 border-t border-[#E9EEFB] flex items-center justify-between">
             <Link
               to={`/p/${p.slug}`}
               target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition"
+              className="flex items-center gap-1.5 text-xs font-bold text-[#2E63F6] hover:text-[#0E2148] transition"
             >
               <ExternalLink size={12} />
               צפייה בדף
             </Link>
+            <button
+              onClick={() => onDelete(p.id, p.business_name)}
+              title="מחק דף"
+              className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-red-500 transition"
+            >
+              <Trash2 size={12} />
+              מחק
+            </button>
           </div>
         </motion.div>
       ))}
@@ -183,10 +204,10 @@ function PageGridSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="rounded-2xl bg-white border border-slate-100 p-5 flex flex-col gap-3 animate-pulse">
-          <div className="w-10 h-10 rounded-xl bg-slate-100" />
-          <div className="h-3.5 rounded-full bg-slate-100 w-3/4" />
-          <div className="h-2.5 rounded-full bg-slate-100 w-1/2" />
+        <div key={i} className="rounded-3xl bg-white border border-[#DCE4F7] p-5 flex flex-col gap-3 animate-pulse">
+          <div className="w-10 h-10 rounded-2xl bg-[#E4EAFB]" />
+          <div className="h-3.5 rounded-full bg-[#E4EAFB] w-3/4" />
+          <div className="h-2.5 rounded-full bg-[#EEF1FB] w-1/2" />
         </div>
       ))}
     </div>
@@ -200,10 +221,40 @@ export default function Dashboard() {
   const { user: portalUser } = useUser();
   const navigate = useNavigate();
 
-  const [pages, setPages]         = useState<PageRow[]>([]);
-  const [leads, setLeads]         = useState<LeadRow[]>([]);
+  const [pages, setPages]             = useState<PageRow[]>([]);
+  const [leads, setLeads]             = useState<LeadRow[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('pages');
+  const [activeTab, setActiveTab]     = useState<ActiveTab>('pages');
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [buyMsg, setBuyMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [walletKey, setWalletKey] = useState(0);
+  const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('payment');
+    if (!status) return;
+    const NOTICES: Record<string, { text: string; ok: boolean }> = {
+      success:   { text: 'התשלום התקבל! העדכון בוצע.', ok: true },
+      cancelled: { text: 'התשלום בוטל. לא בוצע חיוב.', ok: false },
+      review:    { text: 'קיבלנו את התשלום ואנחנו מאמתים אותו — נעדכן בקרוב.', ok: false },
+      error:     { text: 'משהו השתבש בתהליך התשלום. נסו שוב.', ok: false },
+    };
+    setPaymentNotice(NOTICES[status] ?? null);
+    if (status === 'success') setWalletKey((k) => k + 1);
+    // Clean the query param so a refresh doesn't re-show the notice.
+    window.history.replaceState({}, '', window.location.pathname);
+    const t = setTimeout(() => setPaymentNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
+  async function handleDeletePage(id: string, name: string) {
+    if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
+    const r = await authFetch(`/api/landing/${id}`, { method: 'DELETE' });
+    if (r.ok) setPages((prev) => prev.filter((p) => p.id !== id));
+    else window.alert('מחיקת הדף נכשלה. נסו שוב.');
+  }
 
   // Guard: redirect unauthenticated visitors
   useEffect(() => {
@@ -221,28 +272,19 @@ export default function Dashboard() {
     async function fetchData() {
       setDataLoading(true);
       try {
-        // 1 — Fetch landing pages owned by this user
-        const { data: pagesData, error: pagesErr } = await supabase
-          .from('landing_pages')
-          .select('id, slug, business_name, created_at, logo_url, status, published_at, expires_at')
-          .eq('owner_email', user!.email)
-          .order('created_at', { ascending: false });
-
-        if (pagesErr) throw pagesErr;
+        // Both fetched via the backend (service-role, token-authenticated) so the
+        // browser never touches the DB directly and RLS can stay locked to deny-all.
+        const pagesRes = await authFetch('/api/landing/my-pages');
+        if (!pagesRes.ok) throw new Error('failed to load pages');
+        const pagesData = await pagesRes.json();
         const pageRows = (pagesData ?? []) as PageRow[];
         if (!cancelled) setPages(pageRows);
 
-        // 2 — Fetch full lead rows for those pages (with page name via FK join)
         if (pageRows.length > 0) {
-          const pageIds = pageRows.map((p) => p.id);
-          const { data: leadsData, error: leadsErr } = await supabase
-            .from('leads')
-            .select('id, name, phone, email, message, created_at, page_id, landing_pages(business_name, slug)')
-            .in('page_id', pageIds)
-            .order('created_at', { ascending: false });
-
-          if (leadsErr) throw leadsErr;
-          if (!cancelled) setLeads((leadsData ?? []) as LeadRow[]);
+          const leadsRes = await authFetch('/api/landing/my-leads');
+          if (!leadsRes.ok) throw new Error('failed to load leads');
+          const leadsData = await leadsRes.json();
+          if (!cancelled) setLeads((leadsData ?? []) as unknown as LeadRow[]);
         }
       } catch (err) {
         console.error('[Dashboard] data fetch failed:', err);
@@ -258,8 +300,8 @@ export default function Dashboard() {
   // Auth resolving — full-screen spinner
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 size={32} className="animate-spin text-indigo-500" />
+      <div className="min-h-screen flex items-center justify-center bg-[#EEF1FB]">
+        <Loader2 size={32} className="animate-spin text-[#8CA0D6]" />
       </div>
     );
   }
@@ -273,14 +315,42 @@ export default function Dashboard() {
     navigate('/login', { replace: true });
   }
 
+  async function handleBuyCredits(pack: 'small' | 'large') {
+    if (!user?.email || buying) return;
+    setBuying(true);
+    try {
+      // Start a real SUMIT payment and redirect to the secure page. Credits are
+      // granted on the server after payment is verified (on return).
+      const r = await authFetch('/api/payments/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'credits', reference: pack }),
+      });
+      const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
+      if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
+      window.location.href = data.redirectUrl;
+    } catch (e) {
+      setBuyMsg({ text: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה', ok: false });
+      setBuying(false);
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 flex" dir="rtl">
+    <div className="min-h-screen bg-[#EEF1FB] flex" dir="rtl">
+
+      {/* Payment return toast */}
+      {paymentNotice && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[70] rounded-xl px-5 py-3 text-sm font-semibold shadow-lg ${paymentNotice.ok ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-white'}`}>
+          {paymentNotice.ok ? '✓ ' : ''}{paymentNotice.text}
+        </div>
+      )}
 
       {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-60 bg-white border-l border-slate-200 sticky top-0 h-screen flex-shrink-0">
-        <div className="px-5 py-5 border-b border-slate-100">
-          <Link to="/" className="text-base font-bold text-slate-800 hover:text-indigo-600 transition">
-            Tirnoer Digital ✦
+      <aside className="hidden lg:flex flex-col w-60 bg-white border-l border-[#DCE4F7] sticky top-0 h-screen flex-shrink-0">
+        <div className="px-5 py-5 border-b border-[#DCE4F7]">
+          <Link to="/" className="flex items-center gap-2">
+            <LandoMark size={30} />
+            <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Lando</span>
           </Link>
         </div>
 
@@ -291,12 +361,12 @@ export default function Dashboard() {
           <NavItem icon={<FileText size={17} />} label="הגדרות" />
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-100">
+        <div className="px-3 py-4 border-t border-[#DCE4F7]">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
+            className="flex items-center gap-2 w-full rounded-2xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
           >
-            <LogOut size={16} />יציאה
+            <LogOut size={16} /> יציאה
           </button>
         </div>
       </aside>
@@ -305,16 +375,21 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Header */}
-        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200/60 shadow-sm px-5 h-14 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-sm font-semibold text-slate-700">דשבורד</h1>
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-[#DCE4F7]/80 shadow-sm shadow-blue-100/40 px-5 h-14 flex items-center justify-between flex-shrink-0">
+          <h1 className="text-sm font-black text-[#1E4FD6]">Lando ✦</h1>
           <div className="flex items-center gap-3">
-            <WalletBadge email={user.email} />
+            <WalletBadge email={user.email} refreshKey={walletKey} />
+            <button
+              onClick={() => setShowBuyCredits(true)}
+              className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
+              + טען קרדיטים
+            </button>
             <span className="hidden sm:block text-xs text-slate-400 font-mono truncate max-w-48">
               {user.email}
             </span>
             <button
               onClick={handleLogout}
-              className="lg:hidden flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition"
+              className="lg:hidden flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#2E63F6] transition"
               aria-label="יציאה"
             >
               <LogOut size={15} />
@@ -322,16 +397,50 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {showBuyCredits && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50" onClick={() => !buying && setShowBuyCredits(false)}>
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 flex flex-col gap-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-extrabold text-slate-900">טעינת קרדיטים</h3>
+                {!buying && <button onClick={() => setShowBuyCredits(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
+              </div>
+              <p className="text-sm text-slate-500">קרדיטים משמשים ליצירת תמונות וכתיבה מחדש ב-AI.</p>
+              <div className="grid grid-cols-1 gap-3">
+                <button disabled={buying} onClick={() => handleBuyCredits('small')}
+                  className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50">
+                  <span className="font-bold text-slate-800">10 קרדיטים</span>
+                  <span className="font-extrabold text-indigo-600">₪49</span>
+                </button>
+                <button disabled={buying} onClick={() => handleBuyCredits('large')}
+                  className="flex items-center justify-between p-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50/50 hover:border-indigo-500 transition disabled:opacity-50">
+                  <span className="font-bold text-slate-800">100 קרדיטים <span className="text-xs font-semibold text-emerald-600">(הכי משתלם)</span></span>
+                  <span className="font-extrabold text-indigo-600">₪399</span>
+                </button>
+              </div>
+              {buying && <p className="text-sm text-center text-slate-500">מעבד תשלום...</p>}
+              {buyMsg && (
+                <p className={`text-sm text-center font-semibold rounded-xl px-3 py-2 ${buyMsg.ok ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+                  {buyMsg.ok ? '✓ ' : ''}{buyMsg.text}
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400 text-center">תשלום מדומה לצורכי בדיקה</p>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <main className="flex-1 px-5 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
 
           {/* Welcome */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <h2 className="text-xl font-bold text-slate-800">
+            <h2 className="text-2xl font-black text-slate-800">
               שלום 👋{' '}
-              <span className="text-indigo-600 font-mono text-base">{user.email}</span>
+              <span className="text-[#2E63F6] font-mono text-base">{user.email}</span>
             </h2>
-            <p className="text-sm text-slate-500 mt-0.5">ברוך הבא לדשבורד שלך</p>
+            <p className="text-sm text-slate-500 mt-1">
+              שכח מכל מה שידעת על בניית אתרים. בוא נשחק.{' '}
+              <span className="select-none">🎮</span>
+            </p>
           </motion.div>
 
           {/* Stats */}
@@ -343,18 +452,22 @@ export default function Dashboard() {
               label="סה״כ דפים"
               value={dataLoading ? '—' : String(pages.length)}
               icon={<Globe size={20} />}
+              color="text-[#2E63F6]"
+              bg="bg-[#EEF1FB]/60"
             />
             <StatCard
               label="דפים פעילים"
               value={dataLoading ? '—' : String(publishedPages.length)}
               icon={<CheckCircle size={20} />}
               color="text-emerald-600"
+              bg="bg-emerald-50/60"
             />
             <StatCard
               label="לידים שהתקבלו"
               value={dataLoading ? '—' : String(leads.length)}
               icon={<Users size={20} />}
-              color="text-indigo-600"
+              color="text-orange-500"
+              bg="bg-orange-50/60"
             />
           </motion.div>
 
@@ -363,7 +476,7 @@ export default function Dashboard() {
 
           {/* Tab bar + tab content */}
           <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
               <TabBar
                 active={activeTab}
                 onChange={setActiveTab}
@@ -371,12 +484,19 @@ export default function Dashboard() {
                 leadCount={leads.length}
               />
               {activeTab === 'pages' && (
-                <Link
-                  to="/"
-                  className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 active:scale-95 transition shadow-sm"
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={springTap}
+                  className="flex-shrink-0"
                 >
-                  <Plus size={15} />דף חדש
-                </Link>
+                  <Link
+                    to="/create"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#2E63F6] px-5 py-2.5 text-sm font-black text-white shadow-md hover:bg-[#1E4FD6] transition"
+                  >
+                    <Plus size={15} /> דף חדש ✨
+                  </Link>
+                </motion.div>
               )}
             </div>
 
@@ -389,11 +509,11 @@ export default function Dashboard() {
                 transition={{ duration: 0.18 }}
               >
                 {activeTab === 'pages' ? (
-                  dataLoading ? <PageGridSkeleton /> : <PageGrid pages={pages} />
+                  dataLoading ? <PageGridSkeleton /> : <PageGrid pages={pages} onDelete={handleDeletePage} />
                 ) : (
                   dataLoading ? (
                     <div className="flex items-center justify-center py-16">
-                      <Loader2 size={24} className="animate-spin text-indigo-400" />
+                      <Loader2 size={24} className="animate-spin text-[#8CA0D6]" />
                     </div>
                   ) : (
                     <LeadsTable leads={leads} />

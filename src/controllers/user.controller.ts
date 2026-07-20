@@ -1,8 +1,39 @@
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { processMockPayment } from '../services/payment.service';
+import { ensureUserProfile } from '../services/profile.service';
 
-const SELECT_FIELDS = 'email, affiliate_code, ai_image_credits, earned_coupons, signup_discount, referred_by_code';
+const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
+const REFERRAL_BONUS = 5; // credits granted to BOTH the referrer and the new user
+
+// Credit packs. Prices in ₪.
+export const CREDIT_PACKS: Record<string, { credits: number; price: number }> = {
+  small: { credits: 10, price: 49 },
+  large: { credits: 100, price: 399 },
+};
+
+/**
+ * Adds a pack's credits to a user's balance. Shared by the (legacy mock)
+ * purchase endpoint and the real SUMIT payment-return handler.
+ * Returns the new balance, or null on failure / unknown pack.
+ */
+export async function grantCreditsForPack(email: string, packKey: string): Promise<number | null> {
+  const pack = CREDIT_PACKS[packKey];
+  if (!pack) return null;
+  const normalizedEmail = email.trim().toLowerCase();
+  const profile = await ensureUserProfile(normalizedEmail);
+  const newBalance = (profile.credits ?? 0) + pack.credits;
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({ credits: newBalance })
+    .eq('email', normalizedEmail);
+  if (error) {
+    console.error('[CREDITS] grant failed:', error.message);
+    return null;
+  }
+  return newBalance;
+}
 
 function generateAffiliateCode(): string {
   return randomBytes(3).toString('hex').toUpperCase(); // 6 chars e.g. "A3F9C1"
@@ -27,6 +58,13 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     .single();
 
   if (existing) {
+    // Backfill a missing affiliate_code (legacy profiles) so referral links use a
+    // real code instead of falling back to the user's email.
+    if (!(existing as { affiliate_code?: string }).affiliate_code) {
+      const code = generateAffiliateCode();
+      await supabase.from('user_profiles').update({ affiliate_code: code }).eq('email', normalizedEmail);
+      (existing as { affiliate_code?: string }).affiliate_code = code;
+    }
     res.json(existing);
     return;
   }
@@ -36,16 +74,19 @@ export async function authUser(req: Request, res: Response): Promise<void> {
   if (normalizedRef) {
     const { data: referrer } = await supabase
       .from('user_profiles')
-      .select('affiliate_code, earned_coupons')
+      .select('affiliate_code, earned_coupons, credits')
       .eq('affiliate_code', normalizedRef)
       .single();
 
     if (referrer) {
       validRef = normalizedRef;
-      // Increment referrer's earned_coupons
+      // Reward the referrer: +1 coupon (for tracking) AND +5 real credits.
       await supabase
         .from('user_profiles')
-        .update({ earned_coupons: (referrer.earned_coupons ?? 0) + 1 })
+        .update({
+          earned_coupons: (referrer.earned_coupons ?? 0) + 1,
+          credits: (referrer.credits ?? 0) + REFERRAL_BONUS,
+        })
         .eq('affiliate_code', normalizedRef);
     }
   }
@@ -55,7 +96,6 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     .insert({
       email:           normalizedEmail,
       affiliate_code:  generateAffiliateCode(),
-      ai_image_credits: 0,
       earned_coupons:  0,
       signup_discount: validRef !== null,
       referred_by_code: validRef,
@@ -68,5 +108,70 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Reward the referred new user: +5 credits on top of the signup default.
+  if (validRef && data) {
+    const profile = data as { credits?: number };
+    const newCredits = (profile.credits ?? 0) + REFERRAL_BONUS;
+    await supabase
+      .from('user_profiles')
+      .update({ credits: newCredits })
+      .eq('email', normalizedEmail);
+    profile.credits = newCredits;
+  }
+
   res.status(201).json(data);
+}
+
+// ─── Current user's credit balance ────────────────────────────────────────────
+// Routed through the backend (service-role) so the browser's WalletBadge doesn't
+// read user_profiles directly — lets us lock RLS to deny-all for the anon key.
+export async function getCredits(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) {
+    res.status(401).json({ error: 'נדרשת התחברות.' });
+    return;
+  }
+  const profile = await ensureUserProfile(email);
+  res.json({ credits: profile.credits ?? 0 });
+}
+
+// ─── Credit pack purchase (mock checkout) ─────────────────────────────────────
+export async function purchaseCredits(req: Request, res: Response): Promise<void> {
+  const { email, pack } = req.body as { email?: string; pack?: string };
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'Valid email required' });
+    return;
+  }
+  const chosen = pack ? CREDIT_PACKS[pack] : undefined;
+  if (!chosen) {
+    res.status(400).json({ error: `pack must be one of: ${Object.keys(CREDIT_PACKS).join(', ')}` });
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  let result;
+  try {
+    result = await processMockPayment(`credits_${normalizedEmail}`, chosen.price);
+  } catch {
+    res.status(402).json({ error: 'Payment failed' });
+    return;
+  }
+  if (!result.success) {
+    res.status(402).json({ error: 'Payment declined' });
+    return;
+  }
+
+  const profile = await ensureUserProfile(normalizedEmail);
+  const newBalance = (profile.credits ?? 0) + chosen.credits;
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({ credits: newBalance })
+    .eq('email', normalizedEmail);
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json({ credits: newBalance, added: chosen.credits, transactionId: result.transactionId });
 }

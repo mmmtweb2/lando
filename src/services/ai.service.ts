@@ -59,6 +59,7 @@ export interface AiContent {
     address?: string;
     cta_text?: string;         // v1 compat
     whatsapp_message?: string;
+    cta_type?: string;         // user-chosen CTA target: whatsapp|email|phone|link
   };
   design_system?: DesignSystem;
   design_hints?: DesignHints;  // v1 compat
@@ -77,6 +78,7 @@ export interface AiContent {
   design_tokens?: {
     image_treatment?: string; // 'rounded' | 'sharp_edges' | 'organic_blob' | 'full_bleed'
     background_effect?: string; // 'glassmorphism' | 'clean' | 'gradient' | 'textured'
+    image_style?: string; // 'photo' | 'icon' — realistic photos vs 3D glassmorphism icons
   };
   hidden_sections?: string[];
 }
@@ -129,6 +131,7 @@ interface CoreOutput {
   services: Array<{ id: string; title: string; description: string; serviceImagePrompt: string; serviceIconKeyword: string }>;
   whatsappMessage: string;
   imageKeywords: string[];
+  imageStyle: 'photo' | 'icon';
 }
 
 interface TrustOutput {
@@ -141,6 +144,23 @@ interface TrustOutput {
 }
 
 type Step1Output = CoreOutput & TrustOutput;
+
+// ─── Robust JSON parsing ──────────────────────────────────────────────────────
+// Claude is told to return raw JSON, but occasionally wraps it in ```json fences
+// or adds a sentence around it. Strip fences and extract the outermost {...} so a
+// stray wrapper doesn't trigger a silent fallback to generic content.
+function parseJsonLoose<T>(raw: string): T {
+  let s = raw.trim();
+  if (s.startsWith('```')) {
+    s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+  const first = s.indexOf('{');
+  const last = s.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    s = s.slice(first, last + 1);
+  }
+  return JSON.parse(s) as T;
+}
 
 // ─── Mock ─────────────────────────────────────────────────────────────────────
 
@@ -294,6 +314,10 @@ Banned words — NEVER use any of these in any Hebrew text field:
 "חדשני", "מקצועיות ללא פשרות", "יחס אישי", "מוביל בתחומו", "שירות אדיב", "פתרונות מתקדמים", "ניסיון רב שנים"
 If a banned word appears in your output, replace it with something concrete and specific.
 
+NO FABRICATION (CRITICAL): NEVER invent factual or quantitative claims that were not provided in the input — no specific customer counts, years of experience, ratings, awards, certifications, guarantees, or business-model claims (e.g. "free first consultation", "money-back"). If a fact was not given, use only qualitative, non-numeric language.
+
+INPUT COHERENCE: If the business description is incomprehensible, random characters, or has no discernible business meaning, set "detectedGoal" to exactly "UNCLEAR_INPUT" (still return valid JSON for the remaining fields).
+
 HERO COPY — PAS FRAMEWORK (Problem → Agitation → Solution):
 - heroTitle: surface the PROBLEM or DESIRE the customer has (max 7 words) — make it about them, not you
 - heroSubtitle: AGITATE — name the cost of the problem or the emotional gain in 1 sentence
@@ -367,6 +391,7 @@ Return EXACTLY this JSON (ALL fields required — do not omit any):
     "imageTreatment": "rounded | sharp_edges | organic_blob | full_bleed",
     "backgroundEffect": "glassmorphism | clean | gradient | textured"
   },
+  "imageStyle": "photo | icon — choose 'photo' for visual/physical niches (food, bakery, restaurant, beauty, fashion, real-estate, hospitality, events, crafts, fitness, photography) where realistic photography sells; choose 'icon' for digital/abstract niches (software, SaaS, app, agency, consulting, finance, courses, tech services)",
   "typographyPairing": "luxury | tech | modern_clean",
   "colorPalette": {
     "primary": "#hex — same as primaryColor",
@@ -451,6 +476,8 @@ ANTI-CLICHÉ RULE (CRITICAL):
 Banned words — NEVER use any of these in any Hebrew text:
 "חדשני", "מקצועיות ללא פשרות", "יחס אישי", "מוביל בתחומו", "שירות אדיב", "פתרונות מתקדמים", "ניסיון רב שנים"
 
+NO FABRICATION (CRITICAL): NEVER invent factual or quantitative claims not provided in the input — no customer counts, years of experience, ratings, awards, certifications, or guarantees. If a fact was not given, use qualitative, non-numeric language only.
+
 SECTION RULES:
 - benefits: EXACTLY 3 items — concrete value, never invented facts, grounded in the business niche
 - processSteps: EXACTLY 3 items — Contact → Action → Result arc
@@ -459,8 +486,9 @@ SECTION RULES:
 TRUST BADGES RULE:
 - Generate EXACTLY 3 trust badges relevant to the specific niche
 - Each label: 2-3 Hebrew words maximum — short, punchy, credibility signals
-- Examples: "100% אחריות", "תגובה תוך 24 שעות", "תשלום אחרי תוצאה", "10 שנות ניסיון", "ניסיון מוכח"
+- Examples (style only): "אחריות מלאה", "תגובה מהירה", "תשלום אחרי תוצאה", "ליווי אישי"
 - Match the badge claims to the business niche — do NOT use generic empty promises
+- Do NOT invent numeric claims (years, counts, ratings) unless they were provided in the input
 
 TESTIMONIALS RULE:
 - include_testimonials = ${input.include_testimonials ? 'TRUE' : 'FALSE'}
@@ -573,10 +601,13 @@ function mapToAiContent(s: Step1Output, input: GenerateInput): AiContent {
     seo_description: s.seoDescription || undefined,
     trust_badges: s.trustBadges?.length ? s.trustBadges : undefined,
     cta_banner_subline: s.ctaBannerSubline || undefined,
-    layout_composition: s.layoutComposition,
+    layout_composition: (s.layoutComposition ?? []).filter(
+      (b) => b !== 'testimonials_grid' || input.include_testimonials,
+    ),
     design_tokens: {
       image_treatment: s.designTokens?.imageTreatment || 'rounded',
       background_effect: s.designTokens?.backgroundEffect || 'glassmorphism',
+      image_style: s.imageStyle || 'icon',
     },
   };
 }
@@ -674,7 +705,7 @@ ${schema}`;
     });
 
     const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = parseJsonLoose(raw);
     console.log(`[AI:micro] Section "${sectionName}" rewritten successfully`);
     return parsed;
   } catch (err) {
@@ -684,6 +715,44 @@ ${schema}`;
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
+
+/**
+ * Cheap, strict pre-check: does the input describe a REAL business/service/cause?
+ * Runs before the expensive generation so gibberish (random letters, keyboard
+ * mashing) is rejected without spending credits or image cost. Relying on the
+ * main generation prompt alone was unreliable — the model is biased to "be
+ * helpful" and builds a page anyway. This dedicated yes/no call is not.
+ *
+ * Fails OPEN (returns coherent=true) if the API key is missing or the call errors,
+ * so real users are never blocked by an infrastructure hiccup.
+ */
+export async function checkBusinessCoherence(businessName?: string, description?: string): Promise<boolean> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return true;
+
+  const client = new Anthropic({ apiKey });
+  const payload = `Business name: ${businessName || '(empty)'}\nDescription: ${description || '(empty)'}`;
+
+  try {
+    const r = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 5,
+      system:
+        'You validate input for a landing-page builder. Decide whether the text below describes a REAL, ' +
+        'understandable business, product, service, cause, or event that a landing page could be built for. ' +
+        'If it is random characters, keyboard-mashing, meaningless repeated or unrelated letters, or has no ' +
+        'discernible real-world meaning, it is INVALID. A short but real name/idea is VALID. ' +
+        'Reply with exactly one word: VALID or INVALID. No other text.',
+      messages: [{ role: 'user', content: payload }],
+    });
+    const text = r.content[0].type === 'text' ? r.content[0].text.trim().toUpperCase() : '';
+    console.log('[AI] coherence check =>', text || '(empty)');
+    return !text.includes('INVALID');
+  } catch (e) {
+    console.error('[AI] coherence check errored — allowing through:', e);
+    return true;
+  }
+}
 
 export async function generateAiContent(input: GenerateInput): Promise<AiContent> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -706,7 +775,16 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
       return (allowed as readonly string[]).includes(mt ?? '') ? mt as 'image/jpeg' : 'image/jpeg';
     };
 
-    const useVision = !!(input.auto_extract_colors && input.logo_base64);
+    // Only send the logo to vision when it's a format Claude accepts. SVG / unknown
+    // types are skipped (generation continues without logo color extraction) instead
+    // of being mislabeled as JPEG, which used to crash the whole generation.
+    const visionAllowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const useVision = !!(
+      input.auto_extract_colors &&
+      input.logo_base64 &&
+      input.logo_media_type &&
+      visionAllowed.includes(input.logo_media_type)
+    );
     const coreUserContent: ContentBlock[] | string = useVision
       ? [
           {
@@ -746,7 +824,7 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
     const coreRaw = coreResult.value.content[0].type === 'text'
       ? coreResult.value.content[0].text.trim()
       : '';
-    const core = JSON.parse(coreRaw) as CoreOutput;
+    const core = parseJsonLoose<CoreOutput>(coreRaw);
     console.log('[AI] Call A (core) done — layout_composition:', core.layoutComposition, '| design_tokens:', core.designTokens, '| primary:', core.primaryColor);
 
     // ── Parse Call B — graceful: if trust fails, use empty sections ───────────
@@ -759,7 +837,7 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
         const trustRaw = trustResult.value.content[0].type === 'text'
           ? trustResult.value.content[0].text.trim()
           : '';
-        trust = JSON.parse(trustRaw) as TrustOutput;
+        trust = parseJsonLoose<TrustOutput>(trustRaw);
         console.log('[AI] Call B (trust) done — benefits:', trust.benefits?.length, '| faq:', trust.faq?.length, '| steps:', trust.processSteps?.length);
       } catch (parseErr) {
         console.error('[AI] Call B response parse failed — falling back to empty trust sections:', parseErr);

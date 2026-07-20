@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { authFetch } from '../lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,12 +17,10 @@ interface PageRow {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ADMIN_PASSWORD = 'snappage2024';
-
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  upload:  { label: 'Upload',  color: '#6366f1' },
-  stock:   { label: 'Stock',   color: '#0ea5e9' },
-  ai:      { label: 'AI',      color: '#8b5cf6' },
+  upload:  { label: 'Upload',  color: '#2E63F6' },
+  stock:   { label: 'Stock',   color: '#22B8D6' },
+  ai:      { label: 'AI',      color: '#1E4FD6' },
   none:    { label: 'None',    color: '#94a3b8' },
 };
 
@@ -60,63 +60,26 @@ function SourceBadge({ source }: { source: string }) {
   );
 }
 
-// ─── Password gate ────────────────────────────────────────────────────────────
+// ─── Access gate ──────────────────────────────────────────────────────────────
+// Access is enforced server-side (requireAuth + requireAdmin on /api/admin/*).
+// This shell just renders the appropriate message: needs login, or not an admin.
 
-function PasswordGate({ onSuccess }: { onSuccess: () => void }) {
-  const [value, setValue] = useState('');
-  const [error, setError] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (value === ADMIN_PASSWORD) {
-      sessionStorage.setItem('admin_authed', 'true');
-      onSuccess();
-    } else {
-      setError(true);
-      setValue('');
-      setTimeout(() => setError(false), 2000);
-    }
-  }
-
+function GateShell({ title, subtitle, children }: { title: string; subtitle: string; children?: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-2"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          </div>
-          <h1 className="text-xl font-bold text-slate-800">Admin Dashboard</h1>
-          <p className="text-sm text-slate-400">Enter your password to continue</p>
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6" dir="rtl">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-slate-100 p-8 flex flex-col gap-6 text-center">
+        <div className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center"
+          style={{ background: '#2E63F6' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
         </div>
-
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <input
-            ref={inputRef}
-            type="password"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="Password"
-            className={`w-full rounded-xl border px-4 py-3 text-sm text-slate-800 outline-none transition ${
-              error ? 'border-red-400 bg-red-50' : 'border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100'
-            }`}
-          />
-          {error && <p className="text-xs text-red-500 -mt-1">Incorrect password. Try again.</p>}
-          <button type="submit"
-            className="w-full py-3 rounded-xl text-sm font-semibold text-white transition hover:opacity-90 active:scale-95"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-            Sign In
-          </button>
-        </form>
-
-        <Link to="/" className="text-center text-xs text-slate-400 hover:text-indigo-500 transition">
-          ← Back to SnapPage
-        </Link>
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">{title}</h1>
+          <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
+        </div>
+        {children}
+        <Link to="/" className="text-xs text-slate-400 hover:text-[#2E63F6] transition">← חזרה לאפליקציה</Link>
       </div>
     </div>
   );
@@ -170,31 +133,33 @@ function DeleteModal({ name, onConfirm, onCancel, busy }: {
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === 'true');
+  const { user, loading: authLoading, logout } = useAuth();
   const [pages, setPages] = useState<PageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [denied, setDenied] = useState(false);
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<PageRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
-    if (!authed) return;
-    fetch('/api/admin/pages')
+    if (!user) return;
+    authFetch('/api/admin/pages')
       .then((r) => {
+        if (r.status === 401 || r.status === 403) { setDenied(true); throw new Error('denied'); }
         if (!r.ok) throw new Error('Failed to load pages');
         return r.json() as Promise<PageRow[]>;
       })
       .then(setPages)
-      .catch((e: Error) => setFetchError(e.message))
+      .catch((e: Error) => { if (e.message !== 'denied') setFetchError(e.message); })
       .finally(() => setLoading(false));
-  }, [authed]);
+  }, [user]);
 
   async function handleDelete() {
     if (!confirmDelete) return;
     setDeleteBusy(true);
     try {
-      const res = await fetch(`/api/landing/${confirmDelete.id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/landing/${confirmDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       setPages((prev) => prev.filter((p) => p.id !== confirmDelete.id));
       setConfirmDelete(null);
@@ -205,8 +170,22 @@ export default function AdminDashboard() {
     }
   }
 
-  if (!authed) {
-    return <PasswordGate onSuccess={() => setAuthed(true)} />;
+  if (authLoading) {
+    return <GateShell title="טוען..." subtitle="בודק הרשאות" />;
+  }
+  if (!user) {
+    return (
+      <GateShell title="נדרשת התחברות" subtitle="התחברו כדי לגשת לפאנל הניהול">
+        <Link to="/login"
+          className="w-full py-3 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ background: '#2E63F6' }}>
+          התחברות
+        </Link>
+      </GateShell>
+    );
+  }
+  if (denied) {
+    return <GateShell title="אין הרשאת גישה" subtitle="החשבון שלך אינו מוגדר כמנהל מערכת" />;
   }
 
   const filtered = pages.filter((p) =>
@@ -236,20 +215,20 @@ export default function AdminDashboard() {
           <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                style={{ background: '#2E63F6' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
                   <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
                 </svg>
               </div>
-              <span className="font-bold text-slate-800 text-sm">SnapPage Admin</span>
+              <span className="font-bold text-slate-800 text-sm">Lando Admin</span>
             </div>
             <div className="flex items-center gap-4">
-              <Link to="/" className="text-xs text-slate-500 hover:text-indigo-600 transition">
+              <Link to="/" className="text-xs text-slate-500 hover:text-[#2E63F6] transition">
                 ← Back to app
               </Link>
               <button
-                onClick={() => { sessionStorage.removeItem('admin_authed'); setAuthed(false); }}
+                onClick={() => logout()}
                 className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 transition">
                 Sign out
               </button>
@@ -288,7 +267,7 @@ export default function AdminDashboard() {
                   placeholder="Search by business name..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition"
                 />
               </div>
             </div>
@@ -337,7 +316,7 @@ export default function AdminDashboard() {
                             <img src={p.logo_url} alt=""
                               className="w-8 h-8 rounded-lg object-contain border border-slate-100 bg-white" />
                           ) : (
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-xs font-bold text-indigo-400">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#E4EAFB] to-[#E4EAFB] flex items-center justify-center text-xs font-bold text-[#8CA0D6]">
                               {p.business_name.charAt(0)}
                             </div>
                           )}
@@ -376,7 +355,7 @@ export default function AdminDashboard() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition hover:opacity-90 active:scale-95"
-                              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+                              style={{ background: '#2E63F6' }}
                             >
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
