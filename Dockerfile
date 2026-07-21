@@ -4,13 +4,14 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
-# Backend deps
+# Backend deps — include dev deps (typescript/tsc) even if Coolify injects
+# NODE_ENV=production into the build, which would otherwise skip them.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
-# Client deps
+# Client deps — same: need vite + tsc (devDependencies) to build.
 COPY client/package.json client/package-lock.json ./client/
-RUN cd client && npm ci
+RUN cd client && npm ci --include=dev
 
 # Source
 COPY . .
