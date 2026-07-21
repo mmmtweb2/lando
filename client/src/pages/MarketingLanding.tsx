@@ -9,7 +9,7 @@ import { LandoBot, LandoMark, type LandoMood } from '../components/Lando';
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 // Single source of truth — change here to rebrand.
-const BRAND = 'Lando';
+const BRAND = 'Pagey';
 const PRIMARY = '#2E63F6';   // Lando blue
 const NAVY = '#0E2148';      // text / dark elements
 const GLOW = '#6FE7FF';      // cyan energy accent
@@ -60,7 +60,7 @@ function AnimatedDemo() {
             <span className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
           </div>
           <span className="flex-1 text-center text-slate-500 text-[11px] font-medium truncate">
-            {step === 2 ? `${BRAND.toLowerCase()}.ai/p/מאפייה` : `${BRAND.toLowerCase()}.ai`}
+            {step === 2 ? `${BRAND.toLowerCase()}.co.il/p/מאפייה` : `${BRAND.toLowerCase()}.co.il`}
           </span>
         </div>
 

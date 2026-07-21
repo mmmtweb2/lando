@@ -120,7 +120,7 @@ export default function ClientPortal() {
             <LogOut size={15} />
             יציאה
           </button>
-          <span className="text-base font-bold" style={{ color: 'var(--navy)' }}>Lando</span>
+          <span className="text-base font-bold" style={{ color: 'var(--navy)' }}>Pagey</span>
         </div>
       </header>
 

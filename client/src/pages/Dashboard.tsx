@@ -350,7 +350,7 @@ export default function Dashboard() {
         <div className="px-5 py-5 border-b border-[#DCE4F7]">
           <Link to="/" className="flex items-center gap-2">
             <LandoMark size={30} />
-            <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Lando</span>
+            <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Pagey</span>
           </Link>
         </div>
 
@@ -376,7 +376,7 @@ export default function Dashboard() {
 
         {/* Header */}
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-[#DCE4F7]/80 shadow-sm shadow-blue-100/40 px-5 h-14 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-sm font-black text-[#1E4FD6]">Lando ✦</h1>
+          <h1 className="text-sm font-black text-[#1E4FD6]">Pagey ✦</h1>
           <div className="flex items-center gap-3">
             <WalletBadge email={user.email} refreshKey={walletKey} />
             <button

@@ -1094,7 +1094,7 @@ export default function Wizard() {
             <LandoBot mood={result ? 'success' : error ? 'error' : 'request'} size={96} />
           </div>
           <h1 className="text-2xl font-extrabold mt-1" style={{ color: 'var(--navy)' }}>בואו נבנה את הדף שלכם</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>ספרו ללנדו על העסק — והוא בונה את השאר</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>ספרו ל-Pagey על העסק — והוא בונה את השאר</p>
         </div>
 
         {/* Two-column grid — RTL: first child = right (form), second child = left (preview) */}
@@ -1195,7 +1195,7 @@ export default function Wizard() {
                 <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
               </div>
               <span className="flex-1 text-center text-gray-500 text-[11px] font-medium truncate">
-                {uiMode === 'success' && result ? `lando.ai/p/${result.slug}` : 'תצוגה מקדימה בזמן אמת'}
+                {uiMode === 'success' && result ? `pagey.co.il/p/${result.slug}` : 'תצוגה מקדימה בזמן אמת'}
               </span>
             </div>
 

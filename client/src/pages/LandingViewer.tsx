@@ -2747,7 +2747,7 @@ export default function LandingViewer() {
       <div className={`bg-white py-4 text-center ${toolbarVisible ? 'pb-20' : ''}`}>
         <a href="/" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
           <LandoMark size={16} />
-          נוצר באמצעות Lando
+          נוצר באמצעות Pagey
         </a>
       </div>
 

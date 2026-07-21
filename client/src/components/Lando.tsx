@@ -37,7 +37,7 @@ export function LandoBot({ mood = 'default', size = 160, className = '' }: Lando
       className={`${mood === 'error' ? 'lando-shake' : ''} ${className}`.trim()}
       style={{ overflow: 'visible', display: 'block' }}
       role="img"
-      aria-label="לנדו"
+      aria-label="Pagey"
     >
       <path d="M54 112 L44 128 M35 128 H53" stroke={C.navy} strokeWidth="5" strokeLinecap="round" fill="none" />
       <path d="M86 112 L96 128 M87 128 H105" stroke={C.navy} strokeWidth="5" strokeLinecap="round" fill="none" />
@@ -138,7 +138,7 @@ interface LandoMarkProps {
 // Head-only variant — logo mark / favicon.
 export function LandoMark({ size = 48, className = '' }: LandoMarkProps) {
   return (
-    <svg viewBox="24 0 92 86" width={size} height={size} className={className} style={{ display: 'block' }} role="img" aria-label="Lando">
+    <svg viewBox="24 0 92 86" width={size} height={size} className={className} style={{ display: 'block' }} role="img" aria-label="Pagey">
       <line x1="70" y1="28" x2="70" y2="12" stroke={C.navy} strokeWidth="5" strokeLinecap="round" />
       <circle cx="70" cy="9" r="5" fill={C.glow} />
       <rect x="24" y="44" width="8" height="18" rx="4" fill={C.blue} />

@@ -51,12 +51,12 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
       return;
     }
     amount = PAGE_PRICE;
-    itemName = `דף נחיתה - ${(page as { business_name?: string }).business_name ?? 'Lando'}`;
+    itemName = `דף נחיתה - ${(page as { business_name?: string }).business_name ?? 'Pagey'}`;
   } else if (purpose === 'credits') {
     const pack = reference ? CREDIT_PACKS[reference] : undefined;
     if (!pack) { res.status(400).json({ error: `pack must be one of: ${Object.keys(CREDIT_PACKS).join(', ')}` }); return; }
     amount = pack.price;
-    itemName = `${pack.credits} קרדיטים - Lando`;
+    itemName = `${pack.credits} קרדיטים - Pagey`;
   } else {
     res.status(400).json({ error: "purpose must be 'publish' or 'credits'" });
     return;

@@ -221,7 +221,7 @@ export default function AdminDashboard() {
                   <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
                 </svg>
               </div>
-              <span className="font-bold text-slate-800 text-sm">Lando Admin</span>
+              <span className="font-bold text-slate-800 text-sm">Pagey Admin</span>
             </div>
             <div className="flex items-center gap-4">
               <Link to="/" className="text-xs text-slate-500 hover:text-[#2E63F6] transition">
