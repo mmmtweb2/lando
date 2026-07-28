@@ -2629,7 +2629,7 @@ export default function LandingViewer() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Assistant:wght@300;400;600;700&family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
         <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}`}</style>
-        <title>{ai_content.seo_title ?? business_name} | Tirnoer Digital</title>
+        <title>{ai_content.seo_title ?? business_name} | Pagey</title>
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={ai_content.seo_title ?? business_name} />
         <meta property="og:description" content={ai_content.seo_description ?? ogDescription} />

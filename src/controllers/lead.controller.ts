@@ -41,7 +41,7 @@ function buildEmailHtml(p: {
 
       <tr>
         <td style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);padding:28px 32px;">
-          <p style="margin:0;color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;text-transform:uppercase;">Tirnoer Digital</p>
+          <p style="margin:0;color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;text-transform:uppercase;">Pagey</p>
           <h1 style="margin:8px 0 4px;color:#fff;font-size:22px;font-weight:800;">🎉 ליד חדש!</h1>
           <p style="margin:0;color:rgba(255,255,255,0.85);font-size:14px;">פנייה חדשה התקבלה מדף הנחיתה של <strong>${p.businessName}</strong></p>
         </td>
@@ -71,7 +71,7 @@ function buildEmailHtml(p: {
       <tr>
         <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;">
           <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">
-            מופעל על ידי Tirnoer Digital · דף הנחיתה של ${p.businessName}
+            מופעל על ידי Pagey · דף הנחיתה של ${p.businessName}
           </p>
         </td>
       </tr>
@@ -137,7 +137,7 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
       try {
         const resend = new Resend(apiKey);
         await resend.emails.send({
-          from: `Tirnoer Digital <${process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'}>`,
+          from: `Pagey <${process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'}>`,
           to: [page.owner_email],
           subject: `ליד חדש התקבל מדף הנחיתה של ${page.business_name}!`,
           html: buildEmailHtml({

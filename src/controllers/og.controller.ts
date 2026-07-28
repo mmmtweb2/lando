@@ -22,7 +22,7 @@ async function loadHtmlShell(): Promise<string> {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tirnoer Digital</title>
+    <title>Pagey</title>
   </head>
   <body>
     <div id="root"></div>
@@ -70,7 +70,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     (page.ai_content as { about?: { content?: string } })?.about?.content?.slice(0, 150) ||
     'דף נחיתה מקצועי';
 
-  const title = `${page.business_name} | Tirnoer Digital`;
+  const title = `${page.business_name} | Pagey`;
 
   const ogTags = `
     <title>${escapeHtml(title)}</title>

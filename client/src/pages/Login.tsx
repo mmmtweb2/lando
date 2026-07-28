@@ -32,7 +32,11 @@ export default function Login() {
     setError(null);
     try {
       if (mode === 'signup') {
-        const { data, error: signErr } = await supabase.auth.signUp({ email: trimmed, password });
+        const { data, error: signErr } = await supabase.auth.signUp({
+          email: trimmed,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+        });
         if (signErr) throw signErr;
         // Supabase returns an obfuscated user with EMPTY identities when the email
         // already exists (anti-enumeration). Tell the user the truth instead of
@@ -86,7 +90,7 @@ export default function Login() {
         className="w-full max-w-sm"
       >
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">Tirnoer Digital ✦</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Pagey ✦</h1>
           <p className="text-sm text-slate-500 mt-1">בונה דפי נחיתה חכם</p>
         </div>
 
@@ -206,7 +210,7 @@ export default function Login() {
         </div>
 
         <p className="mt-4 text-center text-xs text-slate-400">
-          ✦ Tirnoer Digital
+          ✦ Pagey
         </p>
       </motion.div>
     </div>
