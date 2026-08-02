@@ -13,6 +13,7 @@ import { LandoMark, LandoBot } from '../components/Lando';
 import LeadsTable, { type LeadRow } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
+import SetPasswordCard from '../components/SetPasswordCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -473,6 +474,9 @@ export default function Dashboard() {
 
           {/* Referral */}
           {portalUser && <ReferralCard user={portalUser} />}
+
+          {/* Set a password (for users who signed up via magic link) */}
+          <SetPasswordCard />
 
           {/* Tab bar + tab content */}
           <div className="flex flex-col gap-5">
