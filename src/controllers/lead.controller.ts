@@ -113,7 +113,41 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
   const safeEmail   = email?.trim() || null;
   const safeMessage = message?.trim() || null;
 
-  // 1. Persist lead
+  // 1. Load the page FIRST and enforce that it is actually published.
+  //
+  // This endpoint is public and unauthenticated. Until now the only thing
+  // stopping a visitor from submitting the form on a DRAFT page was the
+  // client-side `disabled` attribute in LandingViewer.tsx — anyone could
+  // re-enable the button in devtools, or POST here directly, and the lead was
+  // stored and emailed exactly as if the page were live. A draft page is an
+  // unpaid page, so accepting leads on it also gave away the paid product.
+  // The rule is now enforced server-side: only a published page accepts leads.
+  const { data: page, error: pageErr } = await supabase
+    .from('landing_pages')
+    .select('owner_email, business_name, page_goal, status, enable_form')
+    .eq('id', id)
+    .single();
+
+  if (pageErr || !page) {
+    res.status(404).json({ error: 'הדף לא נמצא.' });
+    return;
+  }
+
+  if ((page as { status?: string }).status !== 'published') {
+    res.status(403).json({ error: 'הדף עדיין בטיוטה ואינו מקבל פניות. לאחר פרסום הדף ניתן יהיה לשלוח דרכו הודעות.' });
+    return;
+  }
+
+  // Same principle for the owner's own switch: the client only renders the
+  // lead form when enable_form is on, so a submission arriving for a page with
+  // the form turned off did not come from the form. Honour the owner's setting
+  // server-side too.
+  if (!(page as { enable_form?: boolean }).enable_form) {
+    res.status(403).json({ error: 'טופס הפניות אינו פעיל בדף זה.' });
+    return;
+  }
+
+  // 2. Persist lead
   const { data: lead, error: insertErr } = await supabase
     .from('leads')
     .insert({
@@ -131,13 +165,6 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: 'שליחת הפנייה נכשלה. נסו שוב מאוחר יותר.' });
     return;
   }
-
-  // 2. Fetch page metadata for the email
-  const { data: page } = await supabase
-    .from('landing_pages')
-    .select('owner_email, business_name, page_goal')
-    .eq('id', id)
-    .single();
 
   // 3. Send email notification (fire-and-forget — never fail the response)
   if (page?.owner_email) {
