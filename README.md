@@ -89,6 +89,23 @@ Legend: 🔴 critical · 🟠 high · 🟡 medium · ⚪ missing feature (not a 
 - No duplicate/clone-a-landing-page action.
 - No analytics/page-views dashboard (only lead capture exists).
 
+## Strategic roadmap (TPM deep-dive + CEO brainstorm, 2026-08-31)
+
+A dedicated "technical PM" agent did a fresh deep-dive (not a bug audit — the Backlog above already covers that) into product/business leverage, then the CEO pushed back on sequencing before this went to Moshe. Full reasoning lives in that session's transcript; this is the durable summary so future work doesn't re-derive it.
+
+**Two live money/trust bugs, greenlit by CEO, no product decision needed — do these first whenever backend work resumes:**
+- 🔴 Free-tier page creation grants `+10` credits per page (`landing.controller.ts` ~line 494) with **zero** cost metering on creation itself (image/AI cost is only deducted on later regeneration) and `monthlyCreate: 0` for free plan means creation is uncapped. Net effect: an uncapped, scriptable credit-mint against real AI spend. Fix: zero out or cap the per-page grant — pure backend change, not user-visible, no policy question.
+- 🔴 `activatePlan()` (`plan.service.ts`) always sets `plan_expires_at = now + 1 year` on any activation, including a mid-cycle upgrade — silently forfeits whatever time was left on the prior period. Every upgrade path is affected, not an edge case. Fix: extend from existing `plan_expires_at` when still active, don't blind-reset.
+- 🔴 The draft-page banner (`LandingViewer.tsx` ~line 2694) claims "לא גלוי לציבור" but `GET /api/landing/:slug` is unauthenticated and serves full draft content (hero, contact info, WhatsApp CTA) to anyone with the link — only the lead-capture form is disabled. The banner text is simply false. One-line copy fix, fully independent of the product question below.
+
+**Needs Moshe's decision before code:**
+- How much a draft page should actually do for an anonymous visitor (today: everything except the lead form) — a scope/monetization call, separate from the banner-honesty fix above.
+- Whether free-tier page *creation* should additionally get a hard monthly cap (separate from the credit-mint fix, which is pure math and ships regardless).
+- Page renewal: `expires_at` is set on publish but never enforced anywhere (no cron, no emails, no renewal payment purpose) — the marketing page promises "חידוש שנתי 99₪" but nothing in the code implements it. Needs a decision on renewal price/grace-period policy before building.
+- Plan shape: the free→paid gap (249₪/page vs 1,490₪/year) only pays off past ~6 pages, meaning the paid tiers are effectively reseller (freelancer/agency) products, not solo-business products — worth Moshe deciding whether to add a lower-friction entry (monthly option, trial) and whether marketing should say so explicitly.
+
+**Other ranked ideas (not urgent, logged for later reference — see full list in session transcript if picked up again):** JSON-LD LocalBusiness schema + generated sitemap + canonical (near-free SEO, held pending the funnel work below since search isn't yet a proven channel); white-label Helmet title bug (agency perk silently overridden client-side); AI intake needs a richer wizard interview to produce specific (not generic-safe) copy — the real fix for "feels templated," not more layout variants; page-view/CTA-click tracking (blocks a real renewal conversation, since WhatsApp-CTA pages show 0 leads even when working); billing history in the dashboard; anonymous wizard funnel (defer until free-tier cost caps ship, to avoid inviting abuse). Explicitly deprioritized: A/B testing layout variants (traffic per page is too low to reach significance — build view tracking first, test in aggregate across all pages instead), full multi-language i18n (architecture is Hebrew/RTL/Israeli-payments throughout, not a locale flag).
+
 ## Agent log
 
 Append one entry per work session — what you touched, what you decided, what's still open. Keep it to a few lines.
