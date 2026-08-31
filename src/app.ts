@@ -5,6 +5,7 @@ import path from 'path';
 import { supabaseSession } from './utils/supabase/middleware';
 import router from './routes';
 import { servePageWithOgTags } from './controllers/og.controller';
+import { serveSitemap } from './controllers/sitemap.controller';
 
 const app = express();
 
@@ -28,6 +29,11 @@ app.use(supabaseSession);
 // OG tag injection for public landing pages — must be before static middleware
 // so crawlers (WhatsApp, Facebook) that hit /p/:slug get server-rendered meta tags
 app.get('/p/:slug', servePageWithOgTags);
+
+// Generated sitemap — real published pages, not the old static homepage-only
+// file. Must be registered before static middleware so it isn't shadowed by
+// client/dist/sitemap.xml (copied from client/public at build time).
+app.get('/sitemap.xml', serveSitemap);
 
 // Serve the built React client (produced by `vite build` → client/dist).
 const clientDist = path.join(process.cwd(), 'client', 'dist');
