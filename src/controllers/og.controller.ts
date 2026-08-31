@@ -12,6 +12,8 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+const SITE_URL = 'https://pagey.co.il';
+
 async function loadHtmlShell(): Promise<string> {
   const distPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
   try {
@@ -37,7 +39,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url, owner_email')
+    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug')
     .eq('slug', slug)
     .single();
 
@@ -81,8 +83,17 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   }
   const title = whiteLabel ? `${page.business_name}` : `${page.business_name} | Pagey`;
 
+  // Canonical URL + robots directive — published pages are indexable, drafts
+  // are not (drafts are still publicly fetchable via GET /:slug, so this
+  // matters: without it a draft could get indexed before the owner publishes).
+  const isPublished = page.status === 'published';
+  const pageUrl = `${SITE_URL}/p/${page.slug as string}`;
+  const robotsContent = isPublished ? 'index,follow' : 'noindex,nofollow';
+
   const ogTags = `
     <title>${escapeHtml(title)}</title>
+    <link rel="canonical" href="${escapeHtml(pageUrl)}" />
+    <meta name="robots" content="${robotsContent}" />
     <meta property="og:title" content="${escapeHtml(page.business_name as string)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:type" content="website" />
