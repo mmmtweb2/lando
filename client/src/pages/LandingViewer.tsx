@@ -1929,6 +1929,67 @@ export default function LandingViewer() {
     return comp;
   }
 
+  // ── Structural layout variance (orthogonal to the color "vibe" system) ────
+  // The composition engine above picks WHICH blocks appear (hero_center vs.
+  // hero_split, services_grid vs. services_bento) but every business ended up
+  // rendering visually the same shape, just recolored — this is the actual
+  // "generic template" complaint. These resolvers pick genuinely different
+  // COMPOSITIONS at render time, driven by real signals (does a real hero
+  // image exist, how many service/benefit items are there, which design_style
+  // vibe was chosen) rather than by color alone. A stable per-page hash (not
+  // Math.random) alternates the split-hero image side deterministically, so
+  // pages don't all mirror each other identically but re-renders stay stable.
+
+  function pageVariantSeed(): number {
+    const s = `${page?.id || ''}::${business_name || ''}`;
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h;
+  }
+
+  type HeroVariant = 'center' | 'split' | 'fullbleed';
+
+  function resolveHeroVariant(): HeroVariant {
+    // Never fake an image-heavy composition when there's no real hero image —
+    // 'center' already degrades gracefully to a gradient background for this case.
+    if (!heroImageUrl) return 'center';
+    if (vibe === 'luxury') return 'fullbleed';  // editorial, immersive — full-bleed photography
+    if (vibe === 'corporate') return 'center';  // minimal design_style — clean, no-clutter focused card
+    return 'split';                             // warm/playful/tech — image beside copy
+  }
+
+  function renderHeroBlock() {
+    const variant = resolveHeroVariant();
+    if (variant === 'fullbleed') return renderHeroFullBleedBlock();
+    if (variant === 'split') return renderHeroSplitBlock(pageVariantSeed() % 2 === 0);
+    return renderHeroCenterBlock();
+  }
+
+  type ServicesVariant = 'grid' | 'bento' | 'rows' | 'iconlist';
+
+  function resolveServicesVariant(): ServicesVariant {
+    const n = services.length;
+    if (!n) return 'grid';
+    // Minimal/corporate vibe with a longer list: a clean scannable list beats
+    // heavy imagery — and it needs no images at all, so it's fully safe when
+    // no service photos were generated/uploaded.
+    if (vibe === 'corporate' && n >= 4) return 'iconlist';
+    // A short list (2-3 items) reads well as alternating editorial rows —
+    // each item gets real room instead of being squeezed into a narrow card.
+    if (n <= 3) return 'rows';
+    // Richer vibes keep the existing asymmetric bento treatment for mid/long lists.
+    if (vibe === 'luxury' || vibe === 'warm') return 'bento';
+    return 'grid';
+  }
+
+  function renderServicesBlock(isAlt: boolean) {
+    const variant = resolveServicesVariant();
+    if (variant === 'bento') return renderServicesBentoBlock(isAlt);
+    if (variant === 'rows') return renderServicesRowsBlock(isAlt);
+    if (variant === 'iconlist') return renderServicesIconListBlock(isAlt);
+    return renderServicesGridBlock(isAlt);
+  }
+
   function renderHeroCenterBlock() {
     return (
       <motion.section
@@ -1977,16 +2038,22 @@ export default function LandingViewer() {
     );
   }
 
-  function renderHeroSplitBlock() {
+  function renderHeroSplitBlock(imageOnRight: boolean = true) {
+    // Mobile always stacks text-above-image regardless of side; only the
+    // desktop (lg) side flips, via a per-page deterministic hash — so a
+    // restaurant and a law firm chosen with the same vibe don't visually mirror
+    // each other's hero every time.
+    const imageOrderClass = imageOnRight ? '' : 'lg:order-last';
+    const textOrderClass = imageOnRight ? 'order-first lg:order-last' : 'order-first';
     return (
       <section className={`grid grid-cols-1 lg:grid-cols-2 min-h-[85vh] overflow-hidden ${layoutPt}`}>
-        <motion.div className="relative min-h-72 lg:min-h-0"
+        <motion.div className={`relative min-h-72 lg:min-h-0 ${imageOrderClass}`}
           variants={V.split.left} initial="hidden" animate="visible">
           <EditableImage src={heroImageUrl} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
             className="absolute inset-0 w-full h-full" isEditingMode={isEditingMode} canEdit={!!canEdit}
             onEditClick={() => openImageModal('hero')} />
         </motion.div>
-        <motion.div className="flex flex-col justify-center gap-5 px-8 sm:px-14 py-16 order-first lg:order-last"
+        <motion.div className={`flex flex-col justify-center gap-5 px-8 sm:px-14 py-16 ${textOrderClass}`}
           style={{ background: heroBg, color: heroOnGradient }}
           variants={V.split.right} initial="hidden" animate="visible">
           {logo_url && (
@@ -2009,6 +2076,46 @@ export default function LandingViewer() {
           {ghostCta(heroCtaOverride)}
         </motion.div>
       </section>
+    );
+  }
+
+  // Full-bleed editorial hero: image fills the whole viewport with the copy
+  // bottom-anchored over a dark gradient, instead of centered in a glass card.
+  // Distinct in silhouette from both renderHeroCenterBlock (centered card) and
+  // renderHeroSplitBlock (two even columns) — used for the 'luxury' vibe.
+  // Only ever chosen (see resolveHeroVariant) when a real hero image exists.
+  function renderHeroFullBleedBlock() {
+    return (
+      <motion.section
+        className={`relative flex flex-col justify-end px-6 sm:px-16 pb-16 sm:pb-20 min-h-[92vh] overflow-hidden ${layoutPt}`}
+        variants={V.editorial.image} initial="hidden" animate="visible">
+        <EditableImage src={heroImageUrl} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+          className="absolute inset-0 w-full h-full" darken
+          isEditingMode={isEditingMode} canEdit={!!canEdit}
+          onEditClick={() => openImageModal('hero')} />
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ background: 'linear-gradient(to top, rgba(10,10,10,0.85) 0%, rgba(10,10,10,0.25) 45%, transparent 75%)' }} />
+        <motion.div variants={V.editorial.body} className="relative z-10 flex flex-col items-start gap-4 max-w-2xl text-white">
+          {logo_url && (
+            <img src={logo_url} alt={business_name} className="h-14 w-14 object-contain"
+              style={{ borderRadius: '4px', background: 'rgba(255,255,255,0.15)', padding: '6px' }} />
+          )}
+          <p className="text-xs font-semibold tracking-[0.3em] uppercase opacity-80">{business_name}</p>
+          <AccentedHeroTitle
+            className="text-4xl sm:text-6xl font-extrabold leading-[1.05] tracking-tight drop-shadow-lg"
+            value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
+            onCommit={(v) => setEdit('hero.title', v)}
+            isEditing={isEditingMode}
+            accentColor={secondaryAccent} />
+          {(heroTagline || isEditingMode) && (
+            <EditableText as="p" className="text-lg sm:text-xl leading-relaxed max-w-lg opacity-90 drop-shadow"
+              value={getEdit('hero.subtitle', heroTagline ?? '')}
+              onCommit={(v) => setEdit('hero.subtitle', v)}
+              isEditing={isEditingMode} />
+          )}
+          {ghostCta({ color: '#ffffff', background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.45)' })}
+        </motion.div>
+      </motion.section>
     );
   }
 
@@ -2099,6 +2206,99 @@ export default function LandingViewer() {
                 </motion.div>
               );
             })}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
+  // Alternating image+text rows — extends the bento pattern's asymmetric,
+  // per-item-count-driven idea to a short list (2-3 items), where a uniform
+  // 3-col grid or bento block would squeeze each item too narrow to breathe.
+  function renderServicesRowsBlock(isAlt: boolean) {
+    if (!services.length) return null;
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    return (
+      <motion.section className="px-6 py-20" style={bg ?? { backgroundColor: '#fafafa' }}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-4xl mx-auto flex flex-col gap-3">
+          <motion.div variants={V.classic.item} className="text-center mb-6">
+            {sectionKicker('השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {divider}
+          </motion.div>
+          <div className="flex flex-col gap-14 sm:gap-20 mt-8">
+            {services.map((s, i) => {
+              const img = isAiFormat ? iconUrls[i] : legacyImages[i + 2];
+              const reversed = i % 2 === 1;
+              return (
+                <motion.div key={s.id} variants={V.classic.item}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                  <div className={`${theme.cardRadius} overflow-hidden min-h-56 lg:min-h-72 ${reversed ? 'lg:order-last' : ''}`}
+                    style={imgTreatmentStyle}>
+                    <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                      className="w-full h-full min-h-56 lg:min-h-72" style={imgTreatmentStyle}
+                      isEditingMode={isEditingMode} canEdit={!!canEdit}
+                      onEditClick={() => openImageModal(`service_${i}`)} />
+                  </div>
+                  <div className={`flex flex-col gap-3 ${reversed ? 'lg:order-first' : ''}`}>
+                    <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold`}
+                      style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
+                      {i + 1}
+                    </div>
+                    <EditableText as="h3" className="text-xl sm:text-2xl font-bold text-slate-800"
+                      value={getEdit(`services.${i}.title`, s.title)}
+                      onCommit={(v) => setEdit(`services.${i}.title`, v)}
+                      isEditing={isEditingMode} />
+                    <EditableText as="p" className="leading-relaxed" style={{ color: clrMuted }}
+                      value={getEdit(`services.${i}.description`, s.description)}
+                      onCommit={(v) => setEdit(`services.${i}.description`, v)}
+                      isEditing={isEditingMode} />
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
+  // Clean scannable icon-list — no imagery dependency at all, so it degrades
+  // perfectly when no service photos exist. Reads as "minimal", matching the
+  // corporate/minimal vibe rather than forcing heavy imagery on a long list.
+  function renderServicesIconListBlock(isAlt: boolean) {
+    if (!services.length) return null;
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    return (
+      <motion.section className="px-6 py-20" style={bg ?? { backgroundColor: '#fafafa' }}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-3xl mx-auto">
+          <motion.div variants={V.classic.item} className="text-center mb-14">
+            {sectionKicker('השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {divider}
+          </motion.div>
+          <div className="flex flex-col divide-y" style={{ borderColor: `${primary}1a` }}>
+            {services.map((s, i) => (
+              <motion.div key={s.id} variants={V.classic.item}
+                className="flex items-start gap-5 py-6">
+                <div className={`w-10 h-10 flex-shrink-0 ${theme.badgeRadius} flex items-center justify-center text-sm font-bold`}
+                  style={{ border: `2px solid ${primary}`, color: primary }}>
+                  {i + 1}
+                </div>
+                <div className="flex flex-col gap-1.5 min-w-0">
+                  <EditableText as="h3" className="font-bold text-lg text-slate-800"
+                    value={getEdit(`services.${i}.title`, s.title)}
+                    onCommit={(v) => setEdit(`services.${i}.title`, v)}
+                    isEditing={isEditingMode} />
+                  <EditableText as="p" className="text-sm leading-relaxed" style={{ color: clrMuted }}
+                    value={getEdit(`services.${i}.description`, s.description)}
+                    onCommit={(v) => setEdit(`services.${i}.description`, v)}
+                    isEditing={isEditingMode} />
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </motion.section>
@@ -2407,10 +2607,19 @@ export default function LandingViewer() {
   }
 
   const blockMap: Record<string, (isAlt: boolean) => React.ReactNode> = {
-    'hero_center':        () => renderHeroCenterBlock(),
-    'hero_split':         () => renderHeroSplitBlock(),
-    'services_bento':     (isAlt) => renderServicesBentoBlock(isAlt),
-    'services_grid':      (isAlt) => renderServicesGridBlock(isAlt),
+    // Both hero block ids dispatch through renderHeroBlock, which picks the
+    // actual variant (center / split / fullbleed) from design_style + whether
+    // a real hero image exists — see resolveHeroVariant above. Likewise both
+    // services block ids dispatch through renderServicesBlock (grid / bento /
+    // rows / iconlist), picked by item count + design_style — see
+    // resolveServicesVariant. This overrides the AI's structural_layout/
+    // layout_composition guess with a render-time decision driven by real,
+    // checkable signals, which is what actually varies the page's SHAPE
+    // rather than just its color.
+    'hero_center':        () => renderHeroBlock(),
+    'hero_split':         () => renderHeroBlock(),
+    'services_bento':     (isAlt) => renderServicesBlock(isAlt),
+    'services_grid':      (isAlt) => renderServicesBlock(isAlt),
     'benefits_list':      () => renderBenefits(),
     'benefits_cards':     (isAlt) => renderBenefitsCardsBlock(isAlt),
     'process_timeline':   (isAlt) => renderProcessTimelineBlock(isAlt),
