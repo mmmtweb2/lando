@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { generateAiContent, regenerateSectionText, checkBusinessCoherence, type AiContent } from '../services/ai.service';
 import { processAndSave, generateFalImage } from '../services/image.service';
-import { checkAndDeductCredits } from '../services/credits.service';
+import { checkAndDeductCredits, refundCredits } from '../services/credits.service';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
 import { canPublishUnderPlan, consumeMonthlyCreate, getPlanStatus } from '../services/plan.service';
 
@@ -784,6 +784,16 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
         r.status === 'fulfilled' ? (r.value ?? '') : '',
       );
 
+      // If the whole batch failed there is nothing to show and nothing was
+      // delivered — refund the charge and leave the existing images alone.
+      // Previously this wrote an all-empty store, so a user could pay 4
+      // credits and have their existing images DELETED in exchange.
+      if (!firstUrl && !iconUrls.some(Boolean)) {
+        await refundCredits(ownerEmail, cost);
+        res.status(502).json({ error: 'יצירת התמונות נכשלה. הקרדיטים לא נוצלו והוחזרו ליתרה.' });
+        return;
+      }
+
       serialized = JSON.stringify({ hero_image_url: firstUrl, icon_urls: iconUrls } satisfies AiStore);
     } else {
       // Single slot regeneration. For SERVICE icons, lock the user's subject into
@@ -807,12 +817,23 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
       .update({ user_images: serialized })
       .eq('id', id);
 
-    if (saveErr) { res.status(500).json({ error: saveErr.message }); return; }
+    if (saveErr) {
+      // Generated but not persisted — the user got nothing. Refund, and don't
+      // leak the raw DB error to the client (see README convention #4).
+      console.error('[regenerateImageAi] save failed:', saveErr.message);
+      await refundCredits(ownerEmail, cost);
+      res.status(500).json({ error: 'שמירת התמונה נכשלה. הקרדיטים לא נוצלו והוחזרו ליתרה.' });
+      return;
+    }
 
     res.json({ url: firstUrl, user_images: serialized, credits: newCredits });
   } catch (err) {
+    // The charge already happened (credits are deducted before the generation
+    // starts, so the AI spend is always covered). Nothing was delivered here,
+    // so give the credits back rather than silently keeping them.
     console.error('[regenerateImageAi] Image generation failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Image generation failed' });
+    await refundCredits(ownerEmail, cost);
+    res.status(500).json({ error: 'יצירת התמונה נכשלה. הקרדיטים לא נוצלו והוחזרו ליתרה.' });
   }
 }
 
@@ -820,15 +841,14 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
 
 export async function regenerateText(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
-  const { email, sectionName, userPrompt, cost } = req.body as {
-    email?: string;
+  const { sectionName, userPrompt, cost } = req.body as {
     sectionName?: string;
     userPrompt?: string;
     cost?: number;
   };
 
-  if (!email?.trim() || !sectionName?.trim() || typeof cost !== 'number') {
-    res.status(400).json({ error: 'email, sectionName, and cost are required' });
+  if (!sectionName?.trim() || typeof cost !== 'number') {
+    res.status(400).json({ error: 'sectionName and cost are required' });
     return;
   }
 
@@ -849,14 +869,20 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
     return;
   }
 
-  if (page.owner_email?.toLowerCase() !== email.trim().toLowerCase()) {
-    res.status(403).json({ error: 'Forbidden' });
+  // Charge the page's OWNER, resolved from the page row itself. This used to
+  // take the account to charge from req.body.email (checked for equality with
+  // the owner, so not directly exploitable, but it trusted a client-supplied
+  // identifier for a money-adjacent decision — see README convention #3).
+  // Access is already enforced upstream by requireAuth + requireOwnPage.
+  const ownerEmail = (page.owner_email as string | null | undefined)?.trim().toLowerCase();
+  if (!ownerEmail) {
+    res.status(403).json({ error: 'Page has no owner — cannot deduct credits' });
     return;
   }
 
   let newCredits: number;
   try {
-    newCredits = await checkAndDeductCredits(email.trim().toLowerCase(), parsedCost);
+    newCredits = await checkAndDeductCredits(ownerEmail, parsedCost);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Credit check failed';
     res.status(402).json({ error: msg });
@@ -910,14 +936,18 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
       .single();
 
     if (saveErr || !saved) {
-      res.status(500).json({ error: saveErr?.message ?? 'Failed to save' });
+      console.error('[regenerateText] save failed:', saveErr?.message);
+      await refundCredits(ownerEmail, parsedCost);
+      res.status(500).json({ error: 'שמירת הטקסט נכשלה. הקרדיטים לא נוצלו והוחזרו ליתרה.' });
       return;
     }
 
     res.json({ ai_content: (saved as { ai_content: AiContent }).ai_content, credits: newCredits });
   } catch (err) {
+    // Charged up-front; nothing was delivered — give the credits back.
     console.error('[regenerateText] AI call failed:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'AI rewrite failed' });
+    await refundCredits(ownerEmail, parsedCost);
+    res.status(500).json({ error: 'הכתיבה מחדש נכשלה. הקרדיטים לא נוצלו והוחזרו ליתרה.' });
   }
 }
 

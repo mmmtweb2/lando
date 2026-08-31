@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase';
 import { processMockPayment } from '../services/payment.service';
 import { ensureUserProfile } from '../services/profile.service';
 import { getPlanStatus } from '../services/plan.service';
+import { addCredits } from '../services/credits.service';
 import { PLANS } from '../config/plans';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
@@ -23,18 +24,12 @@ export const CREDIT_PACKS: Record<string, { credits: number; price: number }> = 
 export async function grantCreditsForPack(email: string, packKey: string): Promise<number | null> {
   const pack = CREDIT_PACKS[packKey];
   if (!pack) return null;
-  const normalizedEmail = email.trim().toLowerCase();
-  const profile = await ensureUserProfile(normalizedEmail);
-  const newBalance = (profile.credits ?? 0) + pack.credits;
-  const { error } = await supabase
-    .from('user_profiles')
-    .update({ credits: newBalance })
-    .eq('email', normalizedEmail);
-  if (error) {
-    console.error('[CREDITS] grant failed:', error.message);
-    return null;
-  }
-  return newBalance;
+  // These are credits the customer PAID for — a lost update here means money
+  // taken and value not delivered. addCredits does a compare-and-swap instead
+  // of the read-then-write this used to do, so a grant that overlaps with any
+  // other balance change (a deduction, another grant) can't be silently
+  // clobbered.
+  return addCredits(email, pack.credits);
 }
 
 function generateAffiliateCode(): string {
@@ -83,20 +78,27 @@ export async function authUser(req: Request, res: Response): Promise<void> {
   if (normalizedRef) {
     const { data: referrer } = await supabase
       .from('user_profiles')
-      .select('affiliate_code, earned_coupons, credits')
+      .select('email, affiliate_code, earned_coupons, credits')
       .eq('affiliate_code', normalizedRef)
       .single();
 
     if (referrer) {
       validRef = normalizedRef;
       // Reward the referrer: +1 coupon (for tracking) AND +5 real credits.
+      // The coupon counter can stay a plain write, but the credit balance goes
+      // through addCredits: the referrer is an active user whose balance may be
+      // changing at the same moment, and a read-then-write here would undo
+      // whatever they spent in between (restoring spent credits = a mint).
+      const referrerEmail = (referrer as { email?: string }).email;
       await supabase
         .from('user_profiles')
-        .update({
-          earned_coupons: (referrer.earned_coupons ?? 0) + 1,
-          credits: (referrer.credits ?? 0) + REFERRAL_BONUS,
-        })
+        .update({ earned_coupons: (referrer.earned_coupons ?? 0) + 1 })
         .eq('affiliate_code', normalizedRef);
+      if (referrerEmail) {
+        await addCredits(referrerEmail, REFERRAL_BONUS);
+      } else {
+        console.error('[REFERRAL] referrer row has no email — credit bonus skipped', { code: normalizedRef });
+      }
     }
   }
 
@@ -120,12 +122,8 @@ export async function authUser(req: Request, res: Response): Promise<void> {
   // Reward the referred new user: +5 credits on top of the signup default.
   if (validRef && data) {
     const profile = data as { credits?: number };
-    const newCredits = (profile.credits ?? 0) + REFERRAL_BONUS;
-    await supabase
-      .from('user_profiles')
-      .update({ credits: newCredits })
-      .eq('email', normalizedEmail);
-    profile.credits = newCredits;
+    const newCredits = await addCredits(normalizedEmail, REFERRAL_BONUS);
+    if (newCredits !== null) profile.credits = newCredits;
   }
 
   res.status(201).json(data);
