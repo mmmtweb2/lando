@@ -344,6 +344,15 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, []);
 
+  // Deep link from the "limit reached" prompt on a landing page (Publish
+  // flow) — open the plan-picker directly instead of leaving the user to
+  // find it themselves.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('upgrade') !== '1') return;
+    setShowPlans(true);
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   async function handleDeletePage(id: string, name: string) {
     if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
     const r = await authFetch(`/api/landing/${id}`, { method: 'DELETE' });
