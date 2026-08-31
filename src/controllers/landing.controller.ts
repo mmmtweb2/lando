@@ -5,7 +5,7 @@ import { generateAiContent, regenerateSectionText, checkBusinessCoherence, type 
 import { processAndSave, generateFalImage } from '../services/image.service';
 import { checkAndDeductCredits } from '../services/credits.service';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
-import { canPublishUnderPlan, consumeMonthlyCreate } from '../services/plan.service';
+import { canPublishUnderPlan, consumeMonthlyCreate, getPlanStatus } from '../services/plan.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -134,7 +134,19 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
     return;
   }
 
-  res.json(data);
+  // Deliver the agency plan's white-label perk: hide the "Made with Pagey" badge
+  // on the public page when the owner has an active plan with whiteLabel:true.
+  let whiteLabel = false;
+  if (data.owner_email) {
+    try {
+      const status = await getPlanStatus(data.owner_email);
+      whiteLabel = status.whiteLabel;
+    } catch (e) {
+      console.error('getLandingPage: failed to resolve whiteLabel status', e);
+    }
+  }
+
+  res.json({ ...data, whiteLabel });
 }
 
 const VALID_IMAGE_SOURCES = ['none', 'upload', 'stock', 'ai'] as const;
