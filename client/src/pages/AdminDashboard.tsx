@@ -306,8 +306,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── Payments needing review ────────────────────────────────────── */}
-          {(paymentsLoading || paymentsError || reviewPayments.length > 0) && (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-slate-700 text-sm">Payments Needing Review</h2>
@@ -381,7 +380,6 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
-          )}
 
           {/* ── Search + table ──────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
