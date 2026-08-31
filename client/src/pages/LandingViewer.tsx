@@ -454,6 +454,13 @@ function ImageSelectorModal({
   // hero + service icons from the stored prompts in the same style.
   async function handleFullSet() {
     if (busy || credits < 4) return;
+    // 4 credits, and it replaces EVERY image on the page (hero + all service
+    // images) — including images the user uploaded themselves. Confirm the
+    // cost and the consequence before spending.
+    const confirmed = window.confirm(
+      `יצירת סט תמונות מלא תנכה 4 קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל התמונות בדף, כולל תמונות שהעליתם. להמשיך?`,
+    );
+    if (!confirmed) return;
     setBusy(true);
     setError(null);
     try {
@@ -1096,13 +1103,25 @@ export default function LandingViewer() {
   // AI rewrite: scope 'hero' = the main heading (1 credit), 'all' = full page (3 credits).
   async function handleRewrite(scope: 'hero' | 'all') {
     if (!page || !user?.email || rewriteStatus === 'rewriting') return;
+    // A full-page rewrite is the most expensive AND the most destructive AI
+    // action in the editor: 3 credits, and it replaces every section's text
+    // with freshly generated copy (any manual wording is lost). Nothing should
+    // spend that on a single stray click — say the price and the consequence
+    // out loud first, the way the publish flow does before a charge.
+    if (scope === 'all') {
+      const confirmed = window.confirm(
+        `כתיבה מחדש של כל הדף תנכה 3 קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל הטקסטים בדף בתוכן חדש שנוצר על ידי ה-AI. שינויים שכתבתם ידנית יידרסו. להמשיך?`,
+      );
+      if (!confirmed) return;
+    }
     setRewriteStatus('rewriting');
     try {
       const r = await authFetch(`/api/landing/${page.id}/regenerate-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // No `email` field: the server charges the page's owner, resolved from
+        // the page row itself, never from a client-supplied identifier.
         body: JSON.stringify({
-          email: user.email,
           sectionName: scope === 'all' ? 'all' : 'hero',
           cost: scope === 'all' ? 3 : 1,
         }),
@@ -2896,7 +2915,7 @@ export default function LandingViewer() {
             <>
               {isDraft && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 text-center font-medium">
-                  טופס זה פעיל בדפים משודרגים בלבד
+                  הדף עדיין בטיוטה — לא ניתן לשלוח פניות דרך הטופס עד לפרסום הדף
                 </div>
               )}
               <form onSubmit={handleLeadSubmit} className="flex flex-col gap-4">
@@ -2979,7 +2998,14 @@ export default function LandingViewer() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Assistant:wght@300;400;600;700&family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
         <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}`}</style>
-        <title>{(ai_content.seo_title || business_name || 'דף נחיתה')} | Pagey</title>
+        {/* White-label is a PAID agency perk: when it's on, the "| Pagey" suffix
+            must be gone here too. The server-rendered <title> in
+            og.controller.ts already respected whiteLabel, but this Helmet tag
+            overwrote it in the browser, so paying agency customers still saw
+            "| Pagey" in the tab — the perk was sold and only half-delivered. */}
+        <title>{whiteLabel
+          ? (ai_content.seo_title || business_name || 'דף נחיתה')
+          : `${ai_content.seo_title || business_name || 'דף נחיתה'} | Pagey`}</title>
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta property="og:description" content={ai_content.seo_description ?? ogDescription} />
@@ -3014,14 +3040,18 @@ export default function LandingViewer() {
         </div>
       </header>
 
-      {/* Draft banner — visible to all visitors when page is in draft */}
+      {/* Draft banner — visible to all visitors when page is in draft.
+          The copy must stay TRUE: a draft page is served by the public,
+          unauthenticated GET /api/landing/:slug, so anyone holding the link
+          sees the full page. What a draft cannot do is receive submissions —
+          the lead endpoint rejects them server-side (lead.controller.ts). */}
       {isDraft && (
         <div className="fixed top-16 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 shadow-sm">
           <div className="flex items-center gap-2 text-sm text-amber-800 font-medium min-w-0">
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0 text-amber-500" aria-hidden>
               <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
             </svg>
-            <span className="truncate">דף זה נמצא במצב טיוטה ואינו גלוי לציבור</span>
+            <span className="truncate">הדף במצב טיוטה: גלוי לכל מי שיש לו הקישור, אך לא ניתן לשלוח דרכו פניות עד לפרסום</span>
           </div>
           {canEdit && (
             <button
