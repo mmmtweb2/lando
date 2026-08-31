@@ -647,6 +647,16 @@ export default function Dashboard() {
                 {!upgrading && <button onClick={() => setShowPlans(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
               </div>
               <p className="text-sm text-slate-500">מנוי שנתי למי שבונה הרבה דפים — פרסום דפים ללא תשלום נפרד לכל דף, עד למכסת הדפים הפעילים של המסלול.</p>
+              {/* Say what happens to the time already paid for BEFORE the user
+                  is sent to the payment page. Matches the carry-forward policy
+                  implemented in activatePlan() (src/services/plan.service.ts):
+                  a purchase made while a plan is still valid adds a year on top
+                  of the existing expiry instead of resetting it. */}
+              {plan?.active && plan.expiresAt && (
+                <p className="text-sm rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2">
+                  המסלול הנוכחי שלך בתוקף עד {new Date(plan.expiresAt).toLocaleDateString('he-IL')}. הזמן שנותר לא הולך לאיבוד — רכישת מסלול עכשיו מוסיפה שנה נוספת על גבי התאריך הזה.
+                </p>
+              )}
               <div className="grid sm:grid-cols-2 gap-3">
                 {(['freelancer', 'agency'] as const).map((key) => {
                   const p = plansCatalog[key];
