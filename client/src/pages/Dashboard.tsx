@@ -28,6 +28,28 @@ interface PageRow {
   expires_at: string | null;
 }
 
+interface PlanStatus {
+  plan: 'free' | 'freelancer' | 'agency';
+  label: string;
+  active: boolean;
+  expiresAt: string | null;
+  maxActivePages: number;
+  activePages: number;
+  monthlyCreate: number;
+  createdThisPeriod: number;
+  whiteLabel: boolean;
+}
+
+interface PlanDef {
+  key: 'free' | 'freelancer' | 'agency';
+  label: string;
+  maxActivePages: number;
+  monthlyCreate: number;
+  monthlyCredits: number;
+  priceYear: number;
+  whiteLabel: boolean;
+}
+
 type ActiveTab = 'pages' | 'leads';
 
 // ─── Motion variants ──────────────────────────────────────────────────────────
@@ -68,6 +90,73 @@ function StatCard({ label, value, icon, color = 'text-slate-700', bg = 'bg-white
       <div className={color}>{icon}</div>
       <p className={`text-2xl font-black ${color}`}>{value}</p>
       <p className="text-xs text-slate-500">{label}</p>
+    </motion.div>
+  );
+}
+
+function UsageBar({ used, total }: { used: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const full = total > 0 && used >= total;
+  return (
+    <div className="h-2 rounded-full bg-[#E4EAFB] overflow-hidden">
+      <div
+        className="h-full rounded-full transition-all"
+        style={{ width: `${pct}%`, backgroundColor: full ? '#FF7A6B' : '#2E63F6' }}
+      />
+    </div>
+  );
+}
+
+function PlanCard({ plan, onUpgrade }: { plan: PlanStatus; onUpgrade: () => void }) {
+  const isPaid = plan.plan !== 'free' && plan.active;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-4"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-black text-slate-800">המסלול שלי</span>
+          <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${isPaid ? 'bg-[#E4EAFB] text-[#1E4FD6]' : 'bg-slate-100 text-slate-500'}`}>
+            {plan.label}
+          </span>
+        </div>
+        <button
+          onClick={onUpgrade}
+          className="inline-flex items-center gap-1 rounded-full bg-[#2E63F6] hover:bg-[#1E4FD6] text-white text-xs font-bold px-3 py-1.5 transition"
+        >
+          {isPaid ? 'שינוי מסלול' : 'שדרוג למסלול'}
+        </button>
+      </div>
+
+      {isPaid ? (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">דפים פעילים</span>
+              <span className="font-bold text-slate-700">{plan.activePages} / {plan.maxActivePages}</span>
+            </div>
+            <UsageBar used={plan.activePages} total={plan.maxActivePages} />
+          </div>
+          {plan.monthlyCreate > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">נוצרו החודש</span>
+                <span className="font-bold text-slate-700">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
+              </div>
+              <UsageBar used={plan.createdThisPeriod} total={plan.monthlyCreate} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">
+          במסלול החינמי משלמים 249 ₪ לכל דף שמפרסמים. מנוי שנתי מאפשר להחזיק כמה דפים פעילים במחיר משתלם בהרבה לדף.
+        </p>
+      )}
+
+      {isPaid && plan.expiresAt && (
+        <p className="text-[11px] text-slate-400">המנוי בתוקף עד {formatDate(plan.expiresAt)}</p>
+      )}
     </motion.div>
   );
 }
@@ -231,6 +320,10 @@ export default function Dashboard() {
   const [buyMsg, setBuyMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [walletKey, setWalletKey] = useState(0);
   const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const [plan, setPlan] = useState<PlanStatus | null>(null);
+  const [plansCatalog, setPlansCatalog] = useState<Record<string, PlanDef>>({});
+  const [showPlans, setShowPlans] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
   useEffect(() => {
@@ -281,6 +374,15 @@ export default function Dashboard() {
         const pageRows = (pagesData ?? []) as PageRow[];
         if (!cancelled) setPages(pageRows);
 
+        // Plan + usage (non-blocking for the rest of the dashboard).
+        try {
+          const planRes = await authFetch('/api/user/plan');
+          if (planRes.ok) {
+            const pd = await planRes.json() as { status: PlanStatus; plans: Record<string, PlanDef> };
+            if (!cancelled) { setPlan(pd.status); setPlansCatalog(pd.plans); }
+          }
+        } catch { /* plan card just won't render */ }
+
         if (pageRows.length > 0) {
           const leadsRes = await authFetch('/api/landing/my-leads');
           if (!leadsRes.ok) throw new Error('failed to load leads');
@@ -314,6 +416,24 @@ export default function Dashboard() {
   async function handleLogout() {
     await logout();
     navigate('/login', { replace: true });
+  }
+
+  async function handleUpgrade(planKey: 'freelancer' | 'agency') {
+    if (!user?.email || upgrading) return;
+    setUpgrading(true);
+    try {
+      const r = await authFetch('/api/payments/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'plan', reference: planKey }),
+      });
+      const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
+      if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
+      window.location.href = data.redirectUrl;
+    } catch (e) {
+      setBuyMsg({ text: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה', ok: false });
+      setUpgrading(false);
+    }
   }
 
   async function handleBuyCredits(pack: 'small' | 'large') {
@@ -429,6 +549,50 @@ export default function Dashboard() {
           </div>
         )}
 
+        {showPlans && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50" onClick={() => !upgrading && setShowPlans(false)}>
+            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl p-6 flex flex-col gap-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-extrabold text-slate-900">בחירת מסלול</h3>
+                {!upgrading && <button onClick={() => setShowPlans(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
+              </div>
+              <p className="text-sm text-slate-500">מנוי שנתי למי שבונה הרבה דפים — פרסום דפים ללא תשלום נפרד לכל דף, עד למכסת הדפים הפעילים של המסלול.</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {(['freelancer', 'agency'] as const).map((key) => {
+                  const p = plansCatalog[key];
+                  if (!p) return null;
+                  const current = plan?.plan === key && plan.active;
+                  const highlight = key === 'agency';
+                  return (
+                    <div key={key} className={`flex flex-col gap-3 p-5 rounded-2xl border-2 ${highlight ? 'border-[#2E63F6] bg-[#EEF1FB]/50' : 'border-slate-200'}`}>
+                      <div className="flex items-baseline justify-between">
+                        <span className="font-black text-slate-800">{p.label}</span>
+                        <span className="text-left"><span className="text-xl font-extrabold text-[#2E63F6]">₪{p.priceYear.toLocaleString()}</span><span className="text-xs text-slate-400"> / שנה</span></span>
+                      </div>
+                      <ul className="text-sm text-slate-600 flex flex-col gap-1.5">
+                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> עד {p.maxActivePages} דפים פעילים</li>
+                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {p.monthlyCreate} דפים חדשים בחודש</li>
+                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {p.monthlyCredits} קרדיטי AI בכל חידוש</li>
+                        {p.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> הסרת מיתוג Pagey</li>}
+                      </ul>
+                      <button
+                        disabled={upgrading || current}
+                        onClick={() => handleUpgrade(key)}
+                        className={`mt-auto rounded-xl py-2.5 text-sm font-bold transition disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
+                      >
+                        {current ? 'המסלול הנוכחי שלך' : upgrading ? 'מעבד…' : 'בחירת מסלול'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {buyMsg && !buyMsg.ok && (
+                <p className="text-sm text-center font-semibold rounded-xl px-3 py-2 text-red-600 bg-red-50">{buyMsg.text}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <main className="flex-1 px-5 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
 
@@ -471,6 +635,9 @@ export default function Dashboard() {
               bg="bg-orange-50/60"
             />
           </motion.div>
+
+          {/* Plan + usage */}
+          {plan && <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />}
 
           {/* Referral */}
           {portalUser && <ReferralCard user={portalUser} />}

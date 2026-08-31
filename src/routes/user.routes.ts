@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authUser, purchaseCredits, getCredits } from '../controllers/user.controller';
+import { authUser, purchaseCredits, getCredits, getPlan } from '../controllers/user.controller';
 import { rateLimit } from '../middleware/rateLimit';
 import { requireAuth } from '../middleware/auth.middleware';
 
@@ -14,6 +14,7 @@ const purchaseLimiter = rateLimit({
 
 router.post('/auth', authUser);
 router.get('/credits', requireAuth, getCredits);
+router.get('/plan', requireAuth, getPlan);
 router.post('/credits/purchase', purchaseLimiter, purchaseCredits);
 
 export default router;

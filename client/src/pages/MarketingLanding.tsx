@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Zap, Globe, Smartphone, Palette, MessageSquare,
-  Check, ChevronDown, ArrowLeft, Wand2, Rocket,
+  Check, ChevronDown, ArrowLeft, Wand2, Rocket, Menu, X,
 } from 'lucide-react';
 import { LandoBot, LandoMark, type LandoMood } from '../components/Lando';
 
@@ -16,9 +16,10 @@ const GLOW = '#6FE7FF';      // cyan energy accent
 const GRAD = '#2E63F6';      // flat brand fill — the new language avoids gradients
 
 // Real generated pages to showcase as social proof. Swap slugs for your best pages.
+// Add your best PUBLISHED example pages here (published only — never drafts).
+// The examples section auto-hides while this is empty.
 const SHOWCASE: { slug: string; name: string; tag: string }[] = [
-  { slug: 'uqhvd7n', name: 'מאפיית לחם הבית', tag: 'מאפייה' },
-  { slug: 'lhzvd6z', name: 'ידידים', tag: 'עמותה' },
+  // { slug: 'xxxxxxx', name: 'שם העסק', tag: 'נישה' },
 ];
 
 // ─── Animated demo — the centerpiece ──────────────────────────────────────────
@@ -266,6 +267,7 @@ function GlowBar() {
 export default function MarketingLanding() {
   const [scrolled, setScrolled] = useState(false);
   const [scrollMood, setScrollMood] = useState<LandoMood>('default');
+  const [menuOpen, setMenuOpen] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onScroll = () => {
@@ -298,7 +300,7 @@ export default function MarketingLanding() {
       </div>
 
       {/* ── Nav ──────────────────────────────────────────────────────────── */}
-      <header className={`fixed top-0 inset-x-0 z-50 transition ${scrolled ? 'bg-white/90 backdrop-blur border-b border-slate-100 shadow-sm' : ''}`}>
+      <header className={`fixed top-0 inset-x-0 z-50 transition ${scrolled || menuOpen ? 'bg-white/95 backdrop-blur border-b border-slate-100 shadow-sm' : ''}`}>
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LandoMark size={34} />
@@ -306,17 +308,31 @@ export default function MarketingLanding() {
           </div>
           <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600">
             <a href="#how" className="hover:text-[#2E63F6] transition">איך זה עובד</a>
-            <a href="#examples" className="hover:text-[#2E63F6] transition">דוגמאות</a>
+            {SHOWCASE.length > 0 && <a href="#examples" className="hover:text-[#2E63F6] transition">דוגמאות</a>}
             <a href="#pricing" className="hover:text-[#2E63F6] transition">מחירים</a>
             <a href="#faq" className="hover:text-[#2E63F6] transition">שאלות</a>
           </nav>
           <div className="flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-[#2E63F6] transition">התחברות</Link>
+            <Link to="/login" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-[#2E63F6] transition">התחברות</Link>
             <Link to="/create" className="rounded-xl px-4 py-2 text-sm font-bold text-white shadow-sm hover:opacity-90 transition" style={{ background: GRAD }}>
               צור דף חינם
             </Link>
+            <button onClick={() => setMenuOpen((o) => !o)} className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 transition" aria-label="תפריט">
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {menuOpen && (
+          <div className="md:hidden border-t border-slate-100 px-6 py-4 flex flex-col gap-3 text-sm font-medium text-slate-700">
+            <a href="#how" onClick={() => setMenuOpen(false)} className="py-1">איך זה עובד</a>
+            {SHOWCASE.length > 0 && <a href="#examples" onClick={() => setMenuOpen(false)} className="py-1">דוגמאות</a>}
+            <a href="#pricing" onClick={() => setMenuOpen(false)} className="py-1">מחירים</a>
+            <a href="#faq" onClick={() => setMenuOpen(false)} className="py-1">שאלות</a>
+            <Link to="/login" onClick={() => setMenuOpen(false)} className="py-1" style={{ color: PRIMARY }}>התחברות</Link>
+          </div>
+        )}
       </header>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -417,6 +433,8 @@ export default function MarketingLanding() {
         </div>
       </Section>
 
+      {SHOWCASE.length > 0 && (
+      <>
       <LandoDivider mood="default" text="הנה דפים אמיתיים שנבנו כאן ↓" />
 
       {/* ── Examples ─────────────────────────────────────────────────────── */}
@@ -447,6 +465,8 @@ export default function MarketingLanding() {
           ))}
         </div>
       </Section>
+      </>
+      )}
 
       <LandoDivider mood="request" text="מוכנים לבנות את שלכם? ↓" />
 
@@ -455,18 +475,22 @@ export default function MarketingLanding() {
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold">מחיר פשוט והוגן</h2>
           <GlowBar />
-          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים.</p>
+          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים — או במנוי, אם בונים הרבה.</p>
         </div>
-        <div className="max-w-md mx-auto">
-          {/* Single product — the page. Credits are a post-creation add-on and live
-              in the personal area, not on the marketing page. */}
-          <div className="rounded-3xl border-2 p-8 shadow-lg bg-white" style={{ borderColor: PRIMARY }}>
-            <h3 className="font-bold text-lg text-slate-800">דף נחיתה</h3>
+
+        {/* Single-page (pay-per-page) + two subscription tiers for people who build
+            many pages. Plan numbers mirror server config (src/config/plans.ts) —
+            keep in sync if you change prices/limits there. */}
+        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-5 items-stretch">
+
+          {/* Single page — pay per publish */}
+          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
+            <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">249</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-400 mr-1">/ דף לשנה</span>
             </div>
-            <ul className="mt-6 space-y-3 text-sm">
+            <ul className="mt-6 space-y-3 text-sm flex-1">
               {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', 'עריכות תוכן, צבעים ותמונות ב-AI', 'טופס לידים ואזור אישי', 'חידוש שנתי — 99 ₪ בלבד'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
@@ -474,7 +498,41 @@ export default function MarketingLanding() {
             <Link to="/create" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
               התחילו לבנות — בחינם
             </Link>
-            <p className="mt-4 text-center text-xs text-slate-400">קרדיטים לעריכות AI זמינים באזור האישי, אחרי שיצרתם דף.</p>
+          </div>
+
+          {/* Freelancer — highlighted */}
+          <div className="rounded-3xl border-2 p-7 shadow-xl bg-white flex flex-col relative" style={{ borderColor: PRIMARY }}>
+            <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>למי שבונה הרבה</span>
+            <h3 className="font-bold text-lg text-slate-800">פרילנסר</h3>
+            <div className="mt-3 flex items-baseline gap-1">
+              <span className="text-4xl font-extrabold">1,490</span><span className="text-lg font-bold">₪</span>
+              <span className="text-sm text-slate-400 mr-1">/ שנה</span>
+            </div>
+            <ul className="mt-6 space-y-3 text-sm flex-1">
+              {['עד 10 דפים פעילים — בלי תשלום לכל דף', '30 דפים חדשים בכל חודש', '30 קרדיטי AI בכל חידוש', 'טופס לידים ואזור אישי לכל דף'].map((f) => (
+                <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
+              ))}
+            </ul>
+            <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
+              התחילו — הפעלה מהאזור האישי
+            </Link>
+          </div>
+
+          {/* Agency */}
+          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
+            <h3 className="font-bold text-lg text-slate-800">סוכנות</h3>
+            <div className="mt-3 flex items-baseline gap-1">
+              <span className="text-4xl font-extrabold">3,990</span><span className="text-lg font-bold">₪</span>
+              <span className="text-sm text-slate-400 mr-1">/ שנה</span>
+            </div>
+            <ul className="mt-6 space-y-3 text-sm flex-1">
+              {['עד 40 דפים פעילים ללקוחות', '200 דפים חדשים בכל חודש', '150 קרדיטי AI בכל חידוש', 'הסרת מיתוג Pagey מהדפים'].map((f) => (
+                <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
+              ))}
+            </ul>
+            <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
+              התחילו — הפעלה מהאזור האישי
+            </Link>
           </div>
         </div>
       </Section>
@@ -490,6 +548,7 @@ export default function MarketingLanding() {
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
           <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
+          <FaqItem q="אני בונה הרבה דפים — יש מסלול משתלם?" a="כן. מנוי שנתי (פרילנסר או סוכנות) מאפשר להחזיק כמה דפים פעילים בלי לשלם 249 ₪ לכל דף — במחיר נמוך בהרבה לדף. מפעילים אותו מהאזור האישי." />
           <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
         </div>
       </Section>

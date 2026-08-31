@@ -3,6 +3,8 @@ import { supabase } from '../config/supabase';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
 import { publishPageById } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
+import { PLANS, PlanKey } from '../config/plans';
+import { activatePlan } from '../services/plan.service';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -57,8 +59,16 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     if (!pack) { res.status(400).json({ error: `pack must be one of: ${Object.keys(CREDIT_PACKS).join(', ')}` }); return; }
     amount = pack.price;
     itemName = `${pack.credits} קרדיטים - Pagey`;
+  } else if (purpose === 'plan') {
+    const plan = reference ? PLANS[reference as PlanKey] : undefined;
+    if (!plan || plan.key === 'free') {
+      res.status(400).json({ error: `plan must be one of: ${Object.keys(PLANS).filter((k) => k !== 'free').join(', ')}` });
+      return;
+    }
+    amount = plan.priceYear;
+    itemName = `מנוי ${plan.label} - Pagey (שנה)`;
   } else {
-    res.status(400).json({ error: "purpose must be 'publish' or 'credits'" });
+    res.status(400).json({ error: "purpose must be 'publish', 'credits' or 'plan'" });
     return;
   }
 
@@ -112,7 +122,7 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
   console.log('[PAYMENT RETURN] query params:', JSON.stringify(req.query));
   const q = req.query as Record<string, string>;
   const sumitPaymentId =
-    q.OGPaymentID || q.PaymentID || q.paymentid || q['og-paymentid'] || q.OGPaymentId || q.PaymentId;
+    q['OG-PaymentID'] || q.OGPaymentID || q.PaymentID || q.paymentid || q['og-paymentid'] || q.OGPaymentId || q.PaymentId;
 
   let verified = false;
   if (sumitPaymentId) {
@@ -121,6 +131,7 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
   }
 
   if (!verified) {
+    console.error('[PAYMENT RETURN] verification failed', { ref, sumitPaymentId: sumitPaymentId ?? 'MISSING' });
     // Never grant on an unconfirmed payment — flag for review instead.
     await supabase
       .from('payments')
@@ -136,6 +147,8 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     ok = (await publishPageById(pay.reference)) !== null;
   } else if (pay.purpose === 'credits' && pay.reference) {
     ok = (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
+  } else if (pay.purpose === 'plan' && pay.reference) {
+    ok = await activatePlan(pay.user_email, pay.reference);
   }
 
   await supabase

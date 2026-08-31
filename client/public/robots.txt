@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /portal
+Disallow: /login
+
+Sitemap: https://pagey.co.il/sitemap.xml

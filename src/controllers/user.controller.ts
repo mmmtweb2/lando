@@ -3,6 +3,8 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { processMockPayment } from '../services/payment.service';
 import { ensureUserProfile } from '../services/profile.service';
+import { getPlanStatus } from '../services/plan.service';
+import { PLANS } from '../config/plans';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
 const REFERRAL_BONUS = 5; // credits granted to BOTH the referrer and the new user
@@ -133,6 +135,18 @@ export async function getCredits(req: Request, res: Response): Promise<void> {
   }
   const profile = await ensureUserProfile(email);
   res.json({ credits: profile.credits ?? 0 });
+}
+
+// ─── Current user's plan + usage (for the dashboard) ──────────────────────────
+// Also returns the plan catalog so the client renders pricing from one source.
+export async function getPlan(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) {
+    res.status(401).json({ error: 'נדרשת התחברות.' });
+    return;
+  }
+  const status = await getPlanStatus(email);
+  res.json({ status, plans: PLANS });
 }
 
 // ─── Credit pack purchase (mock checkout) ─────────────────────────────────────

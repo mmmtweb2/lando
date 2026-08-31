@@ -200,8 +200,8 @@ function WhatsAppIcon({ size = 22 }: { size?: number }) {
 
 // ─── Image cell (graceful fallback when no image) ─────────────────────────────
 
-function ImgCell({ src, className = '', style }: { src?: string; className?: string; style?: React.CSSProperties }) {
-  if (src) return <img src={src} alt="" className={`object-cover ${className}`} style={style} />;
+function ImgCell({ src, className = '', style, alt = '' }: { src?: string; className?: string; style?: React.CSSProperties; alt?: string }) {
+  if (src) return <img src={src} alt={alt} className={`object-cover ${className}`} style={style} />;
   return (
     <div className={`flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 ${className}`} style={style}>
       <svg viewBox="0 0 80 80" className="w-14 h-14 opacity-20" fill="#64748b">
@@ -902,9 +902,29 @@ export default function LandingViewer() {
     setCheckoutStatus('paying');
     setCheckoutError(null);
     try {
-      // Start a real SUMIT payment; we get back a secure redirect URL and send
-      // the user there. Publishing happens on the server after payment is
-      // verified (on return), so we never handle card data ourselves.
+      // 1) Try to publish under an active plan first — no per-page charge.
+      const planRes = await authFetch(`/api/landing/${page.id}/publish`, { method: 'POST' });
+      if (planRes.ok) {
+        setPage((prev) => (prev ? { ...prev, status: 'published' } : prev));
+        setCheckoutStatus('done');
+        return;
+      }
+      if (planRes.status !== 402) {
+        const b = await planRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? 'הפרסום נכשל. נסו שוב.');
+      }
+      // 402 → not covered by a plan. If the plan's live-page slots are full,
+      // prompt to upgrade rather than charging per page.
+      const planBody = await planRes.json().catch(() => ({})) as { reason?: string; error?: string };
+      if (planBody.reason === 'active_limit_reached') {
+        setCheckoutError(planBody.error ?? 'הגעת למספר הדפים הפעילים המרבי במסלול שלך.');
+        setCheckoutStatus('modal');
+        return;
+      }
+
+      // 2) No active plan → per-page SUMIT payment (existing flow). We get back a
+      // secure redirect URL; publishing happens server-side after verification,
+      // so we never handle card data ourselves.
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1292,7 +1312,7 @@ export default function LandingViewer() {
           <motion.div variants={V.bento.cell} className="rounded-2xl min-h-40 flex items-center justify-center p-4"
             style={{ backgroundImage: `linear-gradient(135deg, ${primary}10, ${accent}18)` }}>
             {legacyImages[1] && (
-              <img src={legacyImages[1]} alt="" className="w-40 h-40 rounded-full object-cover shadow-xl" />
+              <img src={legacyImages[1]} alt={business_name} className="w-40 h-40 rounded-full object-cover shadow-xl" />
             )}
           </motion.div>
         </div>
@@ -1383,7 +1403,7 @@ export default function LandingViewer() {
               isEditing={isEditingMode} />
             {legacyImages[1] && (
               <div className="mt-12">
-                <img src={legacyImages[1]} alt="" className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
+                <img src={legacyImages[1]} alt={business_name} className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
               </div>
             )}
           </motion.section>
@@ -1494,7 +1514,7 @@ export default function LandingViewer() {
             <motion.div className="relative min-h-64 lg:min-h-0"
               variants={V.split.left} initial="hidden" whileInView="visible" {...VIEW}>
               {legacyImages[1]
-                ? <ImgCell src={legacyImages[1]} className="absolute inset-0 w-full h-full" />
+                ? <ImgCell src={legacyImages[1]} alt={business_name} className="absolute inset-0 w-full h-full" />
                 : <div className="absolute inset-0"
                     style={{ backgroundImage: `linear-gradient(135deg, ${primary}15, ${accent}20)` }} />
               }
@@ -1584,7 +1604,7 @@ export default function LandingViewer() {
                 isEditing={isEditingMode} />
               {legacyImages[1] && (
                 <div className="mt-10">
-                  <img src={legacyImages[1]} alt="" className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
+                  <img src={legacyImages[1]} alt={business_name} className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
                 </div>
               )}
             </motion.div>
@@ -1986,7 +2006,7 @@ export default function LandingViewer() {
             isEditing={isEditingMode} />
           {legacyImages[1] && (
             <div className="mt-10">
-              <img src={legacyImages[1]} alt="" className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
+              <img src={legacyImages[1]} alt={business_name} className="w-64 h-64 rounded-full object-cover mx-auto shadow-xl" />
             </div>
           )}
         </motion.div>
@@ -2629,15 +2649,15 @@ export default function LandingViewer() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Assistant:wght@300;400;600;700&family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
         <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}`}</style>
-        <title>{ai_content.seo_title ?? business_name} | Pagey</title>
+        <title>{(ai_content.seo_title || business_name || 'דף נחיתה')} | Pagey</title>
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
-        <meta property="og:title" content={ai_content.seo_title ?? business_name} />
+        <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta property="og:description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:type" content="website" />
         {heroImageUrl && <meta property="og:image" content={heroImageUrl} />}
         <meta property="og:locale" content="he_IL" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={ai_content.seo_title ?? business_name} />
+        <meta name="twitter:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta name="twitter:description" content={ai_content.seo_description ?? ogDescription} />
         {heroImageUrl && <meta name="twitter:image" content={heroImageUrl} />}
       </Helmet>

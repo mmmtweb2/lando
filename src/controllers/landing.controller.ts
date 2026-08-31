@@ -3,9 +3,9 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { generateAiContent, regenerateSectionText, checkBusinessCoherence, type AiContent } from '../services/ai.service';
 import { processAndSave, generateFalImage } from '../services/image.service';
-import { processMockPayment } from '../services/payment.service';
 import { checkAndDeductCredits } from '../services/credits.service';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
+import { canPublishUnderPlan, consumeMonthlyCreate } from '../services/plan.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -231,6 +231,20 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       console.log('[LANDING] Coherence gate BLOCKED — input is not a real business');
       res.status(422).json({ error: 'לא הצלחנו להבין את תיאור העסק. נסו לתאר את העסק בצורה ברורה ומפורטת יותר.' });
       return;
+    }
+
+    // Monthly page-creation cap — enforced only for active PAID plans (free users
+    // and admins are never capped). Blocks BEFORE any AI cost is spent.
+    if (req.authEmail) {
+      try {
+        await consumeMonthlyCreate(req.authEmail);
+      } catch (e) {
+        if (e instanceof Error && e.message === 'monthly_create_limit') {
+          res.status(429).json({ error: 'הגעת למכסת יצירת הדפים החודשית של המסלול שלך. המכסה מתחדשת בתחילת החודש הבא.' });
+          return;
+        }
+        throw e;
+      }
     }
 
     // Safe null coercion — undefined is rejected by pg; explicit null is required
@@ -539,21 +553,25 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
   return data as PublishedPage;
 }
 
-// Legacy mock-payment publish endpoint. The real flow now goes through
-// /api/payments (SUMIT redirect); kept for admin/testing only.
+// Plan-aware publish. If the caller has an ACTIVE paid plan with a free live-page
+// slot, the page is published immediately at no per-page charge. Otherwise we
+// return 402 { needsPayment:true } and the client falls back to the per-page
+// (249₪) SUMIT checkout. Ownership is already enforced by requireOwnPage.
 export async function publishLandingPage(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
+  const email = req.authEmail;
+  if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
 
-  let result;
-  try {
-    result = await processMockPayment(id, 249);
-  } catch (err) {
-    console.error('[PUBLISH] Payment processor threw:', err);
-    res.status(402).json({ error: 'Payment failed' });
-    return;
-  }
-  if (!result.success) {
-    res.status(402).json({ error: 'Payment declined' });
+  const { covered, reason } = await canPublishUnderPlan(email);
+  if (!covered) {
+    const atLimit = reason === 'active_limit_reached';
+    res.status(402).json({
+      needsPayment: true,
+      reason,
+      error: atLimit
+        ? 'הגעת למספר הדפים הפעילים המרבי במסלול שלך. שדרגו מסלול או הסירו דף פעיל כדי לפרסם דף נוסף.'
+        : 'לפרסום דף נדרש תשלום או מנוי פעיל.',
+    });
     return;
   }
 
@@ -562,7 +580,7 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
     res.status(500).json({ error: 'Publish failed' });
     return;
   }
-  res.json({ ...data, transactionId: result.transactionId });
+  res.json({ ...data, coveredByPlan: true });
 }
 
 // ─── Inline image editing helpers ────────────────────────────────────────────
