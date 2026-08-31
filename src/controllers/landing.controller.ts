@@ -161,6 +161,12 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   res.json({ ...publicData, whiteLabel, isOwner });
 }
 
+// Credit cost of the AI image batch generated during page CREATION (hero +
+// up to 3 service images). Kept as a named constant so it is greppable next to
+// the regeneration costs in regenerateImageAi (4 for a full set, 1 for one
+// image) — see the audit note there about the two not matching.
+const AI_CREATE_IMAGE_COST = 1;
+
 const VALID_IMAGE_SOURCES = ['none', 'upload', 'stock', 'ai'] as const;
 type ImageSource = (typeof VALID_IMAGE_SOURCES)[number];
 
@@ -291,8 +297,6 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     const safeSecondaryColor = /^#[0-9a-fA-F]{6}$/.test(secondary_color ?? '') ? secondary_color : undefined;
 
     // ── AI image credit gate ───────────────────────────────────────────────
-    let aiUserProfile: { credits: number; is_admin: boolean } | null = null;
-
     if (image_source === 'ai') {
       console.log('[LANDING] AI image requested — checking credit gate for:', safeOwnerEmail);
 
@@ -311,14 +315,15 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         return;
       }
 
-      if (!profile.is_admin && (profile.credits ?? 0) <= 0) {
+      if (!profile.is_admin && (profile.credits ?? 0) < AI_CREATE_IMAGE_COST) {
         console.log('[LANDING] Credit gate BLOCKED — insufficient credits:', profile.credits);
-        res.status(403).json({ error: 'Insufficient AI credits' });
+        res.status(403).json({
+          error: 'אין מספיק קרדיטים ליצירת תמונות AI. ניתן לטעון קרדיטים באזור האישי, או ליצור את הדף עם תמונות מהמאגר החינמי.',
+        });
         return;
       }
 
       console.log('[LANDING] Credit gate PASSED — is_admin:', profile.is_admin, '| credits:', profile.credits);
-      aiUserProfile = profile;
     }
 
     try {
@@ -424,16 +429,33 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
         console.log('[LANDING] Fal.ai done — hero:', !!hero_image_url, '| service images:', icon_urls.length);
 
-        if (hero_image_url || icon_urls.length > 0) {
+        // Only persist an image store if at least one image actually came back —
+        // `icon_urls.length > 0` was true even when every slot had failed and
+        // held '', which both stored an all-empty store and charged for it.
+        const producedAnyImage = Boolean(hero_image_url) || icon_urls.some(Boolean);
+        if (producedAnyImage) {
           serializedImages = JSON.stringify({ hero_image_url, icon_urls });
         }
 
-        // Deduct 1 credit per batch (regardless of how many images were generated)
-        if (aiUserProfile && !aiUserProfile.is_admin && safeOwnerEmail) {
-          await supabase
-            .from('user_profiles')
-            .update({ credits: Math.max(0, aiUserProfile.credits - 1) })
-            .eq('email', safeOwnerEmail);
+        // Charge the creation image batch (flat AI_CREATE_IMAGE_COST, regardless
+        // of how many images came back) — but only if we produced something.
+        //
+        // This used to write `credits: Math.max(0, aiUserProfile.credits - 1)`
+        // from the profile read taken BEFORE the (slow) AI calls. That stale
+        // read-then-write could silently RESTORE credits the user had spent in
+        // parallel (read 10 → user spends 8 elsewhere → this writes 9, a +7
+        // mint). checkAndDeductCredits does the same deduction atomically
+        // against the current balance (`.gte()` guard) and never writes back a
+        // stale value. Admins are exempt inside that helper.
+        if (producedAnyImage && safeOwnerEmail) {
+          try {
+            await checkAndDeductCredits(safeOwnerEmail, AI_CREATE_IMAGE_COST);
+          } catch (deductErr) {
+            // Balance was drained in parallel between the gate and here. The
+            // page is still created (the AI spend already happened); log it
+            // rather than failing the request and losing the generated page.
+            console.error('[LANDING] image-batch credit deduction failed:', deductErr);
+          }
         }
       }
 
@@ -509,18 +531,20 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         return;
       }
 
-      // Grant the page's editing allowance: +10 credits to the owner per page created.
-      if (safeOwnerEmail) {
-        try {
-          const owner = await ensureUserProfile(safeOwnerEmail);
-          await supabase
-            .from('user_profiles')
-            .update({ credits: (owner.credits ?? 0) + 10 })
-            .eq('email', safeOwnerEmail);
-        } catch (grantErr) {
-          console.error('[LANDING] credit grant failed (page still created):', grantErr);
-        }
-      }
+      // NOTE (2026-08-31, payment-enforcement audit): page creation used to grant
+      // the owner +10 credits unconditionally, on EVERY page created. Creation
+      // itself is not metered (only later regeneration is), and free-tier page
+      // creation is deliberately uncapped (`monthlyCreate: 0` in config/plans.ts),
+      // so that grant was a net-positive, scriptable credit mint against real
+      // AI spend: create a draft in a loop, collect 10 credits each time.
+      // The grant is removed rather than reduced — ANY positive per-page grant
+      // is net-positive while creation is uncapped and unmetered. The editing
+      // allowance it was meant to provide already exists elsewhere and is
+      // bounded: new profiles start with `credits DEFAULT 10`
+      // (migrations/006_consolidate_schema.sql), referrals grant +5, plan
+      // activation refills `monthlyCredits`, and packs can be purchased.
+      // No user-visible gate was added or changed by this — the pre-existing
+      // credit checks are untouched.
 
       res.status(201).json(data);
     } catch (error) {
