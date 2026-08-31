@@ -30,10 +30,10 @@ interface PaymentRow {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
-  upload:  { label: 'Upload',  color: '#2E63F6' },
-  stock:   { label: 'Stock',   color: '#22B8D6' },
-  ai:      { label: 'AI',      color: '#1E4FD6' },
-  none:    { label: 'None',    color: '#94a3b8' },
+  upload:  { label: 'העלאה',  color: '#2E63F6' },
+  stock:   { label: 'סטוק',   color: '#22B8D6' },
+  ai:      { label: 'AI',     color: '#1E4FD6' },
+  none:    { label: 'אין',    color: '#94a3b8' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ function DeleteModal({ name, onConfirm, onCancel, busy }: {
   busy: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" dir="rtl">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 flex flex-col gap-5">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
@@ -116,16 +116,16 @@ function DeleteModal({ name, onConfirm, onCancel, busy }: {
             </svg>
           </div>
           <div>
-            <h3 className="font-bold text-slate-800">Delete page?</h3>
+            <h3 className="font-bold text-slate-800">למחוק את הדף?</h3>
             <p className="text-sm text-slate-500 mt-0.5">
-              "<span className="font-medium text-slate-700">{name}</span>" will be permanently removed. This cannot be undone.
+              "<span className="font-medium text-slate-700">{name}</span>" תוסר לצמיתות. לא ניתן לבטל פעולה זו.
             </p>
           </div>
         </div>
         <div className="flex gap-3 justify-end">
           <button onClick={onCancel} disabled={busy}
             className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition disabled:opacity-50">
-            Cancel
+            ביטול
           </button>
           <button onClick={onConfirm} disabled={busy}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition disabled:opacity-60 flex items-center gap-2">
@@ -134,7 +134,7 @@ function DeleteModal({ name, onConfirm, onCancel, busy }: {
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
             )}
-            Delete
+            מחיקה
           </button>
         </div>
       </div>
@@ -159,7 +159,7 @@ export default function AdminDashboard() {
     authFetch('/api/admin/pages')
       .then((r) => {
         if (r.status === 401 || r.status === 403) { setDenied(true); throw new Error('denied'); }
-        if (!r.ok) throw new Error('Failed to load pages');
+        if (!r.ok) throw new Error('טעינת הדפים נכשלה');
         return r.json() as Promise<PageRow[]>;
       })
       .then(setPages)
@@ -177,7 +177,7 @@ export default function AdminDashboard() {
     setPaymentsLoading(true);
     authFetch('/api/admin/payments?status=needs_review')
       .then((r) => {
-        if (!r.ok) throw new Error('Failed to load payments');
+        if (!r.ok) throw new Error('טעינת התשלומים נכשלה');
         return r.json() as Promise<PaymentRow[]>;
       })
       .then(setReviewPayments)
@@ -196,13 +196,13 @@ export default function AdminDashboard() {
     try {
       const r = await authFetch(`/api/admin/payments/${id}/${action}`, { method: 'POST' });
       const data = await r.json().catch(() => ({})) as { status?: string; error?: string };
-      if (!r.ok) throw new Error(data.error ?? 'Action failed');
-      setPaymentActionMsg((m) => ({ ...m, [id]: data.status === 'paid' ? '✓ Granted' : `Still: ${data.status}` }));
+      if (!r.ok) throw new Error(data.error ?? 'הפעולה נכשלה');
+      setPaymentActionMsg((m) => ({ ...m, [id]: data.status === 'paid' ? '✓ אושר' : `עדיין: ${data.status}` }));
       if (data.status === 'paid') {
         setReviewPayments((prev) => prev.filter((p) => p.id !== id));
       }
     } catch (e) {
-      setPaymentActionMsg((m) => ({ ...m, [id]: e instanceof Error ? e.message : 'Action failed' }));
+      setPaymentActionMsg((m) => ({ ...m, [id]: e instanceof Error ? e.message : 'הפעולה נכשלה' }));
     } finally {
       setPaymentBusyId(null);
     }
@@ -217,7 +217,7 @@ export default function AdminDashboard() {
       setPages((prev) => prev.filter((p) => p.id !== confirmDelete.id));
       setConfirmDelete(null);
     } catch (e) {
-      alert('Failed to delete page. Please try again.');
+      alert('מחיקת הדף נכשלה. נסו שוב.');
     } finally {
       setDeleteBusy(false);
     }
@@ -261,7 +261,7 @@ export default function AdminDashboard() {
         />
       )}
 
-      <div className="min-h-screen bg-slate-50 font-sans">
+      <div className="min-h-screen bg-slate-50 font-sans" dir="rtl">
 
         {/* ── Top nav ──────────────────────────────────────────────────────── */}
         <header className="sticky top-0 z-40 bg-white border-b border-slate-100 shadow-sm">
@@ -274,16 +274,16 @@ export default function AdminDashboard() {
                   <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
                 </svg>
               </div>
-              <span className="font-bold text-slate-800 text-sm">Pagey Admin</span>
+              <span className="font-bold text-slate-800 text-sm">ניהול Pagey</span>
             </div>
             <div className="flex items-center gap-4">
               <Link to="/" className="text-xs text-slate-500 hover:text-[#2E63F6] transition">
-                ← Back to app
+                ← חזרה לאפליקציה
               </Link>
               <button
                 onClick={() => logout()}
                 className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 transition">
-                Sign out
+                התנתקות
               </button>
             </div>
           </div>
@@ -293,83 +293,83 @@ export default function AdminDashboard() {
 
           {/* ── Page title ─────────────────────────────────────────────────── */}
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Landing Pages</h1>
-            <p className="text-sm text-slate-400 mt-1">Manage all generated pages</p>
+            <h1 className="text-2xl font-bold text-slate-800">דפי נחיתה</h1>
+            <p className="text-sm text-slate-400 mt-1">ניהול כל הדפים שנוצרו</p>
           </div>
 
           {/* ── Stat cards ─────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Total Pages" value={loading ? '—' : pages.length} />
-            <StatCard label="Stock Images" value={loading ? '—' : (sourceCount.stock ?? 0)} />
-            <StatCard label="Uploaded Images" value={loading ? '—' : (sourceCount.upload ?? 0)} />
-            <StatCard label="With Lead Form" value={loading ? '—' : pages.filter(p => p.enable_form).length} />
+            <StatCard label="סה״כ דפים" value={loading ? '—' : pages.length} />
+            <StatCard label="תמונות סטוק" value={loading ? '—' : (sourceCount.stock ?? 0)} />
+            <StatCard label="תמונות שהועלו" value={loading ? '—' : (sourceCount.upload ?? 0)} />
+            <StatCard label="עם טופס לידים" value={loading ? '—' : pages.filter(p => p.enable_form).length} />
           </div>
 
           {/* ── Payments needing review ────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="font-semibold text-slate-700 text-sm">Payments Needing Review</h2>
+                  <h2 className="font-semibold text-slate-700 text-sm">תשלומים הדורשים בדיקה</h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    SUMIT verification didn't confirm these — check the payment in your SUMIT dashboard first,
-                    then Re-verify (if it was a transient issue) or Force-activate (once you've confirmed the
-                    charge manually).
+                    האימות מול SUMIT לא אישר את התשלומים האלה — בדקו את התשלום בפאנל SUMIT קודם,
+                    ואז לחצו על אימות מחדש (אם מדובר בתקלה זמנית) או הפעלה כפויה (לאחר שוידאתם
+                    את החיוב ידנית).
                   </p>
                 </div>
                 <button onClick={loadReviewPayments}
                   className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-[#2E63F6] hover:border-[#9DB0E8] transition flex-shrink-0">
-                  Refresh
+                  רענון
                 </button>
               </div>
 
               {paymentsLoading ? (
-                <div className="py-10 text-center text-sm text-slate-400">Loading…</div>
+                <div className="py-10 text-center text-sm text-slate-400">טוען…</div>
               ) : paymentsError ? (
                 <div className="py-10 text-center text-sm text-red-400">{paymentsError}</div>
               ) : reviewPayments.length === 0 ? (
-                <div className="py-10 text-center text-sm text-slate-400">Nothing stuck — all clear.</div>
+                <div className="py-10 text-center text-sm text-slate-400">אין תשלומים תקועים — הכול תקין.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm text-right" dir="rtl">
                     <thead>
-                      <tr className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
-                        <th className="px-4 py-3">Date</th>
-                        <th className="px-4 py-3">User</th>
-                        <th className="px-4 py-3">Purpose</th>
-                        <th className="px-4 py-3">Amount</th>
-                        <th className="px-4 py-3 hidden md:table-cell">SUMIT ID</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
+                      <tr className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
+                        <th className="px-4 py-3">תאריך</th>
+                        <th className="px-4 py-3">משתמש</th>
+                        <th className="px-4 py-3">מטרה</th>
+                        <th className="px-4 py-3">סכום</th>
+                        <th className="px-4 py-3 hidden md:table-cell">מזהה SUMIT</th>
+                        <th className="px-4 py-3 text-left">פעולות</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {reviewPayments.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-4 py-3.5 text-slate-500 text-xs">{formatDate(p.created_at)} {formatTime(p.created_at)}</td>
-                          <td className="px-4 py-3.5 font-mono text-xs text-slate-700">{p.user_email}</td>
+                          <td className="px-4 py-3.5 font-mono text-xs text-slate-700" dir="ltr">{p.user_email}</td>
                           <td className="px-4 py-3.5 text-slate-600">{p.purpose}{p.reference ? ` (${p.reference})` : ''}</td>
                           <td className="px-4 py-3.5 text-slate-700 font-semibold">₪{p.amount}</td>
-                          <td className="px-4 py-3.5 hidden md:table-cell text-slate-400 text-xs font-mono">{p.sumit_payment_id ?? '—'}</td>
-                          <td className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-4 py-3.5 hidden md:table-cell text-slate-400 text-xs font-mono" dir="ltr">{p.sumit_payment_id ?? '—'}</td>
+                          <td className="px-4 py-3.5 text-left">
+                            <div className="flex items-center justify-start gap-2">
                               {paymentActionMsg[p.id] && (
                                 <span className="text-xs text-slate-500">{paymentActionMsg[p.id]}</span>
                               )}
                               <button
                                 disabled={paymentBusyId === p.id || !p.sumit_payment_id}
                                 onClick={() => handlePaymentAction(p.id, 'reverify')}
-                                title={!p.sumit_payment_id ? 'No SUMIT payment ID on record — nothing to re-verify against' : undefined}
+                                title={!p.sumit_payment_id ? 'אין מזהה תשלום SUMIT רשום — אין מול מה לאמת מחדש' : undefined}
                                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#2E63F6] border border-[#9DB0E8] bg-[#EEF1FB] hover:bg-[#E4EAFB] transition disabled:opacity-40">
-                                Re-verify
+                                אימות מחדש
                               </button>
                               <button
                                 disabled={paymentBusyId === p.id}
                                 onClick={() => {
-                                  if (window.confirm(`Force-grant ${p.purpose} to ${p.user_email} WITHOUT re-verifying with SUMIT? Only do this after confirming the charge yourself.`)) {
+                                  if (window.confirm(`להעניק ל${p.user_email} את "${p.purpose}" באופן כפוי בלי אימות מול SUMIT? יש לעשות זאת רק לאחר שווידאתם את החיוב בעצמכם.`)) {
                                     void handlePaymentAction(p.id, 'force-activate');
                                   }
                                 }}
                                 className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 transition disabled:opacity-40">
-                                Force-activate
+                                הפעלה כפויה
                               </button>
                             </div>
                           </td>
@@ -386,14 +386,14 @@ export default function AdminDashboard() {
 
             {/* Table header / search bar */}
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
-              <h2 className="font-semibold text-slate-700 text-sm">All Pages</h2>
+              <h2 className="font-semibold text-slate-700 text-sm">כל הדפים</h2>
               <div className="relative max-w-xs w-full">
                 <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input
                   type="text"
-                  placeholder="Search by business name..."
+                  placeholder="חיפוש לפי שם עסק..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition"
@@ -407,7 +407,7 @@ export default function AdminDashboard() {
                 <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                 </svg>
-                <span className="text-sm">Loading pages...</span>
+                <span className="text-sm">טוען דפים...</span>
               </div>
             ) : fetchError ? (
               <div className="flex flex-col items-center justify-center py-20 gap-2 text-red-400">
@@ -421,19 +421,19 @@ export default function AdminDashboard() {
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" />
                 </svg>
-                <p className="text-sm">{search ? 'No results found' : 'No pages yet'}</p>
+                <p className="text-sm">{search ? 'לא נמצאו תוצאות' : 'אין דפים עדיין'}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm text-right" dir="rtl">
                   <thead>
-                    <tr className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
+                    <tr className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
                       <th className="px-5 py-3 w-12" />
-                      <th className="px-4 py-3">Business Name</th>
-                      <th className="px-4 py-3 hidden sm:table-cell">Date Created</th>
-                      <th className="px-4 py-3 hidden md:table-cell">Image Source</th>
-                      <th className="px-4 py-3 hidden lg:table-cell">Lead Form</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-4 py-3">שם העסק</th>
+                      <th className="px-4 py-3 hidden sm:table-cell">תאריך יצירה</th>
+                      <th className="px-4 py-3 hidden md:table-cell">מקור תמונה</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">טופס לידים</th>
+                      <th className="px-4 py-3 text-left">פעולות</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -454,7 +454,7 @@ export default function AdminDashboard() {
                         {/* Business name */}
                         <td className="px-4 py-3.5">
                           <span className="font-semibold text-slate-700">{p.business_name}</span>
-                          <p className="text-xs text-slate-400 mt-0.5 font-mono">{p.slug}</p>
+                          <p className="text-xs text-slate-400 mt-0.5 font-mono" dir="ltr">{p.slug}</p>
                         </td>
 
                         {/* Date */}
@@ -472,13 +472,13 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3.5 hidden lg:table-cell">
                           <span className={`inline-flex items-center gap-1 text-xs font-medium ${p.enable_form ? 'text-emerald-600' : 'text-slate-400'}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${p.enable_form ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                            {p.enable_form ? 'Enabled' : 'Off'}
+                            {p.enable_form ? 'פעיל' : 'כבוי'}
                           </span>
                         </td>
 
                         {/* Actions */}
-                        <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-4 py-3.5 text-left">
+                          <div className="flex items-center justify-start gap-2">
                             <a
                               href={`/p/${p.slug}`}
                               target="_blank"
@@ -490,7 +490,7 @@ export default function AdminDashboard() {
                                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                                 <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
                               </svg>
-                              View
+                              צפייה
                             </a>
                             <button
                               onClick={() => setConfirmDelete(p)}
@@ -500,7 +500,7 @@ export default function AdminDashboard() {
                                 <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                                 <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
                               </svg>
-                              Delete
+                              מחיקה
                             </button>
                           </div>
                         </td>
@@ -514,7 +514,7 @@ export default function AdminDashboard() {
             {/* Footer row */}
             {!loading && !fetchError && filtered.length > 0 && (
               <div className="px-5 py-3 border-t border-slate-100 text-xs text-slate-400">
-                Showing {filtered.length} of {pages.length} pages
+                מציג {filtered.length} מתוך {pages.length} דפים
               </div>
             )}
           </div>
