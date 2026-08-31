@@ -1881,9 +1881,14 @@ export default function LandingViewer() {
   }
 
   function renderTestimonials() {
-    const testimonials = ai_content.testimonials ?? [];
-    if (!testimonials.length) return null;
     const isPlaceholder = (quote: string) => quote.includes('הכנס כאן') || quote.includes('ציטוט אמיתי');
+    // Real visitors must never see the unfilled-placeholder quote the AI ships
+    // when the owner hasn't provided a real testimonial yet — only the owner,
+    // in edit mode, gets the "add a real quote" prompt card for it.
+    const testimonials = canEdit
+      ? (ai_content.testimonials ?? [])
+      : (ai_content.testimonials ?? []).filter((t) => !isPlaceholder(t.quote));
+    if (!testimonials.length) return null;
     return (
       <section className="relative overflow-hidden px-6 py-20"
         style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}>
@@ -3002,10 +3007,12 @@ export default function LandingViewer() {
             must be gone here too. The server-rendered <title> in
             og.controller.ts already respected whiteLabel, but this Helmet tag
             overwrote it in the browser, so paying agency customers still saw
-            "| Pagey" in the tab — the perk was sold and only half-delivered. */}
-        <title>{whiteLabel
-          ? (ai_content.seo_title || business_name || 'דף נחיתה')
-          : `${ai_content.seo_title || business_name || 'דף נחיתה'} | Pagey`}</title>
+            "| Pagey" in the tab — the perk was sold and only half-delivered.
+            (Two independent passes today hit this same bug — logic below is
+            the merged, equivalent fix.) */}
+        <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
+        <link rel="canonical" href={`https://pagey.co.il/p/${page.slug}`} />
+        <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta property="og:description" content={ai_content.seo_description ?? ogDescription} />

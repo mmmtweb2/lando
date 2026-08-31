@@ -12,6 +12,8 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+const SITE_URL = 'https://pagey.co.il';
+
 async function loadHtmlShell(): Promise<string> {
   const distPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
   try {
@@ -37,7 +39,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url, owner_email')
+    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, address, phone_number')
     .eq('slug', slug)
     .single();
 
@@ -81,8 +83,37 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   }
   const title = whiteLabel ? `${page.business_name}` : `${page.business_name} | Pagey`;
 
+  // Canonical URL + robots directive — published pages are indexable, drafts
+  // are not (drafts are still publicly fetchable via GET /:slug, so this
+  // matters: without it a draft could get indexed before the owner publishes).
+  const isPublished = page.status === 'published';
+  const pageUrl = `${SITE_URL}/p/${page.slug as string}`;
+  const robotsContent = isPublished ? 'index,follow' : 'noindex,nofollow';
+
+  // JSON-LD LocalBusiness structured data — only for published pages (drafts
+  // shouldn't get indexable structured data), built only from real stored
+  // data. Never fabricate a missing field (NO_FABRICATION_RULE product
+  // principle) — omit phone/address/image entirely when not on file.
+  let jsonLd = '';
+  if (isPublished) {
+    const localBusiness: Record<string, unknown> = {
+      '@context': 'https://schema.org',
+      '@type': 'LocalBusiness',
+      name: page.business_name,
+      url: pageUrl,
+    };
+    if (page.phone_number) localBusiness.telephone = page.phone_number;
+    if (page.address) {
+      localBusiness.address = { '@type': 'PostalAddress', streetAddress: page.address };
+    }
+    if (firstImage) localBusiness.image = firstImage;
+    jsonLd = `<script type="application/ld+json">${JSON.stringify(localBusiness).replace(/</g, '\\u003c')}</script>`;
+  }
+
   const ogTags = `
     <title>${escapeHtml(title)}</title>
+    <link rel="canonical" href="${escapeHtml(pageUrl)}" />
+    <meta name="robots" content="${robotsContent}" />
     <meta property="og:title" content="${escapeHtml(page.business_name as string)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:type" content="website" />
@@ -91,7 +122,8 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(page.business_name as string)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
-    ${firstImage ? `<meta name="twitter:image" content="${escapeHtml(firstImage)}" />` : ''}`;
+    ${firstImage ? `<meta name="twitter:image" content="${escapeHtml(firstImage)}" />` : ''}
+    ${jsonLd}`;
 
   const shell = await loadHtmlShell();
 
