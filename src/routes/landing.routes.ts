@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -20,7 +20,16 @@ const leadLimiter = rateLimit({
   message: 'יותר מדי שליחות בזמן קצר. נסו שוב מאוחר יותר.',
 });
 
+// Optional wizard intake step — one cheap Haiku call, its own (looser) budget so
+// it can never eat into the page-generation allowance above.
+const suggestLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 60,
+  message: 'יותר מדי בקשות בזמן קצר. נסו שוב מאוחר יותר.',
+});
+
 router.post('/', requireAuth, aiLimiter, handleUpload, createLandingPage);
+router.post('/suggest-questions', requireAuth, suggestLimiter, suggestQuestions); // must be before /:slug-style params
 router.get('/my-pages', requireAuth, getMyPages);   // must be before /:slug
 router.get('/my-leads', requireAuth, getMyLeads);   // must be before /:slug
 router.get('/:slug', optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner

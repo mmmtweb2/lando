@@ -17,6 +17,20 @@ If a concrete fact was not provided, write qualitative, non-numeric language ins
 "12 שנות ניסיון", "לקוחות מרוצים" instead of "500 לקוחות". When in doubt, leave the claim out entirely. This rule
 applies even if it makes the copy feel less impressive — a vague-but-true page beats a specific-but-fabricated one.`;
 
+// Companion to the rule above — NOT a relaxation of it. The wizard's optional
+// follow-up interview (see suggestIntakeQuestions / "פרטים נוספים שסופקו" in the
+// user-provided text) is designed to collect exactly the concrete facts the rule
+// above otherwise forces us to write around. When such a fact IS present, using
+// the vague fallback anyway is what makes every page read the same.
+const USE_PROVIDED_SPECIFICS_RULE = `USE THE SPECIFICS YOU WERE GIVEN (companion to the no-fabrication rule — it does NOT relax it):
+The rule above tells you to fall back to vague qualitative language ONLY when a concrete fact is missing.
+When a concrete detail IS present anywhere in the input — including any "פרטים נוספים שסופקו" / Q&A block in the
+user-provided text — use it VERBATIM instead of the vague substitute: write "12 שנות ניסיון" if the owner said 12
+years, "הגעה תוך שעה" if they said an hour, "החל מ-350₪" if they gave that price, and name the real areas/brands/hours
+they listed. Weave these specifics into hero copy, about text, service descriptions, benefits, FAQ answers and trust
+badges wherever they fit naturally — they are the difference between a generic page and this business's page.
+Never stretch, round, or extrapolate beyond what was actually written, and never invent a specific to fill a gap.`;
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 export type StructuralLayout = 'bento' | 'editorial' | 'split' | 'classic';
@@ -314,6 +328,8 @@ client interview — while staying strictly grounded in what the business owner 
 
 ${NO_FABRICATION_RULE}
 
+${USE_PROVIDED_SPECIFICS_RULE}
+
 LANGUAGE RULES (CRITICAL):
 - ALL consumer-visible text MUST be in natural, fluent Hebrew
 - Image prompts and imageKeywords MUST be in English
@@ -481,6 +497,8 @@ These sections exist to make a real, professional business feel more credible �
 invented specifics. Every claim must survive the business owner reading it and saying "yes, that's true."
 
 ${NO_FABRICATION_RULE}
+
+${USE_PROVIDED_SPECIFICS_RULE}
 
 LANGUAGE RULES (CRITICAL):
 - ALL text MUST be in natural, fluent Hebrew
@@ -877,5 +895,108 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
   } catch (err) {
     console.error('[AI] Generation failed, falling back to mock:', err);
     return getMockContent(input);
+  }
+}
+
+// ─── Intake interview: suggest short, niche-specific follow-up questions ──────
+//
+// WHY: the wizard collects very little real material (name + a one-line vibe +
+// optional free text), so NO_FABRICATION_RULE correctly forces the generator into
+// safe, qualitative language on every page — which is exactly what makes the copy
+// feel templated. The fix is a richer intake, not a looser prompt: 3-4 tiny,
+// business-specific questions whose (optional) answers become TRUE specifics the
+// generator is already allowed to use.
+//
+// This is a deliberately cheap, low-stakes call — Haiku, tiny token budget — and
+// it is entirely off the generation hot path: it runs only if the user actually
+// reaches the intake step, and every failure mode (no API key, API error, bad
+// JSON) degrades to a static fallback or an empty list. The wizard treats an
+// empty list as "skip this step", so page creation behaves exactly as before.
+
+export interface IntakeQuestionsInput {
+  business_name: string;
+  vibe?: string;
+  page_goal?: string;
+}
+
+const INTAKE_QUESTIONS_MODEL = 'claude-haiku-4-5';
+const MAX_INTAKE_QUESTIONS = 4;
+
+// Used when ANTHROPIC_API_KEY is unset (local dev), mirroring getMockContent.
+const MOCK_INTAKE_QUESTIONS = [
+  'כמה שנים אתם פעילים?',
+  'אילו אזורים אתם מכסים?',
+  'מה מחיר ההתחלה או טווח המחירים?',
+  'תוך כמה זמן אתם חוזרים ללקוח?',
+];
+
+function sanitizeQuestions(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((q): q is string => typeof q === 'string')
+    .map((q) => q.trim())
+    .filter((q) => q.length > 0 && q.length <= 80)
+    .slice(0, MAX_INTAKE_QUESTIONS);
+}
+
+export async function suggestIntakeQuestions(input: IntakeQuestionsInput): Promise<string[]> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+    console.warn('[AI:intake] ANTHROPIC_API_KEY not set — using mock intake questions');
+    return MOCK_INTAKE_QUESTIONS.slice(0, 3);
+  }
+
+  const system = `You help an Israeli landing-page builder interview a small-business owner.
+
+TASK: given a business, write 3-4 VERY SHORT Hebrew questions whose answers would be concrete, factual
+selling points on that business's landing page — the kind of specifics its customers actually decide on.
+
+RULES:
+- Hebrew only. Each question max 8 words, answerable in a few words (a number, a price, a time, a place, a name).
+- Ask ONLY about facts the owner can state off the top of their head. No essay questions, no "why" or "tell us about".
+- Make them specific to THIS niche — not a generic questionnaire.
+- Never ask for customer testimonials, ratings, awards or anything the owner would have to make up.
+- Return ONLY a JSON array of strings. No markdown, no explanation.
+
+EXAMPLES (style and specificity — never copy verbatim unless the niche truly matches):
+- Emergency plumber → ["מה זמן ההגעה הממוצע לקריאה?", "אילו אזורים אתם מכסים?", "מה מחיר ביקור הבית?", "אתם זמינים גם בלילה ובשבת?"]
+- Boutique bakery → ["באיזו שעה יוצא הלחם מהתנור?", "כמה זמן מראש מזמינים עוגת אירוע?", "יש אפשרויות ללא גלוטן?", "מה מחיר ההתחלה לעוגה?"]
+- Family law firm → ["כמה שנים אתם עוסקים בתחום?", "הפגישה הראשונה בתשלום?", "באילו בתי משפט אתם מייצגים?", "תוך כמה זמן חוזרים לפונה?"]
+- SaaS / digital product → ["מה המחיר החודשי ההתחלתי?", "כמה זמן לוקח ההטמעה?", "עם אילו מערכות יש אינטגרציה?", "יש תקופת ניסיון?"]
+- Nonprofit / donations → ["כמה מתנדבים פעילים אצלכם?", "מאיזו שנה העמותה פועלת?", "מה עושה תרומה של 100 ₪?", "באילו אזורים אתם פועלים?"]`;
+
+  const user = [
+    `Business name: ${input.business_name}`,
+    `Niche / description: ${input.vibe || '(not provided)'}`,
+    `Page goal: ${input.page_goal || 'lead_gen'}`,
+    ``,
+    `Return ONLY a JSON array of 3-4 Hebrew question strings.`,
+  ].join('\n');
+
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const r = await client.messages.create({
+      model: INTAKE_QUESTIONS_MODEL,
+      max_tokens: 300,
+      system,
+      messages: [{ role: 'user', content: user }],
+    });
+    let raw = r.content[0].type === 'text' ? r.content[0].text.trim() : '';
+    if (raw.startsWith('```')) {
+      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    }
+    const first = raw.indexOf('[');
+    const last = raw.lastIndexOf(']');
+    if (first !== -1 && last > first) raw = raw.slice(first, last + 1);
+
+    const questions = sanitizeQuestions(JSON.parse(raw));
+    console.log('[AI:intake] suggested', questions.length, 'questions for', input.business_name);
+    return questions;
+  } catch (err) {
+    // Never block or fail the wizard over an optional nicety.
+    console.error('[AI:intake] question suggestion failed — returning none:', err);
+    return [];
   }
 }
