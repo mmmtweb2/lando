@@ -15,6 +15,18 @@ interface PageRow {
   enable_form: boolean;
 }
 
+interface PaymentRow {
+  id: string;
+  created_at: string;
+  user_email: string;
+  purpose: string;
+  reference: string | null;
+  amount: number;
+  status: string;
+  sumit_payment_id: string | null;
+  paid_at: string | null;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
@@ -155,6 +167,47 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [user]);
 
+  const [reviewPayments, setReviewPayments] = useState<PaymentRow[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
+  const [paymentBusyId, setPaymentBusyId] = useState<string | null>(null);
+  const [paymentActionMsg, setPaymentActionMsg] = useState<Record<string, string>>({});
+
+  function loadReviewPayments() {
+    setPaymentsLoading(true);
+    authFetch('/api/admin/payments?status=needs_review')
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to load payments');
+        return r.json() as Promise<PaymentRow[]>;
+      })
+      .then(setReviewPayments)
+      .catch((e: Error) => setPaymentsError(e.message))
+      .finally(() => setPaymentsLoading(false));
+  }
+
+  useEffect(() => {
+    if (!user || denied) return;
+    loadReviewPayments();
+  }, [user, denied]);
+
+  async function handlePaymentAction(id: string, action: 'reverify' | 'force-activate') {
+    setPaymentBusyId(id);
+    setPaymentActionMsg((m) => ({ ...m, [id]: '' }));
+    try {
+      const r = await authFetch(`/api/admin/payments/${id}/${action}`, { method: 'POST' });
+      const data = await r.json().catch(() => ({})) as { status?: string; error?: string };
+      if (!r.ok) throw new Error(data.error ?? 'Action failed');
+      setPaymentActionMsg((m) => ({ ...m, [id]: data.status === 'paid' ? '✓ Granted' : `Still: ${data.status}` }));
+      if (data.status === 'paid') {
+        setReviewPayments((prev) => prev.filter((p) => p.id !== id));
+      }
+    } catch (e) {
+      setPaymentActionMsg((m) => ({ ...m, [id]: e instanceof Error ? e.message : 'Action failed' }));
+    } finally {
+      setPaymentBusyId(null);
+    }
+  }
+
   async function handleDelete() {
     if (!confirmDelete) return;
     setDeleteBusy(true);
@@ -251,6 +304,84 @@ export default function AdminDashboard() {
             <StatCard label="Uploaded Images" value={loading ? '—' : (sourceCount.upload ?? 0)} />
             <StatCard label="With Lead Form" value={loading ? '—' : pages.filter(p => p.enable_form).length} />
           </div>
+
+          {/* ── Payments needing review ────────────────────────────────────── */}
+          {(paymentsLoading || paymentsError || reviewPayments.length > 0) && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-slate-700 text-sm">Payments Needing Review</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    SUMIT verification didn't confirm these — check the payment in your SUMIT dashboard first,
+                    then Re-verify (if it was a transient issue) or Force-activate (once you've confirmed the
+                    charge manually).
+                  </p>
+                </div>
+                <button onClick={loadReviewPayments}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-[#2E63F6] hover:border-[#9DB0E8] transition flex-shrink-0">
+                  Refresh
+                </button>
+              </div>
+
+              {paymentsLoading ? (
+                <div className="py-10 text-center text-sm text-slate-400">Loading…</div>
+              ) : paymentsError ? (
+                <div className="py-10 text-center text-sm text-red-400">{paymentsError}</div>
+              ) : reviewPayments.length === 0 ? (
+                <div className="py-10 text-center text-sm text-slate-400">Nothing stuck — all clear.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">User</th>
+                        <th className="px-4 py-3">Purpose</th>
+                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3 hidden md:table-cell">SUMIT ID</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {reviewPayments.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-4 py-3.5 text-slate-500 text-xs">{formatDate(p.created_at)} {formatTime(p.created_at)}</td>
+                          <td className="px-4 py-3.5 font-mono text-xs text-slate-700">{p.user_email}</td>
+                          <td className="px-4 py-3.5 text-slate-600">{p.purpose}{p.reference ? ` (${p.reference})` : ''}</td>
+                          <td className="px-4 py-3.5 text-slate-700 font-semibold">₪{p.amount}</td>
+                          <td className="px-4 py-3.5 hidden md:table-cell text-slate-400 text-xs font-mono">{p.sumit_payment_id ?? '—'}</td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {paymentActionMsg[p.id] && (
+                                <span className="text-xs text-slate-500">{paymentActionMsg[p.id]}</span>
+                              )}
+                              <button
+                                disabled={paymentBusyId === p.id || !p.sumit_payment_id}
+                                onClick={() => handlePaymentAction(p.id, 'reverify')}
+                                title={!p.sumit_payment_id ? 'No SUMIT payment ID on record — nothing to re-verify against' : undefined}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#2E63F6] border border-[#9DB0E8] bg-[#EEF1FB] hover:bg-[#E4EAFB] transition disabled:opacity-40">
+                                Re-verify
+                              </button>
+                              <button
+                                disabled={paymentBusyId === p.id}
+                                onClick={() => {
+                                  if (window.confirm(`Force-grant ${p.purpose} to ${p.user_email} WITHOUT re-verifying with SUMIT? Only do this after confirming the charge yourself.`)) {
+                                    void handlePaymentAction(p.id, 'force-activate');
+                                  }
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 transition disabled:opacity-40">
+                                Force-activate
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Search + table ──────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">

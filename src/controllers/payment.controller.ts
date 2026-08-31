@@ -20,6 +20,7 @@ interface PaymentRow {
   reference: string | null;
   amount: number;
   status: string;
+  sumit_payment_id: string | null;
 }
 
 // ─── Start a payment → returns a SUMIT redirect URL ───────────────────────────
@@ -98,6 +99,40 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
   }
 }
 
+// Every query-param key SUMIT (or any proxy/CDN in front of it) might use for
+// the PaymentID, case- and separator-insensitive: normalize each key to
+// lowercase-alnum-only and match against "paymentid"/"ogpaymentid". This
+// replaced a short list of guessed exact names (kept as comments below for
+// context) after a real production payment failed verification because the
+// actual returned key didn't match any of them — we don't yet know the exact
+// key SUMIT used without seeing that request's logs, so this widens the net
+// instead of guessing another fixed string.
+function extractSumitPaymentId(query: Record<string, unknown>): string | undefined {
+  // Previously guessed exact names: OG-PaymentID, OGPaymentID, PaymentID,
+  // paymentid, og-paymentid, OGPaymentId, PaymentId.
+  for (const [key, value] of Object.entries(query)) {
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if ((normalized === 'paymentid' || normalized === 'ogpaymentid') && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+/** Grants the purchased value for an already-verified payment. Shared by the
+ * normal return-redirect flow and the admin re-verify/force-activate tools,
+ * so there's exactly one place that knows how to fulfil each purpose. */
+async function grantPaymentValue(pay: PaymentRow): Promise<boolean> {
+  if (pay.purpose === 'publish' && pay.reference) {
+    return (await publishPageById(pay.reference)) !== null;
+  } else if (pay.purpose === 'credits' && pay.reference) {
+    return (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
+  } else if (pay.purpose === 'plan' && pay.reference) {
+    return activatePlan(pay.user_email, pay.reference);
+  }
+  return false;
+}
+
 // ─── SUMIT redirects the browser here after payment ───────────────────────────
 export async function paymentReturn(req: Request, res: Response): Promise<void> {
   const clientUrl = (status: string) => `${APP_URL}/dashboard?payment=${status}`;
@@ -117,22 +152,33 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // The exact SUMIT return param carrying the PaymentID is confirmed against the
-  // test terminal — log everything so we can see it, and try the likely names.
+  // Always log the full raw query on every return — this is the only way to
+  // see exactly what SUMIT sent back when verification fails, since we have
+  // no direct log access outside this server.
   console.log('[PAYMENT RETURN] query params:', JSON.stringify(req.query));
-  const q = req.query as Record<string, string>;
-  const sumitPaymentId =
-    q['OG-PaymentID'] || q.OGPaymentID || q.PaymentID || q.paymentid || q['og-paymentid'] || q.OGPaymentId || q.PaymentId;
+  const sumitPaymentId = extractSumitPaymentId(req.query as Record<string, unknown>);
 
   let verified = false;
+  let verifyDetail = 'no matching PaymentID param in query';
   if (sumitPaymentId) {
     const p = await getPayment(sumitPaymentId);
-    if (p && p.valid && p.amount + 0.001 >= pay.amount) verified = true;
+    if (!p) {
+      verifyDetail = 'SUMIT getPayment lookup failed or returned no payment';
+    } else if (!p.valid) {
+      verifyDetail = `SUMIT reports ValidPayment=false (status: ${p.status ?? 'unknown'})`;
+    } else if (p.amount + 0.001 < pay.amount) {
+      verifyDetail = `amount mismatch: SUMIT reports ${p.amount}, expected >= ${pay.amount}`;
+    } else {
+      verified = true;
+    }
   }
 
   if (!verified) {
-    console.error('[PAYMENT RETURN] verification failed', { ref, sumitPaymentId: sumitPaymentId ?? 'MISSING' });
-    // Never grant on an unconfirmed payment — flag for review instead.
+    console.error('[PAYMENT RETURN] verification failed', { ref, sumitPaymentId: sumitPaymentId ?? 'MISSING', reason: verifyDetail, rawQuery: req.query });
+    // Never grant on an unconfirmed payment — flag for review instead. An
+    // admin can inspect this (GET /api/admin/payments?status=needs_review)
+    // and re-verify or force-activate it once the cause is understood —
+    // see admin.routes.ts.
     await supabase
       .from('payments')
       .update({ status: 'needs_review', sumit_payment_id: sumitPaymentId ? String(sumitPaymentId) : null })
@@ -141,15 +187,7 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Grant the purchased value.
-  let ok = false;
-  if (pay.purpose === 'publish' && pay.reference) {
-    ok = (await publishPageById(pay.reference)) !== null;
-  } else if (pay.purpose === 'credits' && pay.reference) {
-    ok = (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
-  } else if (pay.purpose === 'plan' && pay.reference) {
-    ok = await activatePlan(pay.user_email, pay.reference);
-  }
+  const ok = await grantPaymentValue(pay);
 
   await supabase
     .from('payments')
@@ -161,4 +199,66 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     .eq('id', ref);
 
   res.redirect(clientUrl(ok ? 'success' : 'review'));
+}
+
+// ─── Admin: inspect + manually resolve stuck payments ─────────────────────────
+// Until now a 'needs_review' payment (verification failed, or grantPaymentValue
+// itself failed) had NO recovery path except editing the DB by hand. These
+// give an admin (requireAdmin, see admin.routes.ts) a real tool: see what's
+// stuck and why, then either re-run verification (if the underlying SUMIT/
+// network issue was transient) or, after manually confirming the charge in
+// the SUMIT dashboard, force-grant the value without re-verification.
+
+export async function listReviewPayments(req: Request, res: Response): Promise<void> {
+  const status = (req.query.status as string) || 'needs_review';
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('status', status)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) { res.status(500).json({ error: error.message }); return; }
+  res.json(data);
+}
+
+export async function reverifyPayment(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const { data: payData } = await supabase.from('payments').select('*').eq('id', id).single();
+  const pay = payData as PaymentRow | null;
+  if (!pay) { res.status(404).json({ error: 'Payment not found' }); return; }
+  if (pay.status === 'paid') { res.json({ status: 'paid', note: 'already granted' }); return; }
+  if (!pay.sumit_payment_id) {
+    res.status(400).json({ error: 'No sumit_payment_id on record — nothing to re-verify against. Use force-activate instead if you have confirmed the charge manually.' });
+    return;
+  }
+
+  const p = await getPayment(pay.sumit_payment_id);
+  if (!p || !p.valid || p.amount + 0.001 < pay.amount) {
+    res.status(409).json({ error: 'Still not verifiable', detail: p ?? null });
+    return;
+  }
+
+  const ok = await grantPaymentValue(pay);
+  await supabase
+    .from('payments')
+    .update({ status: ok ? 'paid' : 'needs_review', paid_at: ok ? new Date().toISOString() : null })
+    .eq('id', id);
+  res.json({ status: ok ? 'paid' : 'needs_review' });
+}
+
+export async function forceActivatePayment(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const adminEmail = req.authEmail;
+  const { data: payData } = await supabase.from('payments').select('*').eq('id', id).single();
+  const pay = payData as PaymentRow | null;
+  if (!pay) { res.status(404).json({ error: 'Payment not found' }); return; }
+  if (pay.status === 'paid') { res.json({ status: 'paid', note: 'already granted' }); return; }
+
+  const ok = await grantPaymentValue(pay);
+  console.warn('[PAYMENT ADMIN] force-activate', { id, purpose: pay.purpose, user_email: pay.user_email, ok, by: adminEmail });
+  await supabase
+    .from('payments')
+    .update({ status: ok ? 'paid' : 'needs_review', paid_at: ok ? new Date().toISOString() : null })
+    .eq('id', id);
+  res.json({ status: ok ? 'paid' : 'needs_review' });
 }

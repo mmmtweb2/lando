@@ -81,13 +81,25 @@ export interface VerifiedPayment {
  * value when this returns { valid: true } and the amount covers what was due.
  */
 export async function getPayment(paymentId: number | string): Promise<VerifiedPayment | null> {
-  const r = await fetch(`${BASE}/billing/payments/get/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ Credentials: credentials(), PaymentID: Number(paymentId) }),
-  });
-  const json = (await r.json()) as SumitEnvelope<{ Payment?: { ValidPayment?: boolean; Amount?: number; Status?: string | null } }>;
-  if (json.Status !== 0 || !json.Data?.Payment) return null;
-  const pay = json.Data.Payment;
-  return { valid: Boolean(pay.ValidPayment), amount: pay.Amount ?? 0, status: pay.Status ?? undefined };
+  try {
+    const r = await fetch(`${BASE}/billing/payments/get/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ Credentials: credentials(), PaymentID: Number(paymentId) }),
+    });
+    const json = (await r.json()) as SumitEnvelope<{ Payment?: { ValidPayment?: boolean; Amount?: number; Status?: string | null } }>;
+    if (json.Status !== 0 || !json.Data?.Payment) {
+      console.error('[SUMIT] getPayment: non-success response', { paymentId, status: json.Status, error: json.UserErrorMessage ?? json.TechnicalErrorDetails });
+      return null;
+    }
+    const pay = json.Data.Payment;
+    return { valid: Boolean(pay.ValidPayment), amount: pay.Amount ?? 0, status: pay.Status ?? undefined };
+  } catch (e) {
+    // A network hiccup here must never crash the return handler — it should
+    // just fail closed (verified: false -> 'needs_review'), same as an
+    // explicit SUMIT error. Previously this fetch was unguarded, so a
+    // transient network error would throw out of paymentReturn entirely.
+    console.error('[SUMIT] getPayment: request failed', { paymentId, error: e instanceof Error ? e.message : e });
+    return null;
+  }
 }
