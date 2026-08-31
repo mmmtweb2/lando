@@ -1,5 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+// ─── Shared prompt fragments ───────────────────────────────────────────────────
+// This rule is injected into every prompt that can produce consumer-visible
+// copy — including single-section rewrites — because a business owner reading
+// a fabricated stat, award, or quote on their own page is the single worst
+// failure mode for this product. Keep this wording forceful and specific.
+const NO_FABRICATION_RULE = `NO FABRICATION — THE SINGLE MOST IMPORTANT RULE (this outranks every other instruction below):
+You may ONLY state facts that were explicitly given in the input (business name, niche/description, page goal,
+contact details, and any user-provided marketing text). You must NEVER invent, guess, or "round up":
+- specific numbers: customer/client counts, years in business, percentages, prices, ratings or star counts
+- named clients, case studies, partner companies, or real-sounding testimonial quotes/authors
+- awards, certifications, licenses, press mentions, or "as seen in" claims
+- specific dates, deadlines, or "since [year]" founding claims
+- guarantees or business-model claims (e.g. "free consultation", "money-back guarantee") unless stated in the input
+If a concrete fact was not provided, write qualitative, non-numeric language instead — e.g. "ניסיון בתחום" instead of
+"12 שנות ניסיון", "לקוחות מרוצים" instead of "500 לקוחות". When in doubt, leave the claim out entirely. This rule
+applies even if it makes the copy feel less impressive — a vague-but-true page beats a specific-but-fabricated one.`;
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 export type StructuralLayout = 'bento' | 'editorial' | 'split' | 'classic';
@@ -292,6 +309,10 @@ function buildCoreSystem(input: GenerateInput): string {
   return `You are an elite Hebrew copywriter and brand strategist for Israeli small businesses.
 
 MISSION: Generate the CORE IDENTITY and HERO sections of a landing page — palette, layout, hero copy, and services.
+The result must read as professional, benefit-led, and trustworthy — like copy a paid strategist wrote after a real
+client interview — while staying strictly grounded in what the business owner actually told you.
+
+${NO_FABRICATION_RULE}
 
 LANGUAGE RULES (CRITICAL):
 - ALL consumer-visible text MUST be in natural, fluent Hebrew
@@ -300,10 +321,10 @@ LANGUAGE RULES (CRITICAL):
 
 WORD DIET (STRICT — no exceptions):
 - heroTitle: maximum 7 Hebrew words
-- heroSubtitle: maximum 15 Hebrew words — one sharp, benefit-driven sentence
+- heroSubtitle: maximum 15 Hebrew words — one sharp, benefit-driven sentence that makes the core value proposition unmistakable
 - ctaText: exactly 3 to 4 Hebrew words
 - Each service description: maximum 20 Hebrew words — specific benefit, no fluff
-- aboutContent: 2-3 Hebrew sentences, drawn from user-provided text when available
+- aboutContent: 2-3 Hebrew sentences, drawn from user-provided text when available — confident, professional tone; state plainly what the business does and the concrete benefit to the customer, without inventing history or credentials it wasn't given
 - Do NOT use vague superlatives like "מוביל", "הטוב ביותר", "מקצועי" without a concrete reason
 - Each service description: Hebrew — max 20 words. Format as Action + Benefit. Example: "במקום X, קבלו Y". No passive voice.
 - seoTitle: max 60 characters — business name + primary keyword, written for search engines
@@ -313,8 +334,6 @@ ANTI-CLICHÉ RULE (CRITICAL — violations will be rejected):
 Banned words — NEVER use any of these in any Hebrew text field:
 "חדשני", "מקצועיות ללא פשרות", "יחס אישי", "מוביל בתחומו", "שירות אדיב", "פתרונות מתקדמים", "ניסיון רב שנים"
 If a banned word appears in your output, replace it with something concrete and specific.
-
-NO FABRICATION (CRITICAL): NEVER invent factual or quantitative claims that were not provided in the input — no specific customer counts, years of experience, ratings, awards, certifications, guarantees, or business-model claims (e.g. "free first consultation", "money-back"). If a fact was not given, use only qualitative, non-numeric language.
 
 INPUT COHERENCE: If the business description is incomprehensible, random characters, or has no discernible business meaning, set "detectedGoal" to exactly "UNCLEAR_INPUT" (still return valid JSON for the remaining fields).
 
@@ -458,6 +477,10 @@ function buildTrustSystem(input: GenerateInput): string {
   return `You are an elite Hebrew conversion copywriter for Israeli small businesses.
 
 MISSION: Generate TRUST and CONVERSION sections for a landing page — benefits, process, FAQ, testimonials, and a closing CTA line.
+These sections exist to make a real, professional business feel more credible — not to manufacture credibility with
+invented specifics. Every claim must survive the business owner reading it and saying "yes, that's true."
+
+${NO_FABRICATION_RULE}
 
 LANGUAGE RULES (CRITICAL):
 - ALL text MUST be in natural, fluent Hebrew
@@ -475,8 +498,6 @@ WORD DIET (STRICT — no exceptions):
 ANTI-CLICHÉ RULE (CRITICAL):
 Banned words — NEVER use any of these in any Hebrew text:
 "חדשני", "מקצועיות ללא פשרות", "יחס אישי", "מוביל בתחומו", "שירות אדיב", "פתרונות מתקדמים", "ניסיון רב שנים"
-
-NO FABRICATION (CRITICAL): NEVER invent factual or quantitative claims not provided in the input — no customer counts, years of experience, ratings, awards, certifications, or guarantees. If a fact was not given, use qualitative, non-numeric language only.
 
 SECTION RULES:
 - benefits: EXACTLY 3 items — concrete value, never invented facts, grounded in the business niche
@@ -673,6 +694,8 @@ export async function regenerateSectionText(
 
 MISSION: Rewrite ONLY the requested section of a landing page. Preserve all keys and JSON structure.
 Return ONLY a valid JSON object — no markdown fences, no explanation.
+
+${NO_FABRICATION_RULE}
 
 ${WORD_DIET_RULE}
 
