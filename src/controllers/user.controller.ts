@@ -149,11 +149,22 @@ export async function getPlan(req: Request, res: Response): Promise<void> {
   res.json({ status, plans: PLANS });
 }
 
-// ─── Credit pack purchase (mock checkout) ─────────────────────────────────────
+// ─── Credit pack purchase (mock checkout — DEV/TEST ONLY, see below) ──────────
 export async function purchaseCredits(req: Request, res: Response): Promise<void> {
-  const { email, pack } = req.body as { email?: string; pack?: string };
-  if (!email || !email.includes('@')) {
-    res.status(400).json({ error: 'Valid email required' });
+  // This endpoint uses processMockPayment(), which always "succeeds" without
+  // charging anything. It must never run in production — SUMIT
+  // (payment.controller.ts) is the real, verified checkout path. Previously
+  // this route also trusted req.body.email (spoofable) instead of the
+  // verified session; it now requires requireAuth (see routes) and uses that
+  // identity only, so it can no longer be used to credit an arbitrary account.
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ error: 'Mock checkout is disabled in production. Use the real checkout.' });
+    return;
+  }
+  const email = req.authEmail;
+  const { pack } = req.body as { pack?: string };
+  if (!email) {
+    res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
   const chosen = pack ? CREDIT_PACKS[pack] : undefined;

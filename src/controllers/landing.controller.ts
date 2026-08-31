@@ -504,7 +504,6 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       res.status(500).json({
         error: 'Internal Server Error',
         details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
       });
     }
   } catch (error) {
@@ -513,7 +512,6 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     res.status(500).json({
       error: 'Internal Server Error',
       details: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
     });
   }
 }

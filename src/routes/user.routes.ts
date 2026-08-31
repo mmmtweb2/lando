@@ -15,6 +15,6 @@ const purchaseLimiter = rateLimit({
 router.post('/auth', authUser);
 router.get('/credits', requireAuth, getCredits);
 router.get('/plan', requireAuth, getPlan);
-router.post('/credits/purchase', purchaseLimiter, purchaseCredits);
+router.post('/credits/purchase', purchaseLimiter, requireAuth, purchaseCredits);
 
 export default router;
