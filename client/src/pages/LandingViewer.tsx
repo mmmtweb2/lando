@@ -1862,9 +1862,14 @@ export default function LandingViewer() {
   }
 
   function renderTestimonials() {
-    const testimonials = ai_content.testimonials ?? [];
-    if (!testimonials.length) return null;
     const isPlaceholder = (quote: string) => quote.includes('הכנס כאן') || quote.includes('ציטוט אמיתי');
+    // Real visitors must never see the unfilled-placeholder quote the AI ships
+    // when the owner hasn't provided a real testimonial yet — only the owner,
+    // in edit mode, gets the "add a real quote" prompt card for it.
+    const testimonials = canEdit
+      ? (ai_content.testimonials ?? [])
+      : (ai_content.testimonials ?? []).filter((t) => !isPlaceholder(t.quote));
+    if (!testimonials.length) return null;
     return (
       <section className="relative overflow-hidden px-6 py-20"
         style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}>
