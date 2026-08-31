@@ -106,6 +106,35 @@ A dedicated "technical PM" agent did a fresh deep-dive (not a bug audit — the 
 
 **Other ranked ideas (not urgent, logged for later reference — see full list in session transcript if picked up again):** JSON-LD LocalBusiness schema + generated sitemap + canonical (near-free SEO, held pending the funnel work below since search isn't yet a proven channel); white-label Helmet title bug (agency perk silently overridden client-side); AI intake needs a richer wizard interview to produce specific (not generic-safe) copy — the real fix for "feels templated," not more layout variants; page-view/CTA-click tracking (blocks a real renewal conversation, since WhatsApp-CTA pages show 0 leads even when working); billing history in the dashboard; anonymous wizard funnel (defer until free-tier cost caps ship, to avoid inviting abuse). Explicitly deprioritized: A/B testing layout variants (traffic per page is too low to reach significance — build view tracking first, test in aggregate across all pages instead), full multi-language i18n (architecture is Hebrew/RTL/Israeli-payments throughout, not a locale flag).
 
+## Payment enforcement & trust hardening (2026-08-31, part 7)
+
+Moshe approved the full strategic roadmap above and additionally asked for a comprehensive payment-enforcement audit-and-fix across the whole project, plus decided drafts must not accept any visitor submissions. Ran 3 parallel worktree agents off `dev`; merged cleanly (one trivial conflict — two agents independently found and fixed the same white-label-title bug, kept the equivalent logic + added the SEO agent's canonical/robots tags). `tsc -b --noEmit` clean on the fully integrated tree, merged into `main`.
+
+**Payment/credit enforcement (flagship task) — fixed:**
+- Removed the unbounded free-tier credit mint (+10 credits per page creation, unmetered) entirely — no user-visible feature depended on it.
+- Found and fixed a **second, worse** credit mint in the same code path: a stale-read-then-write on the AI-image batch charge could restore credits spent concurrently elsewhere.
+- Proration fixed: upgrading/renewing now carries forward any remaining time on the existing `plan_expires_at` instead of blindly resetting to +1 year. Policy: always +1 year from whichever is later — existing expiry (if still future) or now. Documented in code; Dashboard now tells the customer this before payment.
+- **Most serious find**: `/api/payments/return` didn't bind a SUMIT PaymentID to the specific payment row being settled — a real paid transaction's ID could be replayed against a second pending purchase to grant it for free. Fixed with an ownership check + `migrations/010_payments_idempotency.sql` (a partial unique index) — **this migration still needs to be run in the Supabase SQL Editor**, same as 009. If it fails on a uniqueness violation, do NOT force it — that means a double-grant already happened; the migration file includes the query to find it.
+- Fixed a read-then-act race on the payment-return handler that could double-grant on concurrent/duplicate returns (now claims the row atomically via a `processing` status first).
+- Fixed: no refund when paid-for AI regeneration work failed (credits taken, nothing delivered, and a failed full-image-set regen could wipe existing images with an empty result).
+- Fixed: several other read-then-write credit races (referral bonuses, credit-pack purchases) that could lose or duplicate grants under concurrency.
+- Fixed: `regenerateText` trusted a client-supplied email for a money decision (same class of bug as the free-credit exploit fixed earlier today) — now derives owner from the page row.
+- Added pre-spend transparency: full-page AI rewrite and full image-set regen (irreversible, credit-costing) now confirm cost + consequence before firing; the Wizard's AI-image option now states its cost up front instead of deducting silently.
+- Draft pages: lead submission is now rejected server-side (was client-UI-only before), and the draft banner no longer lies about visibility — it now says what's actually true (visible to anyone with the link, submissions blocked until published).
+
+**Found but deliberately NOT fixed — needs Moshe's decision:**
+- Creation-time AI images cost 1 credit; regenerating the same set later costs 4 — a 4:1 pricing inconsistency against real fal.ai spend.
+- Referral bonus (+5/+5) is itself a mint vector (self-referral with throwaway emails).
+- `expires_at` still isn't enforced anywhere (ties into the renewal-system decision already logged above) — an expired page keeps serving AND frees up its plan slot.
+- How much of a draft page anonymous visitors should see (banner is now honest and submissions are blocked; the "should everything else be visible" scope question is still open, same as logged above).
+- A page that fails generation (`UNCLEAR_INPUT`) still burns a monthly-create slot for plan holders — a fix exists but adds a second race surface, flagged rather than shipped.
+
+**SEO + quick wins — all shipped:** JSON-LD `LocalBusiness` structured data (published pages only, no fabricated fields), a real generated `/sitemap.xml` (was static, one URL), canonical URL + `robots` meta (noindex on drafts), the white-label title leak (see above), and hiding the AI's unfilled testimonials placeholder from real visitors instead of showing them the raw "add a real quote" instruction text.
+
+**AI intake interview — shipped:** new optional wizard step (after the business-description step) that generates 3-4 short, business-specific follow-up questions via a cheap Haiku call (mock fallback when no API key), fully skippable, answers feed into the existing free-text channel into the generation prompt. Added a companion prompt rule (`NO_FABRICATION_RULE` itself untouched) telling the model to use a provided specific verbatim instead of falling back to vague language when one exists. New wizard step means the progress bar now shows 6 steps instead of 5 — worth a quick mobile-width visual check next time someone's in `Wizard.tsx`.
+
+Still not pushed to GitHub (main is ahead locally) or deployed. **Before deploying: run `migrations/010_payments_idempotency.sql` in Supabase, same as noted for 009.**
+
 ## Agent log
 
 Append one entry per work session — what you touched, what you decided, what's still open. Keep it to a few lines.
