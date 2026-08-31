@@ -1203,6 +1203,18 @@ export default function LandingViewer() {
 
   const divider = <div className="w-12 h-1 mx-auto mt-3" style={{ backgroundImage: `linear-gradient(to right, ${primary}, ${accent})`, borderRadius: '4px' }} />;
 
+  // Small uppercase eyebrow label above a section heading — adds a step of
+  // typographic hierarchy (kicker → heading → divider) matching the pattern
+  // already used in the bento services block, applied consistently across
+  // the other content sections for a more polished, editorial feel.
+  function sectionKicker(label: string) {
+    return (
+      <p className="text-xs font-black tracking-[0.25em] uppercase mb-3" style={{ color: primary }}>
+        {label}
+      </p>
+    );
+  }
+
   const ctaIcon =
     ctaMethod === 'whatsapp' ? <WhatsAppIcon size={20} />
     : ctaMethod === 'email' ? <Mail size={20} />
@@ -1652,6 +1664,7 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker('היתרונות שלנו')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
             {divider}
           </motion.div>
@@ -1706,6 +1719,7 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker('התהליך שלנו')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
             {divider}
           </motion.div>
@@ -1761,6 +1775,7 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker('לקוחות מספרים')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה לקוחות אומרים</h2>
             {divider}
           </motion.div>
@@ -1821,6 +1836,7 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-2xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-12">
+            {sectionKicker('עזרה ותשובות')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>שאלות נפוצות</h2>
             {divider}
           </motion.div>
@@ -2093,6 +2109,7 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker('היתרונות שלנו')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
             {divider}
           </motion.div>
@@ -2136,6 +2153,7 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker('התהליך שלנו')}
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
             {divider}
           </motion.div>
