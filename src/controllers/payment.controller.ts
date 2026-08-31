@@ -4,7 +4,7 @@ import { beginRedirect, getPayment, summitConfigured } from '../services/summit.
 import { publishPageById } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
 import { PLANS, PlanKey } from '../config/plans';
-import { activatePlan } from '../services/plan.service';
+import { activatePlan, canPublishUnderPlan } from '../services/plan.service';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -52,6 +52,26 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     if ((page as { status?: string }).status === 'published') {
       res.status(409).json({ error: 'הדף כבר מפורסם.' });
       return;
+    }
+    // Never open a 249₪ charge for something the customer's plan already
+    // covers. The client's publish flow tries the free plan-publish endpoint
+    // first, but that is a client-side courtesy — a direct call to this
+    // endpoint (or a stale tab) could still start a real charge for a page the
+    // user is entitled to publish for free.
+    try {
+      const { covered } = await canPublishUnderPlan(email);
+      if (covered) {
+        res.status(409).json({
+          coveredByPlan: true,
+          error: 'המסלול שלך כבר מכסה את פרסום הדף — אין צורך בתשלום. פרסמו את הדף מתוך הדף עצמו.',
+        });
+        return;
+      }
+    } catch (e) {
+      // Fail OPEN to the paid flow: if plan status can't be read we must not
+      // block a customer who genuinely needs to pay. publishLandingPage
+      // re-checks coverage on its own path anyway.
+      console.error('[PAYMENT] plan-coverage pre-check failed, continuing to paid flow:', e);
     }
     amount = PAGE_PRICE;
     itemName = `דף נחיתה - ${(page as { business_name?: string }).business_name ?? 'Pagey'}`;
@@ -119,11 +139,61 @@ function extractSumitPaymentId(query: Record<string, unknown>): string | undefin
   return undefined;
 }
 
+/**
+ * True when this SUMIT PaymentID has already been consumed by a DIFFERENT
+ * payment row.
+ *
+ * Why this matters: /api/payments/return is public and takes the SUMIT
+ * PaymentID straight off the query string. Without this check, a user who has
+ * genuinely paid once can start a second (cheaper or equal) payment, let it sit
+ * as 'pending', then hand-craft
+ *     /api/payments/return?ref=<second row>&OG-PaymentID=<first, real payment>
+ * — SUMIT would confirm that PaymentID as valid with a sufficient amount, and
+ * the second purchase would be granted for free. Binding each SUMIT PaymentID
+ * to exactly one payment row closes that replay.
+ *
+ * A partial unique index enforces the same rule at the DB level
+ * (migrations/010_payments_idempotency.sql); this check is what makes the
+ * failure a clean 'needs_review' instead of a 500.
+ */
+async function sumitPaymentIdAlreadyConsumed(sumitPaymentId: string, exceptRowId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('sumit_payment_id', sumitPaymentId)
+    .neq('id', exceptRowId)
+    .in('status', ['paid', 'processing'])
+    .limit(1);
+  if (error) {
+    // Fail CLOSED: if we cannot prove the id is unused, do not grant.
+    console.error('[PAYMENT] reuse check failed:', error.message);
+    return true;
+  }
+  return (data ?? []).length > 0;
+}
+
 /** Grants the purchased value for an already-verified payment. Shared by the
  * normal return-redirect flow and the admin re-verify/force-activate tools,
  * so there's exactly one place that knows how to fulfil each purpose. */
 async function grantPaymentValue(pay: PaymentRow): Promise<boolean> {
   if (pay.purpose === 'publish' && pay.reference) {
+    // Re-check ownership at grant time, not just at startPayment time: the
+    // grant path is also reachable from the admin tools, and the page could
+    // have been deleted or (in future) transferred in between. Publishing a
+    // page that is not the payer's would hand someone else's page a paid
+    // publish off this payment.
+    const { data: target } = await supabase
+      .from('landing_pages')
+      .select('owner_email')
+      .eq('id', pay.reference)
+      .single();
+    const targetOwner = ((target as { owner_email?: string | null } | null)?.owner_email ?? '').toLowerCase();
+    if (!targetOwner || targetOwner !== pay.user_email.trim().toLowerCase()) {
+      console.error('[PAYMENT] refusing to publish — page owner does not match payer', {
+        payment: pay.id, reference: pay.reference,
+      });
+      return false;
+    }
     return (await publishPageById(pay.reference)) !== null;
   } else if (pay.purpose === 'credits' && pay.reference) {
     return (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
@@ -168,6 +238,8 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
       verifyDetail = `SUMIT reports ValidPayment=false (status: ${p.status ?? 'unknown'})`;
     } else if (p.amount + 0.001 < pay.amount) {
       verifyDetail = `amount mismatch: SUMIT reports ${p.amount}, expected >= ${pay.amount}`;
+    } else if (await sumitPaymentIdAlreadyConsumed(sumitPaymentId, pay.id)) {
+      verifyDetail = `SUMIT PaymentID ${sumitPaymentId} was already used to settle another payment row`;
     } else {
       verified = true;
     }
@@ -187,8 +259,39 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // Claim the row ATOMICALLY before granting anything. The `pay.status ===
+  // 'paid'` early-return above is a read-then-act check: two returns arriving
+  // together (double-click on the redirect, a retry, a prefetching browser)
+  // could both read 'pending' and both call grantPaymentValue, granting the
+  // purchase twice off one charge. This conditional update only matches while
+  // the row is still un-granted, so exactly one request wins it.
+  const { data: claimed } = await supabase
+    .from('payments')
+    .update({ status: 'processing', sumit_payment_id: String(sumitPaymentId) })
+    .eq('id', ref)
+    // 'failed' is claimable too: a user who cancelled once (which marks the row
+    // failed) and then completed the payment on SUMIT comes back here with a
+    // genuinely verified payment. Verification and the PaymentID-reuse check
+    // have already passed at this point, so refusing would strand a real
+    // customer in 'review'.
+    .in('status', ['pending', 'needs_review', 'failed'])
+    .select('id')
+    .maybeSingle();
+
+  if (!claimed) {
+    // Another request is already handling (or has handled) this payment.
+    // Report whatever the authoritative row says rather than granting again.
+    const { data: fresh } = await supabase.from('payments').select('status').eq('id', ref).single();
+    const freshStatus = (fresh as { status?: string } | null)?.status;
+    res.redirect(clientUrl(freshStatus === 'paid' ? 'success' : 'review'));
+    return;
+  }
+
   const ok = await grantPaymentValue(pay);
 
+  // 'processing' is deliberately NOT a terminal state: if the process dies
+  // between the claim and here, the row stays visible to the admin recovery
+  // tool (listReviewPayments includes it) instead of silently disappearing.
   await supabase
     .from('payments')
     .update({
@@ -211,10 +314,15 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
 
 export async function listReviewPayments(req: Request, res: Response): Promise<void> {
   const status = (req.query.status as string) || 'needs_review';
+  // A row left at 'processing' is one whose grant was interrupted mid-flight
+  // (see paymentReturn). It needs exactly the same admin attention as
+  // 'needs_review', so the default view shows both — otherwise it would be
+  // invisible to every recovery path.
+  const statuses = status === 'needs_review' ? ['needs_review', 'processing'] : [status];
   const { data, error } = await supabase
     .from('payments')
     .select('*')
-    .eq('status', status)
+    .in('status', statuses)
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) { res.status(500).json({ error: error.message }); return; }
@@ -235,6 +343,10 @@ export async function reverifyPayment(req: Request, res: Response): Promise<void
   const p = await getPayment(pay.sumit_payment_id);
   if (!p || !p.valid || p.amount + 0.001 < pay.amount) {
     res.status(409).json({ error: 'Still not verifiable', detail: p ?? null });
+    return;
+  }
+  if (await sumitPaymentIdAlreadyConsumed(pay.sumit_payment_id, pay.id)) {
+    res.status(409).json({ error: 'This SUMIT PaymentID has already been used to settle another payment. Refusing to grant twice.' });
     return;
   }
 
