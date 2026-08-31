@@ -1014,9 +1014,17 @@ export default function Wizard() {
           ))}
         </div>
       </Field>
-      {goalLabels.externalLinkLabel && (
-        <Field label={goalLabels.externalLinkLabel} icon={<ExternalLink size={15} />}>
-          <input className={inputCls} placeholder={goalLabels.externalLinkPlaceholder} type="url" dir="ltr"
+      {/* Shown whenever the primary CTA points at a custom link — either because
+          the chosen goal (donation/direct_sale) suggests one, or because the user
+          explicitly picked "קישור חיצוני" as the CTA type above. Previously this
+          was gated on the goal alone, so picking "קישור חיצוני" for any other goal
+          (e.g. lead_gen) left no field to fill it in — a real dead-CTA bug. */}
+      {(goalLabels.externalLinkLabel || form.cta_type === 'link') && (
+        <Field
+          label={goalLabels.externalLinkLabel ?? 'קישור חיצוני *'}
+          icon={<ExternalLink size={15} />}
+        >
+          <input className={inputCls} placeholder={goalLabels.externalLinkPlaceholder || 'https://...'} type="url" dir="ltr"
             value={form.external_link} onChange={(e) => update('external_link', e.target.value)} />
         </Field>
       )}
