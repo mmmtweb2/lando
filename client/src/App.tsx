@@ -11,6 +11,7 @@ import MarketingLanding from './pages/MarketingLanding';
 import LandingViewer   from './pages/LandingViewer';
 import AdminDashboard  from './pages/AdminDashboard';
 import Login           from './pages/Login';
+import ResetPassword   from './pages/ResetPassword';
 import ClientPortal    from './pages/ClientPortal';
 import Dashboard       from './pages/Dashboard';
 
@@ -96,6 +97,7 @@ export default function App() {
             <Route path="/"          element={<MarketingLanding />} />
             <Route path="/create"    element={<Wizard />} />
             <Route path="/login"     element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/portal"    element={<ClientPortal />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />
             <Route path="/admin"     element={<AdminDashboard />} />
