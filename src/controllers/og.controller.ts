@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { supabase } from '../config/supabase';
+import { getPlanStatus } from '../services/plan.service';
 
 function escapeHtml(str: string): string {
   return str
@@ -36,7 +37,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url')
+    .select('business_name, ai_content, user_images, logo_url, owner_email')
     .eq('slug', slug)
     .single();
 
@@ -70,7 +71,15 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     (page.ai_content as { about?: { content?: string } })?.about?.content?.slice(0, 150) ||
     'דף נחיתה מקצועי';
 
-  const title = `${page.business_name} | Pagey`;
+  let whiteLabel = false;
+  if (page.owner_email) {
+    try {
+      whiteLabel = (await getPlanStatus(page.owner_email as string)).whiteLabel;
+    } catch (e) {
+      console.error('servePageWithOgTags: failed to resolve whiteLabel status', e);
+    }
+  }
+  const title = whiteLabel ? `${page.business_name}` : `${page.business_name} | Pagey`;
 
   const ogTags = `
     <title>${escapeHtml(title)}</title>

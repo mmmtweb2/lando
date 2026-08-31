@@ -113,6 +113,7 @@ interface LandingPage {
   expires_at?: string | null;
   page_goal?: string | null;
   external_link?: string | null;
+  whiteLabel?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -879,7 +880,7 @@ export default function LandingViewer() {
     </div>
   );
 
-  const { ai_content, business_name, phone_number, logo_url, user_images, facebook_url, instagram_url, enable_form, design_style } = page;
+  const { ai_content, business_name, phone_number, logo_url, user_images, facebook_url, instagram_url, enable_form, design_style, whiteLabel } = page;
 
   const canEdit =
     (user?.email && page.owner_email && user.email === page.owner_email) ||
@@ -2763,13 +2764,15 @@ export default function LandingViewer() {
         </div>
       </footer>
 
-      {/* Viral credit line */}
-      <div className={`bg-white py-4 text-center ${toolbarVisible ? 'pb-20' : ''}`}>
-        <a href="/" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
-          <LandoMark size={16} />
-          נוצר באמצעות Pagey
-        </a>
-      </div>
+      {/* Viral credit line — hidden for agency-plan owners who paid for white-label */}
+      {!whiteLabel && (
+        <div className={`bg-white py-4 text-center ${toolbarVisible ? 'pb-20' : ''}`}>
+          <a href="/" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
+            <LandoMark size={16} />
+            נוצר באמצעות Pagey
+          </a>
+        </div>
+      )}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
       <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
