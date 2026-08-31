@@ -12,8 +12,8 @@ import LandingViewer   from './pages/LandingViewer';
 import AdminDashboard  from './pages/AdminDashboard';
 import Login           from './pages/Login';
 import ResetPassword   from './pages/ResetPassword';
-import ClientPortal    from './pages/ClientPortal';
 import Dashboard       from './pages/Dashboard';
+import { authFetch } from './lib/api';
 
 // ─── Protected route (Supabase auth) ─────────────────────────────────────────
 
@@ -33,7 +33,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 // ─── Auth bridge ──────────────────────────────────────────────────────────────
 // When a user authenticates via Supabase Magic Link, we also call the legacy
 // REST API to create/fetch their UserProfile and store it in UserContext.
-// This keeps the Wizard, LandingViewer edit mode, and ClientPortal working
+// This keeps the Wizard and LandingViewer edit mode working
 // without any changes to those components.
 
 function SyncAuth() {
@@ -55,7 +55,14 @@ function SyncAuth() {
       return;
     }
 
-    if (portalUser) {
+    // A cached profile only counts if it actually belongs to the currently
+    // authenticated Supabase user. Without this check, a stale profile left
+    // in localStorage from a PREVIOUS account on a shared/kiosk browser would
+    // be reused as-is for a newly logged-in different account (wrong
+    // affiliate_code/credits shown, wrong referral code shared) — the cache
+    // is per-browser, not per-account, so it must be re-validated on every
+    // auth change rather than trusted just because *something* is cached.
+    if (portalUser && portalUser.email === authUser.email) {
       setIsAuthReady(true);
       return;
     }
@@ -70,10 +77,10 @@ function SyncAuth() {
     };
 
     const pendingRef = localStorage.getItem('pending_ref') ?? undefined;
-    fetch('/api/users/auth', {
+    authFetch('/api/users/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: authUser.email, ref: pendingRef }),
+      body: JSON.stringify({ ref: pendingRef }),
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((profile: UserProfile | null) => { setUser(profile ?? fallback); })
@@ -98,7 +105,6 @@ export default function App() {
             <Route path="/create"    element={<Wizard />} />
             <Route path="/login"     element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/portal"    element={<ClientPortal />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />
             <Route path="/admin"     element={<AdminDashboard />} />
             <Route

@@ -134,19 +134,31 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
     return;
   }
 
+  const ownerEmail = (data as { owner_email?: string | null }).owner_email ?? null;
+
   // Deliver the agency plan's white-label perk: hide the "Made with Pagey" badge
   // on the public page when the owner has an active plan with whiteLabel:true.
   let whiteLabel = false;
-  if (data.owner_email) {
+  if (ownerEmail) {
     try {
-      const status = await getPlanStatus(data.owner_email);
+      const status = await getPlanStatus(ownerEmail);
       whiteLabel = status.whiteLabel;
     } catch (e) {
       console.error('getLandingPage: failed to resolve whiteLabel status', e);
     }
   }
 
-  res.json({ ...data, whiteLabel });
+  // This is a PUBLIC, unauthenticated endpoint — any visitor to a published
+  // page hits it. owner_email must never be sent in the response (it was
+  // previously leaked via `...data`, readable by any visitor via devtools).
+  // isOwner (computed from the caller's own verified identity, via
+  // optionalAuth on the route) replaces the old client-side
+  // `user.email === page.owner_email` comparison, which needed owner_email
+  // on the client to work.
+  const { owner_email: _ownerEmail, ...publicData } = data as Record<string, unknown>;
+  const isOwner = !!(req.authEmail && ownerEmail && req.authEmail === ownerEmail.toLowerCase());
+
+  res.json({ ...publicData, whiteLabel, isOwner });
 }
 
 const VALID_IMAGE_SOURCES = ['none', 'upload', 'stock', 'ai'] as const;

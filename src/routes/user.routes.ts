@@ -12,7 +12,7 @@ const purchaseLimiter = rateLimit({
   message: 'יותר מדי ניסיונות רכישה. נסו שוב מאוחר יותר.',
 });
 
-router.post('/auth', authUser);
+router.post('/auth', requireAuth, authUser);
 router.get('/credits', requireAuth, getCredits);
 router.get('/plan', requireAuth, getPlan);
 router.post('/credits/purchase', purchaseLimiter, requireAuth, purchaseCredits);

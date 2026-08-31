@@ -42,10 +42,17 @@ function generateAffiliateCode(): string {
 }
 
 export async function authUser(req: Request, res: Response): Promise<void> {
-  const { email, ref } = req.body as { email?: string; ref?: string };
+  // Identity comes ONLY from the verified Supabase session (req.authEmail, set
+  // by requireAuth) — never from the request body. Previously this endpoint
+  // trusted a client-supplied email with no auth check at all, so anyone could
+  // fetch (or silently create) any other user's profile — including their
+  // affiliate_code, credits, earned_coupons and referral info — just by
+  // guessing/knowing their email address.
+  const { ref } = req.body as { ref?: string };
+  const email = req.authEmail;
 
-  if (!email || !email.includes('@')) {
-    res.status(400).json({ error: 'Valid email required' });
+  if (!email) {
+    res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
 

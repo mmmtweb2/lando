@@ -3,7 +3,7 @@ import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMy
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
-import { requireAuth, requireOwnPage } from '../middleware/auth.middleware';
+import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -23,7 +23,7 @@ const leadLimiter = rateLimit({
 router.post('/', requireAuth, aiLimiter, handleUpload, createLandingPage);
 router.get('/my-pages', requireAuth, getMyPages);   // must be before /:slug
 router.get('/my-leads', requireAuth, getMyLeads);   // must be before /:slug
-router.get('/:slug', getLandingPage);  // public read
+router.get('/:slug', optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner
 
 // ── Destructive / owner-only actions ──────────────────────────────────────────
 // requireAuth verifies the caller's identity from a real Supabase token;

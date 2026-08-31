@@ -107,7 +107,7 @@ interface LandingPage {
   instagram_url: string | null;
   enable_form: boolean;
   design_style?: string | null;
-  owner_email?: string | null;
+  isOwner?: boolean;
   status?: 'draft' | 'published' | null;
   published_at?: string | null;
   expires_at?: string | null;
@@ -118,8 +118,9 @@ interface LandingPage {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildWhatsAppUrl(phone: string, message: string): string {
+function buildWhatsAppUrl(phone: string, message: string): string | null {
   const digits = phone.replace(/\D/g, '');
+  if (!digits) return null;
   const intl = digits.startsWith('972') ? digits : `972${digits.replace(/^0/, '')}`;
   return `https://wa.me/${intl}?text=${encodeURIComponent(message)}`;
 }
@@ -395,7 +396,7 @@ function ImageSelectorModal({
       const fd = new FormData();
       fd.append('image', file);
       fd.append('slot', slot);
-      const r = await fetch(`/api/landing/${pageId}/update-image-upload`, { method: 'POST', body: fd });
+      const r = await authFetch(`/api/landing/${pageId}/update-image-upload`, { method: 'POST', body: fd });
       if (!r.ok) {
         const body = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? 'שגיאה בהעלאת התמונה');
@@ -850,7 +851,7 @@ export default function LandingViewer() {
 
   useEffect(() => {
     if (!slug) return;
-    fetch(`/api/landing/${slug}`)
+    authFetch(`/api/landing/${slug}`)
       .then((r) => {
         if (r.status === 404) throw new Error('הדף לא נמצא');
         if (!r.ok) throw new Error('שגיאה בטעינת הדף');
@@ -883,7 +884,7 @@ export default function LandingViewer() {
   const { ai_content, business_name, phone_number, logo_url, user_images, facebook_url, instagram_url, enable_form, design_style, whiteLabel } = page;
 
   const canEdit =
-    (user?.email && page.owner_email && user.email === page.owner_email) ||
+    !!page.isOwner ||
     sessionStorage.getItem('admin_authed') === 'true';
 
   // status === 'draft' means explicitly drafted; null/undefined = legacy rows (treat as published)
@@ -1191,11 +1192,17 @@ export default function LandingViewer() {
     (ai_content.contact?.cta_type as 'whatsapp' | 'email' | 'phone' | 'link' | undefined)
     ?? (page.external_link && (page.page_goal === 'donation' || page.page_goal === 'direct_sale') ? 'link' : 'whatsapp');
 
+  // Cascades to whatever contact method the business actually provided,
+  // instead of ever producing a dead wa.me/tel: link when the chosen
+  // method's field is empty (e.g. cta_type is 'whatsapp'/'phone' but no
+  // phone was ever set) — '#' is the last resort only when NOTHING usable
+  // was provided at all.
   const primaryCtaHref =
-    ctaMethod === 'email' && ctaEmail ? `mailto:${ctaEmail}`
-    : ctaMethod === 'phone' ? `tel:${phone}`
+    (ctaMethod === 'email' && ctaEmail ? `mailto:${ctaEmail}`
+    : ctaMethod === 'phone' && phone ? `tel:${phone}`
     : ctaMethod === 'link' && page.external_link ? page.external_link
-    : waUrl;
+    : waUrl)
+    ?? (ctaEmail ? `mailto:${ctaEmail}` : phone ? `tel:${phone}` : page.external_link ?? '#');
 
   // Non-WhatsApp methods use the brand-color styling; WhatsApp keeps its green.
   const useExternalLink = ctaMethod !== 'whatsapp';
@@ -2802,8 +2809,8 @@ export default function LandingViewer() {
         {useExternalLink ? <ExternalLinkIcon size={24} /> : <WhatsAppIcon size={26} />}
       </a>
 
-      {/* Secondary WhatsApp FAB — only shown on external-link pages as a contact fallback */}
-      {useExternalLink && (
+      {/* Secondary WhatsApp FAB — only shown on external-link pages as a contact fallback, and only when a real WhatsApp number exists */}
+      {useExternalLink && waUrl && (
         <a href={waUrl} target="_blank" rel="noopener noreferrer"
           aria-label="פתח שיחת WhatsApp"
           className={`fixed ${fabBottom} left-24 z-50 flex items-center justify-center w-12 h-12 rounded-full text-white shadow-lg transition-all duration-300`}

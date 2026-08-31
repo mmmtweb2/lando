@@ -40,6 +40,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 }
 
 /**
+ * Like requireAuth, but never rejects: if a valid bearer token is present it
+ * attaches req.authEmail, otherwise it just calls next() with no identity set.
+ * Use this on PUBLIC routes that want to know "is the caller logged in as X"
+ * (e.g. to compute an isOwner flag) without requiring login to view the page.
+ */
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const token = extractBearer(req);
+  if (token) {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (!error && data.user?.email) {
+      req.authEmail = data.user.email.toLowerCase();
+    }
+  }
+  next();
+}
+
+/**
  * Requires the authenticated user to be an admin (user_profiles.is_admin = true).
  * Must run after requireAuth.
  */

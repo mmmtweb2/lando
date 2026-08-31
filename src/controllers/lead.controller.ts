@@ -2,6 +2,15 @@ import { Request, Response } from 'express';
 import { Resend } from 'resend';
 import { supabase } from '../config/supabase';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── Email template ───────────────────────────────────────────────────────────
 
 function waLink(rawPhone: string): string {
@@ -43,7 +52,7 @@ function buildEmailHtml(p: {
         <td style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);padding:28px 32px;">
           <p style="margin:0;color:rgba(255,255,255,0.65);font-size:11px;letter-spacing:2px;text-transform:uppercase;">Pagey</p>
           <h1 style="margin:8px 0 4px;color:#fff;font-size:22px;font-weight:800;">🎉 ליד חדש!</h1>
-          <p style="margin:0;color:rgba(255,255,255,0.85);font-size:14px;">פנייה חדשה התקבלה מדף הנחיתה של <strong>${p.businessName}</strong></p>
+          <p style="margin:0;color:rgba(255,255,255,0.85);font-size:14px;">פנייה חדשה התקבלה מדף הנחיתה של <strong>${escapeHtml(p.businessName)}</strong></p>
         </td>
       </tr>
 
@@ -51,10 +60,10 @@ function buildEmailHtml(p: {
         <td style="padding:28px 32px 8px;">
           <p style="margin:0 0 18px;color:#64748b;font-size:14px;">להלן פרטי הפונה — חזרו אליהם בהקדם:</p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            ${row('שם מלא', p.name)}
-            ${row('טלפון', p.phone, true)}
-            ${p.email ? row('אימייל', p.email, true) : ''}
-            ${p.message ? row('הודעה', p.message) : ''}
+            ${row('שם מלא', escapeHtml(p.name))}
+            ${row('טלפון', escapeHtml(p.phone), true)}
+            ${p.email ? row('אימייל', escapeHtml(p.email), true) : ''}
+            ${p.message ? row('הודעה', escapeHtml(p.message)) : ''}
           </table>
         </td>
       </tr>
@@ -71,7 +80,7 @@ function buildEmailHtml(p: {
       <tr>
         <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;">
           <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">
-            מופעל על ידי Pagey · דף הנחיתה של ${p.businessName}
+            מופעל על ידי Pagey · דף הנחיתה של ${escapeHtml(p.businessName)}
           </p>
         </td>
       </tr>
@@ -119,7 +128,7 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
 
   if (insertErr) {
     console.error('[LEAD] insert error:', insertErr.message);
-    res.status(500).json({ error: insertErr.message });
+    res.status(500).json({ error: 'שליחת הפנייה נכשלה. נסו שוב מאוחר יותר.' });
     return;
   }
 
