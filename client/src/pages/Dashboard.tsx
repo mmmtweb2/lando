@@ -50,7 +50,7 @@ interface PlanDef {
   whiteLabel: boolean;
 }
 
-type ActiveTab = 'pages' | 'leads';
+type ActiveTab = 'pages' | 'leads' | 'settings';
 
 // ─── Motion variants ──────────────────────────────────────────────────────────
 
@@ -66,9 +66,9 @@ function formatDate(iso: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function NavItem({ icon, label, active = false }: { icon: ReactNode; label: string; active?: boolean }) {
+function NavItem({ icon, label, active = false, onClick }: { icon: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
-    <button className={`flex items-center gap-2.5 w-full rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+    <button onClick={onClick} className={`flex items-center gap-2.5 w-full rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${
       active
         ? 'bg-[#E4EAFB] text-[#1E4FD6]'
         : 'text-slate-500 hover:bg-[#EEF1FB] hover:text-[#1E4FD6]'
@@ -476,10 +476,13 @@ export default function Dashboard() {
         </div>
 
         <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
-          <NavItem icon={<LayoutDashboard size={17} />} label="סקירה כללית" active />
-          <NavItem icon={<Globe size={17} />} label="הדפים שלי" />
-          <NavItem icon={<Users size={17} />} label="לידים" />
-          <NavItem icon={<FileText size={17} />} label="הגדרות" />
+          {/* "סקירה כללית" has no separate view of its own — the pages tab already
+              doubles as the dashboard's overview (stats + plan + pages grid), so this
+              item is just another way in to the same 'pages' tab. */}
+          <NavItem icon={<LayoutDashboard size={17} />} label="סקירה כללית" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
+          <NavItem icon={<Globe size={17} />} label="הדפים שלי" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
+          <NavItem icon={<Users size={17} />} label="לידים" active={activeTab === 'leads'} onClick={() => setActiveTab('leads')} />
+          <NavItem icon={<FileText size={17} />} label="הגדרות" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
 
         <div className="px-3 py-4 border-t border-[#DCE4F7]">
@@ -608,91 +611,129 @@ export default function Dashboard() {
             </p>
           </motion.div>
 
-          {/* Stats */}
-          <motion.div
-            variants={cardContainer} initial="hidden" animate="visible"
-            className="grid grid-cols-2 sm:grid-cols-3 gap-4"
-          >
-            <StatCard
-              label="סה״כ דפים"
-              value={dataLoading ? '—' : String(pages.length)}
-              icon={<Globe size={20} />}
-              color="text-[#2E63F6]"
-              bg="bg-[#EEF1FB]/60"
-            />
-            <StatCard
-              label="דפים פעילים"
-              value={dataLoading ? '—' : String(publishedPages.length)}
-              icon={<CheckCircle size={20} />}
-              color="text-emerald-600"
-              bg="bg-emerald-50/60"
-            />
-            <StatCard
-              label="לידים שהתקבלו"
-              value={dataLoading ? '—' : String(leads.length)}
-              icon={<Users size={20} />}
-              color="text-orange-500"
-              bg="bg-orange-50/60"
-            />
-          </motion.div>
+          {activeTab === 'settings' ? (
+            /* ── Settings (billing/plan/credits) ─────────────────────────── */
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18 }}
+              className="flex flex-col gap-5"
+            >
+              <div>
+                <h3 className="text-lg font-black text-slate-800">הגדרות חשבון וחיוב</h3>
+                <p className="text-sm text-slate-500 mt-1">המסלול והקרדיטים שלך, במקום אחד.</p>
+              </div>
 
-          {/* Plan + usage */}
-          {plan && <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />}
-
-          {/* Referral */}
-          {portalUser && <ReferralCard user={portalUser} />}
-
-          {/* Set a password (for users who signed up via magic link) */}
-          <SetPasswordCard />
-
-          {/* Tab bar + tab content */}
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <TabBar
-                active={activeTab}
-                onChange={setActiveTab}
-                pageCount={pages.length}
-                leadCount={leads.length}
-              />
-              {activeTab === 'pages' && (
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  transition={springTap}
-                  className="flex-shrink-0"
-                >
-                  <Link
-                    to="/create"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[#2E63F6] px-5 py-2.5 text-sm font-black text-white shadow-md hover:bg-[#1E4FD6] transition"
-                  >
-                    <Plus size={15} /> דף חדש ✨
-                  </Link>
-                </motion.div>
+              {plan ? (
+                <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />
+              ) : (
+                <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 text-sm text-slate-400">
+                  טוען נתוני מסלול…
+                </div>
               )}
-            </div>
 
-            <AnimatePresence mode="wait">
+              <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-black text-slate-800">יתרת קרדיטים</span>
+                  <WalletBadge email={user.email} refreshKey={walletKey} />
+                </div>
+                <button
+                  onClick={() => setShowBuyCredits(true)}
+                  className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
+                  + טען קרדיטים
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <>
+              {/* Stats */}
               <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.18 }}
+                variants={cardContainer} initial="hidden" animate="visible"
+                className="grid grid-cols-2 sm:grid-cols-3 gap-4"
               >
-                {activeTab === 'pages' ? (
-                  dataLoading ? <PageGridSkeleton /> : <PageGrid pages={pages} onDelete={handleDeletePage} />
-                ) : (
-                  dataLoading ? (
-                    <div className="flex items-center justify-center py-16">
-                      <Loader2 size={24} className="animate-spin text-[#8CA0D6]" />
-                    </div>
-                  ) : (
-                    <LeadsTable leads={leads} />
-                  )
-                )}
+                <StatCard
+                  label="סה״כ דפים"
+                  value={dataLoading ? '—' : String(pages.length)}
+                  icon={<Globe size={20} />}
+                  color="text-[#2E63F6]"
+                  bg="bg-[#EEF1FB]/60"
+                />
+                <StatCard
+                  label="דפים פעילים"
+                  value={dataLoading ? '—' : String(publishedPages.length)}
+                  icon={<CheckCircle size={20} />}
+                  color="text-emerald-600"
+                  bg="bg-emerald-50/60"
+                />
+                <StatCard
+                  label="לידים שהתקבלו"
+                  value={dataLoading ? '—' : String(leads.length)}
+                  icon={<Users size={20} />}
+                  color="text-orange-500"
+                  bg="bg-orange-50/60"
+                />
               </motion.div>
-            </AnimatePresence>
-          </div>
+
+              {/* Plan + usage */}
+              {plan && <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />}
+
+              {/* Referral */}
+              {portalUser && <ReferralCard user={portalUser} />}
+
+              {/* Set a password (for users who signed up via magic link) */}
+              <SetPasswordCard />
+
+              {/* Tab bar + tab content */}
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <TabBar
+                    active={activeTab}
+                    onChange={setActiveTab}
+                    pageCount={pages.length}
+                    leadCount={leads.length}
+                  />
+                  {activeTab === 'pages' && (
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      transition={springTap}
+                      className="flex-shrink-0"
+                    >
+                      <Link
+                        to="/create"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#2E63F6] px-5 py-2.5 text-sm font-black text-white shadow-md hover:bg-[#1E4FD6] transition"
+                      >
+                        <Plus size={15} /> דף חדש ✨
+                      </Link>
+                    </motion.div>
+                  )}
+                </div>
+
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={activeTab}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    {activeTab === 'pages' ? (
+                      dataLoading ? <PageGridSkeleton /> : <PageGrid pages={pages} onDelete={handleDeletePage} />
+                    ) : (
+                      dataLoading ? (
+                        <div className="flex items-center justify-center py-16">
+                          <Loader2 size={24} className="animate-spin text-[#8CA0D6]" />
+                        </div>
+                      ) : (
+                        <LeadsTable leads={leads} />
+                      )
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </>
+          )}
 
         </main>
       </div>
