@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, FileText, Users, LogOut,
-  CheckCircle, Clock, Trash2,
+  CheckCircle, Clock, Trash2, Menu, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -324,6 +324,7 @@ export default function Dashboard() {
   const [plansCatalog, setPlansCatalog] = useState<Record<string, PlanDef>>({});
   const [showPlans, setShowPlans] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
   useEffect(() => {
@@ -456,6 +457,15 @@ export default function Dashboard() {
     }
   }
 
+  // Shared nav item definitions — desktop sidebar and mobile drawer both drive
+  // the same `activeTab` state via these, so there is only ever one nav model.
+  const navItems: { icon: ReactNode; label: string; tab: ActiveTab }[] = [
+    { icon: <LayoutDashboard size={17} />, label: 'סקירה כללית', tab: 'pages' },
+    { icon: <Globe size={17} />, label: 'הדפים שלי', tab: 'pages' },
+    { icon: <Users size={17} />, label: 'לידים', tab: 'leads' },
+    { icon: <FileText size={17} />, label: 'הגדרות', tab: 'settings' },
+  ];
+
   return (
     <div className="min-h-screen bg-[#EEF1FB] flex" dir="rtl">
 
@@ -495,6 +505,67 @@ export default function Dashboard() {
         </div>
       </aside>
 
+      {/* ── Mobile nav drawer ────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <>
+            <motion.div
+              key="mobile-nav-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-[90] bg-black/50 lg:hidden"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <motion.aside
+              key="mobile-nav-drawer"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+              className="fixed inset-y-0 right-0 z-[95] w-72 max-w-[80vw] bg-white border-l border-[#DCE4F7] flex flex-col shadow-2xl lg:hidden"
+              dir="rtl"
+            >
+              <div className="px-5 py-5 border-b border-[#DCE4F7] flex items-center justify-between">
+                <Link to="/" className="flex items-center gap-2" onClick={() => setMobileNavOpen(false)}>
+                  <LandoMark size={30} />
+                  <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Pagey</span>
+                </Link>
+                <button
+                  onClick={() => setMobileNavOpen(false)}
+                  aria-label="סגור תפריט"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
+                {navItems.map((item, i) => (
+                  <NavItem
+                    key={i}
+                    icon={item.icon}
+                    label={item.label}
+                    active={activeTab === item.tab}
+                    onClick={() => { setActiveTab(item.tab); setMobileNavOpen(false); }}
+                  />
+                ))}
+              </nav>
+
+              <div className="px-3 py-4 border-t border-[#DCE4F7]">
+                <button
+                  onClick={() => { setMobileNavOpen(false); handleLogout(); }}
+                  className="flex items-center gap-2 w-full rounded-2xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
+                >
+                  <LogOut size={16} /> יציאה
+                </button>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* ── Main area ────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
 
@@ -517,6 +588,13 @@ export default function Dashboard() {
               aria-label="יציאה"
             >
               <LogOut size={15} />
+            </button>
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="lg:hidden flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#2E63F6] transition"
+              aria-label="פתח תפריט"
+            >
+              <Menu size={18} />
             </button>
           </div>
         </header>
