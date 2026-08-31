@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { generateAiContent, regenerateSectionText, checkBusinessCoherence, type AiContent } from '../services/ai.service';
+import { generateAiContent, regenerateSectionText, checkBusinessCoherence, suggestIntakeQuestions, type AiContent } from '../services/ai.service';
 import { processAndSave, generateFalImage } from '../services/image.service';
 import { checkAndDeductCredits } from '../services/credits.service';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
@@ -179,6 +179,45 @@ function buildServiceImagePrompt(subject: string, imageStyle: string | undefined
     return `Professional cinematic photograph of ${subject}, photorealistic, rich natural lighting, shallow depth of field, no text, no watermark, landscape orientation.`;
   }
   return `A sleek, modern 3D icon of ${subject}, glassmorphism style, minimalist UI asset, vibrant lighting, solid clean background matching hex ${primaryColorHex}. No text.`;
+}
+
+/**
+ * POST /api/landing/suggest-questions
+ *
+ * Optional intake step of the creation wizard: given what the owner already typed
+ * (business name + niche/vibe + page goal), returns 3-4 tiny, niche-specific
+ * follow-up questions. Their answers are appended by the client to
+ * `user_provided_text`, so the generator gets REAL specifics instead of the
+ * safe-but-generic language NO_FABRICATION_RULE otherwise forces.
+ *
+ * Deliberately best-effort: it never 500s and never blocks page creation — a
+ * failure just returns an empty list and the wizard skips the step, leaving the
+ * existing generation flow byte-for-byte unchanged.
+ */
+export async function suggestQuestions(req: Request, res: Response): Promise<void> {
+  try {
+    const { business_name, vibe, page_goal } = req.body as {
+      business_name?: string;
+      vibe?: string;
+      page_goal?: string;
+    };
+
+    if (!business_name || !business_name.trim()) {
+      res.status(400).json({ error: 'business_name is required' });
+      return;
+    }
+
+    const questions = await suggestIntakeQuestions({
+      business_name: business_name.trim().slice(0, 200),
+      vibe: vibe?.trim().slice(0, 500),
+      page_goal: page_goal?.trim().slice(0, 50),
+    });
+
+    res.json({ questions });
+  } catch (err) {
+    console.error('[LANDING] suggestQuestions failed — returning empty list:', err);
+    res.json({ questions: [] });
+  }
 }
 
 export async function createLandingPage(req: Request, res: Response): Promise<void> {

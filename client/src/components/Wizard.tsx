@@ -58,7 +58,10 @@ interface LandingPageRecord {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const STEPS = ['מטרת הדף', 'פרטי העסק', 'לוגו', 'קשר ולינקים', 'תמונות'];
+const STEPS = ['מטרת הדף', 'פרטי העסק', 'פרטים מדויקים', 'לוגו', 'קשר ולינקים', 'תמונות'];
+
+// Index of the optional AI-generated intake-interview step (see IntakeQuestionsStep).
+const INTAKE_STEP = 2;
 
 interface GoalLabels {
   businessName: string;
@@ -799,6 +802,15 @@ export default function Wizard() {
   const [result, setResult] = useState<LandingPageRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGuidingQuestions, setShowGuidingQuestions] = useState(false);
+  // ── Optional AI intake interview (step 2) ───────────────────────────────────
+  // Purely additive: questions are fetched only when the user actually reaches
+  // the step, and every failure path leaves `intakeQuestions` empty, in which
+  // case the step shows a "you can skip this" note and generation runs on
+  // exactly the same input it used before this feature existed.
+  const [intakeQuestions, setIntakeQuestions] = useState<string[]>([]);
+  const [intakeAnswers, setIntakeAnswers] = useState<Record<string, string>>({});
+  const [intakeLoading, setIntakeLoading] = useState(false);
+  const intakeFetchedFor = useRef<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -821,6 +833,39 @@ export default function Wizard() {
     }, 200);
     return () => clearTimeout(t);
   }, [loading]);
+
+  // Fetch the follow-up questions lazily, the first time the user lands on the
+  // intake step for a given business description. Never awaited by anything on
+  // the submit path — if it is slow, fails, or is blocked by the browser, the
+  // step simply stays empty and the user moves on.
+  useEffect(() => {
+    if (step !== INTAKE_STEP) return;
+    const key = `${form.business_name.trim()}|${form.vibe.trim()}|${form.page_goal}`;
+    if (!form.business_name.trim()) return;
+    if (intakeFetchedFor.current === key) return;
+    intakeFetchedFor.current = key;
+
+    let cancelled = false;
+    setIntakeLoading(true);
+    authFetch('/api/landing/suggest-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_name: form.business_name.trim(),
+        vibe: form.vibe.trim(),
+        page_goal: form.page_goal || undefined,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : { questions: [] }))
+      .then((body: { questions?: string[] }) => {
+        if (cancelled) return;
+        setIntakeQuestions(Array.isArray(body.questions) ? body.questions.slice(0, 4) : []);
+      })
+      .catch(() => { if (!cancelled) setIntakeQuestions([]); })
+      .finally(() => { if (!cancelled) setIntakeLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [step, form.business_name, form.vibe, form.page_goal]);
 
   if (!isAuthReady || !user) return null;
 
@@ -866,7 +911,20 @@ export default function Wizard() {
       fd.append('enable_form', String(form.enable_form));
       fd.append('include_testimonials', String(form.include_testimonials));
       fd.append('owner_email', user.email);
-      if (form.user_provided_text.trim()) fd.append('user_provided_text', form.user_provided_text.trim());
+      // Merge the optional intake answers into the SAME free-text channel the
+      // generator already reads (`user_provided_text`) rather than adding a new
+      // data path — unanswered questions are dropped, and if the user skipped the
+      // step entirely this is byte-for-byte what the wizard sent before.
+      const answered = intakeQuestions
+        .map((q) => [q, (intakeAnswers[q] ?? '').trim()] as const)
+        .filter(([, a]) => a !== '');
+      const enrichedText = [
+        form.user_provided_text.trim(),
+        answered.length
+          ? ['פרטים נוספים שסופקו:', ...answered.map(([q, a]) => `- ${q} ${a}`)].join('\n')
+          : '',
+      ].filter(Boolean).join('\n\n');
+      if (enrichedText) fd.append('user_provided_text', enrichedText);
       if (form.email.trim())          fd.append('email', form.email.trim());
       if (form.facebook_url.trim())   fd.append('facebook_url', form.facebook_url.trim());
       if (form.instagram_url.trim())  fd.append('instagram_url', form.instagram_url.trim());
@@ -905,6 +963,7 @@ export default function Wizard() {
       form.vibe.trim() !== '' &&
       form.phone_number.trim() !== '' &&
       form.design_style !== '',
+    true, // intake interview — always skippable
     true,
     true,
     true,
@@ -976,7 +1035,41 @@ export default function Wizard() {
       </Field>
     </Step>,
 
-    // ── Step 2: Logo + Brand colors ───────────────────────────────────────────
+    // ── Step 2: Optional AI intake interview ──────────────────────────────────
+    <Step
+      key="step-intake"
+      title="עוד כמה פרטים שיהפכו את הדף לשלכם"
+      subtitle="שאלות קצרות שהתאמנו לעסק שלכם — כל תשובה הופכת למשפט מדויק בדף במקום לניסוח כללי. הכל אופציונלי, אפשר לדלג."
+    >
+      {intakeLoading ? (
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-100 bg-slate-50 py-8 text-sm text-slate-500">
+          <Loader2 size={16} className="animate-spin text-indigo-500" />
+          מכינים שאלות שמתאימות לעסק שלכם…
+        </div>
+      ) : intakeQuestions.length === 0 ? (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-6 text-center">
+          <p className="text-sm text-slate-500">לא הצלחנו להכין שאלות הפעם — אפשר פשוט להמשיך הלאה.</p>
+        </div>
+      ) : (
+        <>
+          {intakeQuestions.map((q) => (
+            <Field key={q} label={q} icon={<Sparkles size={15} />}>
+              <input
+                className={inputCls}
+                placeholder="תשובה קצרה — אפשר להשאיר ריק"
+                value={intakeAnswers[q] ?? ''}
+                onChange={(e) => setIntakeAnswers((prev) => ({ ...prev, [q]: e.target.value }))}
+              />
+            </Field>
+          ))}
+          <p className="text-xs text-slate-400 leading-snug">
+            עונים רק על מה שבטוחים בו. Pagey לעולם לא ימציא נתונים שלא מסרתם — לכן כל פרט אמיתי כאן שווה משפט מדויק בדף.
+          </p>
+        </>
+      )}
+    </Step>,
+
+    // ── Step 3: Logo + Brand colors ───────────────────────────────────────────
     <Step key="step-logo" title="לוגו ומיתוג" subtitle="עיצוב חזותי לדף שלכם (הכל אופציונלי)">
       <LogoUpload
         file={form.logo}
@@ -997,7 +1090,7 @@ export default function Wizard() {
       />
     </Step>,
 
-    // ── Step 3: Contact & Links ───────────────────────────────────────────────
+    // ── Step 4: Contact & Links ───────────────────────────────────────────────
     <Step key="step-contact" title="קשר ולינקים" subtitle="פרטי קשר ורשתות חברתיות (הכל אופציונלי)">
       <Field label="כפתור הפעולה הראשי בדף יפנה אל:" icon={<ExternalLink size={15} />}>
         <div className="grid grid-cols-2 gap-2">
@@ -1052,7 +1145,7 @@ export default function Wizard() {
       />
     </Step>,
 
-    // ── Step 4: Images ────────────────────────────────────────────────────────
+    // ── Step 5: Images ────────────────────────────────────────────────────────
     <Step key="step-images" title="תמונות" subtitle="האם תרצו לשלב תמונות בדף?">
       <div className="grid grid-cols-2 gap-2">
         {[
