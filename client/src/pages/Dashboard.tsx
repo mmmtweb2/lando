@@ -376,7 +376,7 @@ export default function Dashboard() {
 
         // Plan + usage (non-blocking for the rest of the dashboard).
         try {
-          const planRes = await authFetch('/api/user/plan');
+          const planRes = await authFetch('/api/users/plan');
           if (planRes.ok) {
             const pd = await planRes.json() as { status: PlanStatus; plans: Record<string, PlanDef> };
             if (!cancelled) { setPlan(pd.status); setPlansCatalog(pd.plans); }
