@@ -74,6 +74,10 @@ export async function countActivePages(email: string): Promise<number> {
 export async function getPlanStatus(email: string): Promise<PlanStatus> {
   const row = await loadPlanRow(email);
   const { def, active } = resolvePlan(row);
+  // The creation cap actually enforced by consumeMonthlyCreate falls back to
+  // the free tier's own cap whenever there's no active paid plan — mirror
+  // that here so the dashboard shows the true number, not a lapsed plan's.
+  const effectiveDef = active ? def : PLANS.free;
   const activePages = await countActivePages(email);
   const samePeriod = row.period_key === currentPeriodKey();
   return {
@@ -83,7 +87,7 @@ export async function getPlanStatus(email: string): Promise<PlanStatus> {
     expiresAt: active ? row.plan_expires_at : null,
     maxActivePages: def.maxActivePages,
     activePages,
-    monthlyCreate: def.monthlyCreate,
+    monthlyCreate: effectiveDef.monthlyCreate,
     createdThisPeriod: samePeriod ? row.pages_created_period ?? 0 : 0,
     whiteLabel: active && def.whiteLabel,
   };
@@ -109,15 +113,18 @@ export async function canPublishUnderPlan(
 }
 
 /**
- * Enforce + record the monthly page-creation cap for PLAN HOLDERS.
- * Free users (monthlyCreate === 0) and admins are never capped.
+ * Enforce + record the monthly page-creation cap. Admins are never capped.
+ * An active paid plan uses its own monthlyCreate; a free account — or a paid
+ * account whose plan has lapsed — falls back to the free tier's cap. Either
+ * way, monthlyCreate <= 0 means "no cap" for whichever tier is in effect.
  * Throws Error('monthly_create_limit') when the cap is hit.
  */
 export async function consumeMonthlyCreate(email: string): Promise<void> {
   let row = await loadPlanRow(email);
   if (row.is_admin) return;
   const { def, active } = resolvePlan(row);
-  if (!active || def.monthlyCreate <= 0) return; // cap only applies to active paid plans
+  const effectiveDef = active ? def : PLANS.free;
+  if (effectiveDef.monthlyCreate <= 0) return;
 
   const period = currentPeriodKey();
 
@@ -133,7 +140,7 @@ export async function consumeMonthlyCreate(email: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const samePeriod = row.period_key === period;
     const used = samePeriod ? row.pages_created_period ?? 0 : 0;
-    if (used >= def.monthlyCreate) {
+    if (used >= effectiveDef.monthlyCreate) {
       throw new Error('monthly_create_limit');
     }
 

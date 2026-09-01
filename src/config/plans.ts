@@ -30,7 +30,7 @@ export const PLANS: Record<PlanDef['key'], PlanDef> = {
     key: 'free',
     label: 'חינם',
     maxActivePages: 0, // free users pay 249₪ per published page (existing flow)
-    monthlyCreate: 0, // 0 = plan cap not enforced for free (draft creation stays open)
+    monthlyCreate: 5, // free tier's own real cap — 5 new pages/month (Moshe's call, 2026-08-31: close the abuse surface the credit-mint fix didn't fully cover)
     monthlyCredits: 0,
     priceYear: 0,
     whiteLabel: false,
