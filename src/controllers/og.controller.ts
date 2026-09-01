@@ -50,6 +50,21 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     return;
   }
 
+  // Draft pages are pre-payment/pre-publish and now only viewable by their
+  // owner (enforced in landing.controller.ts's getLandingPage). This route
+  // has no way to check ownership — it's hit by unauthenticated link-preview
+  // bots (WhatsApp/Facebook/etc.) and by the owner's own first HTML load
+  // alike, before any JS/auth runs. So treat a draft exactly like "not
+  // found" here too: real business name/description/image must never appear
+  // in a shareable link preview before the owner has chosen to publish. The
+  // owner's own browser still gets the real draft content a moment later,
+  // once the SPA hydrates and calls the (now owner-gated) page-data API.
+  if ((page as { status?: string | null }).status === 'draft') {
+    const shell = await loadHtmlShell();
+    res.status(200).setHeader('Content-Type', 'text/html').send(shell);
+    return;
+  }
+
   // Parse first image URL
   let firstImage: string = '';
   try {

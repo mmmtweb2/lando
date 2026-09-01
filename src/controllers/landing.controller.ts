@@ -158,6 +158,27 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   const { owner_email: _ownerEmail, ...publicData } = data as Record<string, unknown>;
   const isOwner = !!(req.authEmail && ownerEmail && req.authEmail === ownerEmail.toLowerCase());
 
+  // Draft pages are pre-payment/pre-publish — Moshe's explicit decision is that
+  // only the owner (or an admin) should be able to view one at all, not "visible
+  // to anyone with the link, minus the lead form" as it was before. A random
+  // visitor hitting a draft slug now gets exactly the 404 they'd get for a slug
+  // that doesn't exist — no signal that a page exists but isn't published yet.
+  if ((data as { status?: string | null }).status === 'draft' && !isOwner) {
+    let isAdminViewer = false;
+    if (req.authEmail) {
+      const { data: prof } = await supabase
+        .from('user_profiles')
+        .select('is_admin')
+        .eq('email', req.authEmail)
+        .single();
+      isAdminViewer = !!prof?.is_admin;
+    }
+    if (!isAdminViewer) {
+      res.status(404).json({ error: 'Landing page not found' });
+      return;
+    }
+  }
+
   res.json({ ...publicData, whiteLabel, isOwner });
 }
 
