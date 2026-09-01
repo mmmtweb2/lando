@@ -475,12 +475,13 @@ export default function MarketingLanding() {
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold">מחיר פשוט והוגן</h2>
           <GlowBar />
-          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים — או במנוי, אם בונים הרבה.</p>
+          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים — פעם אחת, בלי מנוי.</p>
         </div>
 
-        {/* Single-page (pay-per-page) + two subscription tiers for people who build
-            many pages. Plan numbers mirror server config (src/config/plans.ts) —
-            keep in sync if you change prices/limits there. */}
+        {/* Single page (unchanged, 249₪ one-time) + two one-time page bundles.
+            Subscriptions were withdrawn 2026-09-01 — nothing here renews, and
+            no card is kept on file. Numbers mirror the server config
+            (src/config/billing.ts); keep in sync if prices change there. */}
         <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-5 items-stretch">
 
           {/* Single page — pay per publish */}
@@ -488,7 +489,7 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">249</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ דף לשנה</span>
+              <span className="text-sm text-slate-400 mr-1">/ דף, חד־פעמי</span>
             </div>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', 'עריכות תוכן, צבעים ותמונות ב-AI', 'טופס לידים ואזור אישי', 'חידוש שנתי — 99 ₪ בלבד'].map((f) => (
@@ -500,41 +501,47 @@ export default function MarketingLanding() {
             </Link>
           </div>
 
-          {/* Freelancer — highlighted */}
-          <div className="rounded-3xl border-2 p-7 shadow-xl bg-white flex flex-col relative" style={{ borderColor: PRIMARY }}>
-            <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>למי שבונה הרבה</span>
-            <h3 className="font-bold text-lg text-slate-800">פרילנסר</h3>
+          {/* 5-page bundle */}
+          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
+            <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">1,490</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ שנה</span>
+              <span className="text-4xl font-extrabold">930</span><span className="text-lg font-bold">₪</span>
+              <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
             </div>
+            <p className="mt-2 text-sm font-bold text-emerald-600">186 ₪ לדף — חיסכון של 25%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['עד 10 דפים פעילים — בלי תשלום לכל דף', '30 דפים חדשים בכל חודש', '30 קרדיטי AI בכל חידוש', 'טופס לידים ואזור אישי לכל דף'].map((f) => (
+              {['5 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '50 קרדיטי AI במתנה', 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
             <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
-              התחילו — הפעלה מהאזור האישי
+              לרכישה — מהאזור האישי
             </Link>
           </div>
 
-          {/* Agency */}
-          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
-            <h3 className="font-bold text-lg text-slate-800">סוכנות</h3>
+          {/* 10-page bundle — highlighted */}
+          <div className="rounded-3xl border-2 p-7 shadow-xl bg-white flex flex-col relative" style={{ borderColor: PRIMARY }}>
+            <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>הכי משתלם</span>
+            <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">3,990</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ שנה</span>
+              <span className="text-4xl font-extrabold">1,250</span><span className="text-lg font-bold">₪</span>
+              <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
             </div>
+            <p className="mt-2 text-sm font-bold text-emerald-600">125 ₪ לדף — חצי ממחיר דף בודד</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['עד 40 דפים פעילים ללקוחות', '200 דפים חדשים בכל חודש', '150 קרדיטי AI בכל חידוש', 'הסרת מיתוג Pagey מהדפים'].map((f) => (
+              {['10 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '100 קרדיטי AI במתנה', 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
             <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
-              התחילו — הפעלה מהאזור האישי
+              לרכישה — מהאזור האישי
             </Link>
           </div>
         </div>
+
+        <p className="mt-8 text-center text-sm text-slate-500 max-w-2xl mx-auto">
+          אין מנוי ואין חיוב חוזר. חבילת דפים היא רכישה חד־פעמית — כל דף שמפרסמים מנכה דף אחד מהיתרה, והיתרה נשארת בחשבון עד שתשתמשו בה.
+        </p>
       </Section>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
@@ -548,7 +555,7 @@ export default function MarketingLanding() {
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
           <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
-          <FaqItem q="אני בונה הרבה דפים — יש מסלול משתלם?" a="כן. מנוי שנתי (פרילנסר או סוכנות) מאפשר להחזיק כמה דפים פעילים בלי לשלם 249 ₪ לכל דף — במחיר נמוך בהרבה לדף. מפעילים אותו מהאזור האישי." />
+          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה 930 ₪ (186 ₪ לדף) וחבילת 10 דפים 1,250 ₪ (125 ₪ לדף — חצי ממחיר דף בודד, וגם בלי מיתוג Pagey על הדפים). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. רוכשים מהאזור האישי." />
           <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
         </div>
       </Section>

@@ -28,25 +28,27 @@ interface PageRow {
   expires_at: string | null;
 }
 
-interface PlanStatus {
-  plan: 'free' | 'freelancer' | 'agency';
+// Shape of GET /api/users/plan since 2026-09-01: subscriptions are gone,
+// replaced by a never-expiring page-publish balance (see src/config/billing.ts).
+interface AccountStatus {
+  tier: 'free' | 'paid';
   label: string;
-  active: boolean;
-  expiresAt: string | null;
-  maxActivePages: number;
+  /** Page-publish balance — publishing a page costs exactly 1. Never expires. */
+  pageCredits: number;
+  /** Lifetime page credits ever bought (drives the monthly creation cap tier). */
+  pageCreditsTotal: number;
   activePages: number;
   monthlyCreate: number;
   createdThisPeriod: number;
   whiteLabel: boolean;
 }
 
-interface PlanDef {
-  key: 'free' | 'freelancer' | 'agency';
+interface BundleDef {
+  key: 'bundle5' | 'bundle10';
   label: string;
-  maxActivePages: number;
-  monthlyCreate: number;
-  monthlyCredits: number;
-  priceYear: number;
+  pages: number;
+  price: number;
+  aiCredits: number;
   whiteLabel: boolean;
 }
 
@@ -107,8 +109,8 @@ function UsageBar({ used, total }: { used: number; total: number }) {
   );
 }
 
-function PlanCard({ plan, onUpgrade }: { plan: PlanStatus; onUpgrade: () => void }) {
-  const isPaid = plan.plan !== 'free' && plan.active;
+function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: () => void }) {
+  const hasBalance = plan.pageCredits > 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -116,47 +118,53 @@ function PlanCard({ plan, onUpgrade }: { plan: PlanStatus; onUpgrade: () => void
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-black text-slate-800">המסלול שלי</span>
-          <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${isPaid ? 'bg-[#E4EAFB] text-[#1E4FD6]' : 'bg-slate-100 text-slate-500'}`}>
-            {plan.label}
-          </span>
+          <span className="text-sm font-black text-slate-800">יתרת הדפים שלי</span>
+          {plan.whiteLabel && (
+            <span className="text-xs font-bold rounded-full px-2.5 py-0.5 bg-[#E4EAFB] text-[#1E4FD6]">
+              ללא מיתוג Pagey
+            </span>
+          )}
         </div>
         <button
-          onClick={onUpgrade}
+          onClick={onBuyBundle}
           className="inline-flex items-center gap-1 rounded-full bg-[#2E63F6] hover:bg-[#1E4FD6] text-white text-xs font-bold px-3 py-1.5 transition"
         >
-          {isPaid ? 'שינוי מסלול' : 'שדרוג למסלול'}
+          {hasBalance ? 'רכישת דפים נוספים' : 'רכישת חבילת דפים'}
         </button>
       </div>
 
-      {isPaid ? (
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500">דפים פעילים</span>
-              <span className="font-bold text-slate-700">{plan.activePages} / {plan.maxActivePages}</span>
-            </div>
-            <UsageBar used={plan.activePages} total={plan.maxActivePages} />
-          </div>
-          {plan.monthlyCreate > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">נוצרו החודש</span>
-                <span className="font-bold text-slate-700">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
-              </div>
-              <UsageBar used={plan.createdThisPeriod} total={plan.monthlyCreate} />
-            </div>
-          )}
-        </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-3xl font-black text-slate-800">{plan.pageCredits}</span>
+        <span className="text-sm text-slate-500">דפים זמינים לפרסום</span>
+      </div>
+
+      {hasBalance ? (
+        <p className="text-sm text-slate-500">
+          כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.
+        </p>
       ) : (
         <p className="text-sm text-slate-500">
-          במסלול החינמי משלמים 249 ₪ לכל דף שמפרסמים. מנוי שנתי מאפשר להחזיק כמה דפים פעילים במחיר משתלם בהרבה לדף.
+          פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).
         </p>
       )}
 
-      {isPaid && plan.expiresAt && (
-        <p className="text-[11px] text-slate-400">המנוי בתוקף עד {formatDate(plan.expiresAt)}</p>
-      )}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500">דפים באוויר</span>
+            <span className="font-bold text-slate-700">{plan.activePages}</span>
+          </div>
+        </div>
+        {plan.monthlyCreate > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">דפים שנוצרו החודש</span>
+              <span className="font-bold text-slate-700">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
+            </div>
+            <UsageBar used={plan.createdThisPeriod} total={plan.monthlyCreate} />
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -320,8 +328,9 @@ export default function Dashboard() {
   const [buyMsg, setBuyMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [walletKey, setWalletKey] = useState(0);
   const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
-  const [plan, setPlan] = useState<PlanStatus | null>(null);
-  const [plansCatalog, setPlansCatalog] = useState<Record<string, PlanDef>>({});
+  const [plan, setPlan] = useState<AccountStatus | null>(null);
+  const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
+  const [singlePagePrice, setSinglePagePrice] = useState(249);
   const [showPlans, setShowPlans] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -344,11 +353,13 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, []);
 
-  // Deep link from the "limit reached" prompt on a landing page (Publish
-  // flow) — open the plan-picker directly instead of leaving the user to
-  // find it themselves.
+  // Deep link from the publish/paywall prompt on a landing page — open the
+  // bundle picker directly instead of leaving the user to find it themselves.
+  // `upgrade=1` is still honoured so old links (and any bookmarked tab) keep
+  // working after the rename to `bundles=1`.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('upgrade') !== '1') return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('bundles') !== '1' && q.get('upgrade') !== '1') return;
     setShowPlans(true);
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
@@ -388,8 +399,14 @@ export default function Dashboard() {
         try {
           const planRes = await authFetch('/api/users/plan');
           if (planRes.ok) {
-            const pd = await planRes.json() as { status: PlanStatus; plans: Record<string, PlanDef> };
-            if (!cancelled) { setPlan(pd.status); setPlansCatalog(pd.plans); }
+            const pd = await planRes.json() as {
+              status: AccountStatus; bundles: Record<string, BundleDef>; singlePagePrice?: number;
+            };
+            if (!cancelled) {
+              setPlan(pd.status);
+              setBundlesCatalog(pd.bundles);
+              if (pd.singlePagePrice) setSinglePagePrice(pd.singlePagePrice);
+            }
           }
         } catch { /* plan card just won't render */ }
 
@@ -428,14 +445,14 @@ export default function Dashboard() {
     navigate('/login', { replace: true });
   }
 
-  async function handleUpgrade(planKey: 'freelancer' | 'agency') {
+  async function handleBuyBundle(bundleKey: 'bundle5' | 'bundle10') {
     if (!user?.email || upgrading) return;
     setUpgrading(true);
     try {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'plan', reference: planKey }),
+        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -643,44 +660,43 @@ export default function Dashboard() {
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50" onClick={() => !upgrading && setShowPlans(false)}>
             <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl p-6 flex flex-col gap-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-extrabold text-slate-900">בחירת מסלול</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">רכישת חבילת דפים</h3>
                 {!upgrading && <button onClick={() => setShowPlans(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
               </div>
-              <p className="text-sm text-slate-500">מנוי שנתי למי שבונה הרבה דפים — פרסום דפים ללא תשלום נפרד לכל דף, עד למכסת הדפים הפעילים של המסלול.</p>
-              {/* Say what happens to the time already paid for BEFORE the user
-                  is sent to the payment page. Matches the carry-forward policy
-                  implemented in activatePlan() (src/services/plan.service.ts):
-                  a purchase made while a plan is still valid adds a year on top
-                  of the existing expiry instead of resetting it. */}
-              {plan?.active && plan.expiresAt && (
+              <p className="text-sm text-slate-500">
+                דף בודד עולה {singlePagePrice} ₪, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
+                בלי מנוי, בלי חידוש, בלי תאריך תפוגה. היתרה נשארת בחשבון עד שתשתמשו בה.
+              </p>
+              {plan && plan.pageCredits > 0 && (
                 <p className="text-sm rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2">
-                  המסלול הנוכחי שלך בתוקף עד {new Date(plan.expiresAt).toLocaleDateString('he-IL')}. הזמן שנותר לא הולך לאיבוד — רכישת מסלול עכשיו מוסיפה שנה נוספת על גבי התאריך הזה.
+                  יש לך כרגע {plan.pageCredits} דפים זמינים לפרסום. רכישת חבילה נוספת מתווספת ליתרה הקיימת — שום דבר לא הולך לאיבוד.
                 </p>
               )}
               <div className="grid sm:grid-cols-2 gap-3">
-                {(['freelancer', 'agency'] as const).map((key) => {
-                  const p = plansCatalog[key];
-                  if (!p) return null;
-                  const current = plan?.plan === key && plan.active;
-                  const highlight = key === 'agency';
+                {(['bundle5', 'bundle10'] as const).map((key) => {
+                  const b = bundlesCatalog[key];
+                  if (!b) return null;
+                  const perPage = Math.round(b.price / b.pages);
+                  const savePct = Math.round((1 - b.price / (b.pages * singlePagePrice)) * 100);
+                  const highlight = key === 'bundle10';
                   return (
                     <div key={key} className={`flex flex-col gap-3 p-5 rounded-2xl border-2 ${highlight ? 'border-[#2E63F6] bg-[#EEF1FB]/50' : 'border-slate-200'}`}>
                       <div className="flex items-baseline justify-between">
-                        <span className="font-black text-slate-800">{p.label}</span>
-                        <span className="text-left"><span className="text-xl font-extrabold text-[#2E63F6]">₪{p.priceYear.toLocaleString()}</span><span className="text-xs text-slate-400"> / שנה</span></span>
+                        <span className="font-black text-slate-800">{b.label}</span>
+                        <span className="text-left"><span className="text-xl font-extrabold text-[#2E63F6]">₪{b.price.toLocaleString()}</span><span className="text-xs text-slate-400"> חד־פעמי</span></span>
                       </div>
+                      <p className="text-xs font-bold text-emerald-600">₪{perPage} לדף — חיסכון של {savePct}%</p>
                       <ul className="text-sm text-slate-600 flex flex-col gap-1.5">
-                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> עד {p.maxActivePages} דפים פעילים</li>
-                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {p.monthlyCreate} דפים חדשים בחודש</li>
-                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {p.monthlyCredits} קרדיטי AI בכל חידוש</li>
-                        {p.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> הסרת מיתוג Pagey</li>}
+                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.pages} דפים לפרסום, ללא תאריך תפוגה</li>
+                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.aiCredits} קרדיטי AI במתנה</li>
+                        {b.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> בונוס: הסרת מיתוג Pagey מהדפים, לתמיד</li>}
                       </ul>
                       <button
-                        disabled={upgrading || current}
-                        onClick={() => handleUpgrade(key)}
+                        disabled={upgrading}
+                        onClick={() => handleBuyBundle(key)}
                         className={`mt-auto rounded-xl py-2.5 text-sm font-bold transition disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
                       >
-                        {current ? 'המסלול הנוכחי שלך' : upgrading ? 'מעבד…' : 'בחירת מסלול'}
+                        {upgrading ? 'מעבד…' : 'רכישת החבילה'}
                       </button>
                     </div>
                   );
@@ -723,7 +739,7 @@ export default function Dashboard() {
               </div>
 
               {plan ? (
-                <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />
+                <BalanceCard plan={plan} onBuyBundle={() => setShowPlans(true)} />
               ) : (
                 <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 text-sm text-slate-400">
                   טוען נתוני מסלול…
@@ -773,7 +789,7 @@ export default function Dashboard() {
               </motion.div>
 
               {/* Plan + usage */}
-              {plan && <PlanCard plan={plan} onUpgrade={() => setShowPlans(true)} />}
+              {plan && <BalanceCard plan={plan} onBuyBundle={() => setShowPlans(true)} />}
 
               {/* Referral */}
               {portalUser && <ReferralCard user={portalUser} />}

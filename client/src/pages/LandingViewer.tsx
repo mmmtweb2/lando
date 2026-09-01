@@ -117,14 +117,16 @@ interface LandingPage {
   whiteLabel?: boolean;
 }
 
-// Snapshot of the caller's plan + usage, fetched fresh from /api/users/plan
-// right before showing the publish-confirmation modal below.
-interface PlanStatus {
-  plan: 'free' | 'freelancer' | 'agency';
+// Snapshot of the caller's page-publish balance + usage, fetched fresh from
+// /api/users/plan right before showing the publish-confirmation modal below.
+// (Since 2026-09-01 there are no subscription plans — publishing a page spends
+// one page credit from a balance that never expires. See src/config/billing.ts.)
+interface AccountStatus {
+  tier: 'free' | 'paid';
   label: string;
-  active: boolean;
-  expiresAt: string | null;
-  maxActivePages: number;
+  /** Page-publish balance. Publishing this page costs exactly 1. */
+  pageCredits: number;
+  pageCreditsTotal: number;
   activePages: number;
   monthlyCreate: number;
   createdThisPeriod: number;
@@ -854,18 +856,19 @@ export default function LandingViewer() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // ── Checkout / paywall state ─────────────────────────────────────────────
-  // 'loadingPlan' — fetching a fresh plan snapshot before deciding what to show.
-  // 'confirm'     — plan covers this publish; explicit user confirmation required before it fires.
-  // 'limitReached'— plan is active but its live-page slots are full; offer an upgrade.
-  // 'modal'       — no active plan (or plan status couldn't be read); explains + falls back to the paid SUMIT flow.
+  // 'loadingPlan' — fetching a fresh balance snapshot before deciding what to show.
+  // 'confirm'     — the balance covers this publish; explicit user confirmation required before it fires.
+  // 'modal'       — no page credits (or the balance couldn't be read); explains + falls back to the paid SUMIT flow.
   // 'paying'      — the publish/payment call is in flight.
   // 'done'        — published; confirmation shown to the user.
+  // ('limitReached' is gone with the subscription model — there is no live-page
+  //  slot ceiling to hit any more, only a balance that is either positive or not.)
   const [checkoutStatus, setCheckoutStatus] =
-    useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'limitReached' | 'modal' | 'paying' | 'done'>('idle');
+    useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  // Plan snapshot fetched fresh each time the publish flow opens, so the numbers
-  // shown in the confirmation modal are never stale.
-  const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
+  // Balance snapshot fetched fresh each time the publish flow opens, so the
+  // numbers shown in the confirmation modal are never stale.
+  const [planStatus, setPlanStatus] = useState<AccountStatus | null>(null);
 
   // ── Wallet credits ────────────────────────────────────────────────────────
   const [credits, setCredits] = useState<number>(0);
@@ -933,47 +936,43 @@ export default function LandingViewer() {
   const setEdit = (path: string, value: string) =>
     setEdits((prev) => ({ ...prev, [path]: value }));
 
-  // Opens the publish flow from a "Publish" click. Always fetches a FRESH plan
+  // Opens the publish flow from a "Publish" click. Always fetches a FRESH balance
   // snapshot first (never trusts stale state) so the confirmation the user sees
-  // reflects their actual balance at this exact moment, then routes to the right
-  // screen — never straight to a charge or a silent publish.
+  // reflects their actual page-credit balance at this exact moment, then routes
+  // to the right screen — never straight to a charge or a silent publish.
   async function openPublishFlow() {
     if (!page) return;
     setCheckoutStatus('loadingPlan');
     setCheckoutError(null);
     try {
       const r = await authFetch('/api/users/plan');
-      if (!r.ok) throw new Error('plan fetch failed');
-      const data = await r.json() as { status: PlanStatus };
+      if (!r.ok) throw new Error('balance fetch failed');
+      const data = await r.json() as { status: AccountStatus };
       setPlanStatus(data.status);
-      if (data.status.active && data.status.activePages < data.status.maxActivePages) {
-        // Covered by an active plan with a free slot — show the explicit
-        // confirmation screen; nothing is published until the user confirms.
+      if (data.status.pageCredits > 0) {
+        // Covered by the page-publish balance — show the explicit confirmation
+        // screen; nothing is published until the user confirms.
         setCheckoutStatus('confirm');
-      } else if (data.status.active) {
-        // Active plan, but no free live-page slot left — offer to upgrade
-        // rather than silently charging per page.
-        setCheckoutStatus('limitReached');
       } else {
-        // No active plan — explain why a charge is coming, then the existing
+        // No page credits — explain why a charge is coming, then the existing
         // paid SUMIT flow below (still requires its own explicit click).
         setCheckoutStatus('modal');
       }
     } catch {
-      // Couldn't read plan status — fail safe into the existing paid flow.
-      // checkout() below still re-checks plan coverage server-side before any
-      // charge, so a plan holder is never charged even if this fetch failed.
+      // Couldn't read the balance — fail safe into the existing paid flow.
+      // checkout() below still re-checks the balance server-side before any
+      // charge, so a bundle holder is never charged even if this fetch failed.
       setPlanStatus(null);
       setCheckoutStatus('modal');
     }
   }
 
   // Fires only after the user explicitly clicks "Confirm & publish" on the
-  // plan-coverage confirmation screen. Publishes under the plan (no charge);
-  // on a race (plan lapsed / slot filled between opening the modal and this
-  // click) it re-routes to the correct explanation instead of ever redirecting
-  // straight to payment without a fresh confirmation step.
-  async function confirmPlanPublish() {
+  // balance confirmation screen. Publishes against the balance (no charge); on a
+  // race (the last page credit spent in another tab between opening the modal
+  // and this click) it re-routes to the paid explanation instead of ever
+  // redirecting straight to payment without a fresh confirmation step.
+  async function confirmBalancePublish() {
     if (!page) return;
     setCheckoutStatus('confirmPaying');
     setCheckoutError(null);
@@ -988,13 +987,7 @@ export default function LandingViewer() {
         const b = await planRes.json().catch(() => ({})) as { error?: string };
         throw new Error(b.error ?? 'הפרסום נכשל. נסו שוב.');
       }
-      const planBody = await planRes.json().catch(() => ({})) as { reason?: string; error?: string };
-      if (planBody.reason === 'active_limit_reached') {
-        setCheckoutError(planBody.error ?? 'הגעת למספר הדפים הפעילים המרבי במסלול שלך.');
-        setCheckoutStatus('limitReached');
-        return;
-      }
-      setCheckoutError('המסלול שלך כבר אינו פעיל, ולכן הפרסום לא כוסה ללא תשלום.');
+      setCheckoutError('יתרת הדפים שלך התרוקנה בינתיים, ולכן הפרסום אינו מכוסה ללא תשלום.');
       setCheckoutStatus('modal');
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'הפרסום נכשל. נסו שוב.');
@@ -1007,9 +1000,9 @@ export default function LandingViewer() {
     setCheckoutStatus('paying');
     setCheckoutError(null);
     try {
-      // Safety net: even from the paid-flow modal, try the free-plan-publish
-      // path first in case plan coverage appeared since this modal opened
-      // (e.g. another tab activated a plan) — a plan holder is never charged.
+      // Safety net: even from the paid-flow modal, try the balance-publish path
+      // first in case page credits appeared since this modal opened (e.g. a
+      // bundle bought in another tab) — a bundle holder is never charged twice.
       const planRes = await authFetch(`/api/landing/${page.id}/publish`, { method: 'POST' });
       if (planRes.ok) {
         setPage((prev) => (prev ? { ...prev, status: 'published' } : prev));
@@ -1020,16 +1013,9 @@ export default function LandingViewer() {
         const b = await planRes.json().catch(() => ({})) as { error?: string };
         throw new Error(b.error ?? 'הפרסום נכשל. נסו שוב.');
       }
-      // 402 → not covered by a plan. If the plan's live-page slots are full,
-      // prompt to upgrade rather than charging per page.
-      const planBody = await planRes.json().catch(() => ({})) as { reason?: string; error?: string };
-      if (planBody.reason === 'active_limit_reached') {
-        setCheckoutError(planBody.error ?? 'הגעת למספר הדפים הפעילים המרבי במסלול שלך.');
-        setCheckoutStatus('limitReached');
-        return;
-      }
+      // 402 → no page credits. Fall through to the per-page SUMIT payment.
 
-      // No active plan → per-page SUMIT payment (existing flow). We get back a
+      // Per-page SUMIT payment (existing flow). We get back a
       // secure redirect URL; publishing happens server-side after verification,
       // so we never handle card data ourselves.
       const r = await authFetch('/api/payments/start', {
@@ -3011,7 +2997,8 @@ export default function LandingViewer() {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Assistant:wght@300;400;600;700&family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
         <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}`}</style>
-        {/* White-label is a PAID agency perk: when it's on, the "| Pagey" suffix
+        {/* White-label is a PAID perk (the 10-page bundle's bonus, previously
+            the agency plan's): when it's on, the "| Pagey" suffix
             must be gone here too. The server-rendered <title> in
             og.controller.ts already respected whiteLabel, but this Helmet tag
             overwrote it in the browser, so paying agency customers still saw
@@ -3138,7 +3125,7 @@ export default function LandingViewer() {
         </div>
       </footer>
 
-      {/* Viral credit line — hidden for agency-plan owners who paid for white-label */}
+      {/* Viral credit line — hidden for owners who paid for white-label (the 10-page bundle) */}
       {!whiteLabel && (
         <div className={`bg-white py-4 text-center ${toolbarVisible ? 'pb-20' : ''}`}>
           <a href="/" className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors">
@@ -3192,12 +3179,12 @@ export default function LandingViewer() {
                 <p className="text-sm text-slate-500 mt-1">הדף שלך מוכן — השלם תשלום כדי לפרסם</p>
               </div>
 
-              {/* Why a charge — plan coverage was checked and did not apply here,
-                  shown BEFORE the price so the user isn't surprised by it. */}
+              {/* Why a charge — the page-publish balance was checked and is
+                  empty, shown BEFORE the price so the user isn't surprised. */}
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 text-center leading-relaxed">
-                {planStatus && !planStatus.active
-                  ? 'אין לך מסלול פעיל, ולכן פרסום דף זה יעלה 249 ש״ח.'
-                  : 'לא זיהינו מסלול פעיל שמכסה פרסום דף זה בחינם, ולכן נדרש תשלום חד־פעמי.'}
+                {planStatus
+                  ? 'יתרת הדפים שלך לפרסום היא 0, ולכן פרסום הדף הזה עולה 249 ש״ח.'
+                  : 'לא הצלחנו לקרוא את יתרת הדפים שלך, ולכן נדרש תשלום חד־פעמי על הדף הזה.'}
               </div>
 
               {/* Price summary */}
@@ -3219,6 +3206,14 @@ export default function LandingViewer() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Cheaper-per-page alternative, stated honestly BEFORE payment
+                  rather than after: a bundle is a better deal from the 5th page
+                  on, and hiding that would be selling the expensive option to
+                  someone we know we could serve for less. */}
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 text-center leading-relaxed">
+                מפרסמים כמה דפים? <Link to="/dashboard?bundles=1" className="font-semibold text-[#2E63F6] hover:underline">חבילת דפים</Link> מוזילה את המחיר לדף ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).
               </div>
 
               {/* Secure redirect notice — card details are entered on SUMIT's
@@ -3294,31 +3289,31 @@ export default function LandingViewer() {
 
               <div className="text-center pt-1">
                 <div className="text-3xl mb-2">✅</div>
-                <h2 className="text-xl font-extrabold text-slate-900">שחרור דף לאוויר — כלול במסלול שלך</h2>
-                <p className="text-sm text-slate-500 mt-1">אין תשלום נוסף — הפרסום ינוכה מיתרת הדפים הפעילים במסלול {planStatus.label}</p>
+                <h2 className="text-xl font-extrabold text-slate-900">שחרור דף לאוויר — כלול ביתרה שלך</h2>
+                <p className="text-sm text-slate-500 mt-1">אין תשלום נוסף — הפרסום ינוכה מיתרת הדפים שרכשת</p>
               </div>
 
               {/* Plan balance — exactly what will happen, in plain numbers */}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col gap-2.5 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-700">המסלול שלך</span>
-                  <span className="font-extrabold text-slate-900">{planStatus.label}</span>
+                  <span className="font-semibold text-slate-700">יתרת דפים לפרסום</span>
+                  <span className="font-extrabold text-slate-900">{planStatus.pageCredits}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">דפים פעילים כרגע</span>
-                  <span className="font-semibold text-slate-800">{planStatus.activePages} מתוך {planStatus.maxActivePages}</span>
+                  <span className="text-slate-600">הפרסום הזה ינכה</span>
+                  <span className="font-semibold text-slate-800">דף אחד</span>
                 </div>
                 <div className="border-t border-slate-200 pt-2.5 flex items-center justify-between">
                   <span className="text-slate-600">יישארו לך לאחר הפרסום</span>
                   <span className="font-bold text-emerald-600">
-                    {planStatus.maxActivePages - planStatus.activePages - 1} דפים פעילים
+                    {planStatus.pageCredits - 1} דפים לפרסום
                   </span>
                 </div>
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-relaxed text-center">
-                פרסום הדף ישתמש ב-1 מתוך {planStatus.maxActivePages} הדפים הפעילים במסלול {planStatus.label} שלך —
-                יישארו לך {planStatus.maxActivePages - planStatus.activePages - 1} דפים פעילים לאחר מכן.
+                פרסום הדף ינכה דף אחד מיתרת הדפים שרכשת — יישארו לך {planStatus.pageCredits - 1} דפים לפרסום.
+                היתרה אינה פגה ואינה מתחדשת חודשית: מה שרכשתם נשאר עד שתשתמשו בו.
               </div>
 
               {checkoutError && (
@@ -3329,7 +3324,7 @@ export default function LandingViewer() {
 
               <div className="flex flex-col gap-2.5">
                 <button
-                  onClick={confirmPlanPublish}
+                  onClick={confirmBalancePublish}
                   disabled={checkoutStatus === 'confirmPaying'}
                   className="w-full py-4 rounded-xl text-base font-extrabold text-white transition active:scale-95 disabled:opacity-80 flex items-center justify-center gap-2.5 shadow-lg"
                   style={{ backgroundColor: checkoutStatus === 'confirmPaying' ? '#94a3b8' : primary }}>
@@ -3356,55 +3351,6 @@ export default function LandingViewer() {
         </div>
       )}
 
-      {/* ── Plan limit reached — offer to upgrade instead of charging per page ── */}
-      {checkoutStatus === 'limitReached' && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden" dir="rtl">
-            <div className="h-1.5 w-full bg-amber-400" />
-            <div className="p-7 flex flex-col gap-5">
-              <button
-                onClick={() => setCheckoutStatus('idle')}
-                className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
-                aria-label="סגור">×</button>
-
-              <div className="text-center pt-1">
-                <div className="text-3xl mb-2">📦</div>
-                <h2 className="text-xl font-extrabold text-slate-900">הגעת למכסת הדפים הפעילים</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  {planStatus
-                    ? `המסלול ${planStatus.label} שלך מכסה עד ${planStatus.maxActivePages} דפים פעילים במקביל, וכולם בשימוש.`
-                    : 'המסלול הפעיל שלך מכסה מספר מוגבל של דפים פעילים במקביל, וכולם בשימוש.'}
-                </p>
-              </div>
-
-              {checkoutError && (
-                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 text-center">
-                  {checkoutError}
-                </div>
-              )}
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-relaxed text-center">
-                אפשר לשדרג מסלול כדי לפנות מקום לדפים נוספים, או להסיר/להשבית דף פעיל קיים ולפרסם במקומו.
-              </div>
-
-              <div className="flex flex-col gap-2.5">
-                <Link
-                  to="/dashboard?upgrade=1"
-                  className="w-full py-4 rounded-xl text-base font-extrabold text-white transition active:scale-95 shadow-lg text-center"
-                  style={{ backgroundColor: primary }}>
-                  שדרג מסלול
-                </Link>
-                <button
-                  onClick={() => setCheckoutStatus('idle')}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50 transition">
-                  ביטול
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Publish success — explicit confirmation instead of the modal just
           silently disappearing once the page's status flips to 'published'. */}
       {checkoutStatus === 'done' && (
@@ -3415,8 +3361,8 @@ export default function LandingViewer() {
               <div className="text-4xl">🎉</div>
               <h2 className="text-xl font-extrabold text-slate-900">הדף פורסם בהצלחה!</h2>
               <p className="text-sm text-slate-500">
-                {planStatus && planStatus.active
-                  ? `נוצל 1 מדפי המסלול ${planStatus.label} שלך — הדף כעת גלוי לציבור.`
+                {planStatus && planStatus.pageCredits > 0
+                  ? `נוכה דף אחד מיתרת הדפים שלך — נשארו ${planStatus.pageCredits - 1}. הדף כעת גלוי לציבור.`
                   : 'הדף כעת גלוי לציבור.'}
               </p>
               <button
