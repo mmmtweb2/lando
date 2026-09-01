@@ -6,6 +6,7 @@ import { Loader2, MapPin, Mail, Phone, Globe, Pencil, Check, ChevronDown, Extern
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
+import { CREDIT_COSTS } from '../config/credits';
 import { LandoMark } from '../components/Lando';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -450,15 +451,17 @@ function ImageSelectorModal({
     }
   }
 
-  // Regenerate ALL images as one coherent set (4 credits). The backend rebuilds
-  // hero + service icons from the stored prompts in the same style.
+  // Regenerate ALL images as one coherent set. The backend rebuilds hero +
+  // service icons from the stored prompts in the same style, one fal.ai call
+  // per image — hence CREDIT_COSTS.IMAGE_FULL_SET (4 images x the single-image
+  // price), not a flat fee.
   async function handleFullSet() {
-    if (busy || credits < 4) return;
-    // 4 credits, and it replaces EVERY image on the page (hero + all service
-    // images) — including images the user uploaded themselves. Confirm the
-    // cost and the consequence before spending.
+    if (busy || credits < CREDIT_COSTS.IMAGE_FULL_SET) return;
+    // It costs real credits AND replaces EVERY image on the page (hero + all
+    // service images) — including images the user uploaded themselves. Confirm
+    // the cost and the consequence before spending.
     const confirmed = window.confirm(
-      `יצירת סט תמונות מלא תנכה 4 קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל התמונות בדף, כולל תמונות שהעליתם. להמשיך?`,
+      `יצירת סט תמונות מלא תנכה ${CREDIT_COSTS.IMAGE_FULL_SET} קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל התמונות בדף, כולל תמונות שהעליתם. להמשיך?`,
     );
     if (!confirmed) return;
     setBusy(true);
@@ -536,44 +539,44 @@ function ImageSelectorModal({
                   </button>
 
                   <button
-                    disabled={busy || credits < 1}
+                    disabled={busy || credits < CREDIT_COSTS.IMAGE_SINGLE}
                     onClick={() => setStep('ai-prompt')}
                     className="flex items-center gap-4 p-4 rounded-2xl border-2 transition text-right disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
-                      borderColor: credits >= 1 ? primaryColor : '#e2e8f0',
-                      backgroundColor: credits >= 1 ? `${primaryColor}08` : undefined,
+                      borderColor: credits >= CREDIT_COSTS.IMAGE_SINGLE ? primaryColor : '#e2e8f0',
+                      backgroundColor: credits >= CREDIT_COSTS.IMAGE_SINGLE ? `${primaryColor}08` : undefined,
                     }}
                   >
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0"
-                      style={{ backgroundColor: credits >= 1 ? primaryColor : '#e2e8f0' }}>
-                      <Sparkles size={22} color={credits >= 1 ? '#fff' : '#94a3b8'} />
+                      style={{ backgroundColor: credits >= CREDIT_COSTS.IMAGE_SINGLE ? primaryColor : '#e2e8f0' }}>
+                      <Sparkles size={22} color={credits >= CREDIT_COSTS.IMAGE_SINGLE ? '#fff' : '#94a3b8'} />
                     </div>
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="font-bold text-slate-800 text-sm">יצירה עם AI (1 ✦)</span>
-                      <span className="text-xs leading-tight" style={{ color: credits >= 1 ? primaryColor : '#94a3b8' }}>
-                        {credits >= 1 ? `${credits} קרדיטים זמינים` : 'אין קרדיטים'}
+                      <span className="font-bold text-slate-800 text-sm">{`יצירה עם AI (${CREDIT_COSTS.IMAGE_SINGLE} ✦)`}</span>
+                      <span className="text-xs leading-tight" style={{ color: credits >= CREDIT_COSTS.IMAGE_SINGLE ? primaryColor : '#94a3b8' }}>
+                        {credits >= CREDIT_COSTS.IMAGE_SINGLE ? `${credits} קרדיטים זמינים` : `דרושים ${CREDIT_COSTS.IMAGE_SINGLE} קרדיטים`}
                       </span>
                     </div>
                   </button>
 
                   <button
-                    disabled={busy || credits < 4}
+                    disabled={busy || credits < CREDIT_COSTS.IMAGE_FULL_SET}
                     onClick={handleFullSet}
                     title="יצירה מחדש של כל התמונות בסגנון אחיד"
                     className="flex items-center gap-4 p-4 rounded-2xl border-2 transition text-right disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
-                      borderColor: credits >= 4 ? primaryColor : '#e2e8f0',
-                      backgroundColor: credits >= 4 ? `${primaryColor}08` : undefined,
+                      borderColor: credits >= CREDIT_COSTS.IMAGE_FULL_SET ? primaryColor : '#e2e8f0',
+                      backgroundColor: credits >= CREDIT_COSTS.IMAGE_FULL_SET ? `${primaryColor}08` : undefined,
                     }}
                   >
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0"
-                      style={{ backgroundColor: credits >= 4 ? primaryColor : '#e2e8f0' }}>
-                      <Sparkles size={22} color={credits >= 4 ? '#fff' : '#94a3b8'} />
+                      style={{ backgroundColor: credits >= CREDIT_COSTS.IMAGE_FULL_SET ? primaryColor : '#e2e8f0' }}>
+                      <Sparkles size={22} color={credits >= CREDIT_COSTS.IMAGE_FULL_SET ? '#fff' : '#94a3b8'} />
                     </div>
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="font-bold text-slate-800 text-sm">צור סט תמונות מלא (4 ✦)</span>
-                      <span className="text-xs leading-tight" style={{ color: credits >= 4 ? primaryColor : '#94a3b8' }}>
-                        {credits >= 4 ? 'יוצר את כל התמונות בסגנון אחיד' : 'דרושים 4 קרדיטים'}
+                      <span className="font-bold text-slate-800 text-sm">{`צור סט תמונות מלא (${CREDIT_COSTS.IMAGE_FULL_SET} ✦)`}</span>
+                      <span className="text-xs leading-tight" style={{ color: credits >= CREDIT_COSTS.IMAGE_FULL_SET ? primaryColor : '#94a3b8' }}>
+                        {credits >= CREDIT_COSTS.IMAGE_FULL_SET ? 'יוצר את כל התמונות בסגנון אחיד' : `דרושים ${CREDIT_COSTS.IMAGE_FULL_SET} קרדיטים`}
                       </span>
                     </div>
                   </button>
@@ -1100,17 +1103,19 @@ export default function LandingViewer() {
     }
   }
 
-  // AI rewrite: scope 'hero' = the main heading (1 credit), 'all' = full page (3 credits).
+  // AI rewrite: scope 'hero' = the main heading (CREDIT_COSTS.TEXT_SECTION),
+  // 'all' = the whole page (CREDIT_COSTS.TEXT_FULL_PAGE — a much larger,
+  // two-call generation, priced accordingly).
   async function handleRewrite(scope: 'hero' | 'all') {
     if (!page || !user?.email || rewriteStatus === 'rewriting') return;
     // A full-page rewrite is the most expensive AND the most destructive AI
-    // action in the editor: 3 credits, and it replaces every section's text
+    // action in the editor, and it replaces every section's text
     // with freshly generated copy (any manual wording is lost). Nothing should
     // spend that on a single stray click — say the price and the consequence
     // out loud first, the way the publish flow does before a charge.
     if (scope === 'all') {
       const confirmed = window.confirm(
-        `כתיבה מחדש של כל הדף תנכה 3 קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל הטקסטים בדף בתוכן חדש שנוצר על ידי ה-AI. שינויים שכתבתם ידנית יידרסו. להמשיך?`,
+        `כתיבה מחדש של כל הדף תנכה ${CREDIT_COSTS.TEXT_FULL_PAGE} קרדיטים (יתרה נוכחית: ${credits}) ותחליף את כל הטקסטים בדף בתוכן חדש שנוצר על ידי ה-AI. שינויים שכתבתם ידנית יידרסו. להמשיך?`,
       );
       if (!confirmed) return;
     }
@@ -1123,7 +1128,10 @@ export default function LandingViewer() {
         // the page row itself, never from a client-supplied identifier.
         body: JSON.stringify({
           sectionName: scope === 'all' ? 'all' : 'hero',
-          cost: scope === 'all' ? 3 : 1,
+          // Display price only — the server derives the real charge from the
+          // scope and rejects a mismatch (a stale client is refused, never
+          // charged a price it did not show the user).
+          cost: scope === 'all' ? CREDIT_COSTS.TEXT_FULL_PAGE : CREDIT_COSTS.TEXT_SECTION,
         }),
       });
       if (!r.ok) {
@@ -3469,7 +3477,7 @@ export default function LandingViewer() {
                   title="כתיבה מחדש של הכותרת הראשית"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Sparkles size={12} />
-                  {rewriteStatus === 'rewriting' ? 'כותב...' : 'כתיבה מחדש לכותרת (1 ✦)'}
+                  {rewriteStatus === 'rewriting' ? 'כותב...' : `כתיבה מחדש לכותרת (${CREDIT_COSTS.TEXT_SECTION} ✦)`}
                 </button>
                 <button
                   onClick={() => handleRewrite('all')}
@@ -3477,7 +3485,7 @@ export default function LandingViewer() {
                   title="כתיבה מחדש של כל תוכן הדף"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition">
                   <Sparkles size={12} />
-                  {rewriteStatus === 'rewriting' ? 'כותב...' : 'כתיבה מחדש הכל (3 ✦)'}
+                  {rewriteStatus === 'rewriting' ? 'כותב...' : `כתיבה מחדש הכל (${CREDIT_COSTS.TEXT_FULL_PAGE} ✦)`}
                 </button>
               </div>
               {saveStatus === 'saved' && (

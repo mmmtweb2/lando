@@ -1,0 +1,28 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 011_credit_repricing.sql — new starting credit grant (run in Supabase SQL editor)
+--
+-- Credits were repriced by real AI cost on 2026-09-01 (see src/config/credits.ts
+-- for the full derivation of every price). Under the new table:
+--
+--   single text section rewrite ....  1   (1 sonnet call, max_tokens 512)
+--   full-page text rewrite .........  6   (2 sonnet calls, ~7-8x the tokens)
+--   single AI image ................  2   (1 fal.ai flux/schnell call)
+--   full AI image set ..............  8   (hero + up to 3 service images = 4 calls)
+--   AI images at page creation .....  4   (same work as the set, half price as a
+--                                          one-time acquisition discount)
+--
+-- Moshe's requirement for a brand-new account: enough credits to regenerate its
+-- images once AND rewrite all of its text twice, plus a small bonus:
+--   8 + (2 x 6) + 4 bonus = 24.
+--
+-- The old default was 10, which under the new table does not even cover one
+-- full image-set regeneration. This changes the DB default so a fresh signup
+-- gets the right grant even if the application code path is bypassed;
+-- ensureUserProfile (src/services/profile.service.ts) also writes it explicitly.
+--
+-- EXISTING rows are intentionally left untouched — this only sets the default
+-- for new profiles. Topping up existing users is a separate business decision
+-- for Moshe (their spent balances were priced under the old table).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE user_profiles ALTER COLUMN credits SET DEFAULT 24;

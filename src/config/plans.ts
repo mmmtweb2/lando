@@ -17,7 +17,18 @@ export interface PlanDef {
   maxActivePages: number;
   /** Max NEW pages that can be created per calendar month. */
   monthlyCreate: number;
-  /** AI image credits granted on each activation/renewal. */
+  /**
+   * AI credits granted on each activation/renewal.
+   *
+   * NOT changed by the 2026-09-01 credit repricing (src/config/credits.ts) —
+   * plan economics are a pricing-strategy decision for Moshe, not a side effect
+   * of a cost-alignment pass. Be aware the purchasing power of these numbers
+   * dropped: creating a page with AI images went 1 → 4 credits, so a
+   * freelancer's 30 credits now cover ~7 AI-image page creations against a
+   * 30-page monthly create cap (it used to cover exactly 30). Users can still
+   * create pages with stock/uploaded images for free and top up with credit
+   * packs, but if plan holders start running dry these are the numbers to raise.
+   */
   monthlyCredits: number;
   /** Yearly price in ₪ (0 = not purchasable; free = pay-per-page). */
   priceYear: number;

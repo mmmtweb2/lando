@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase';
 import { generateAiContent, regenerateSectionText, checkBusinessCoherence, suggestIntakeQuestions, type AiContent } from '../services/ai.service';
 import { processAndSave, generateFalImage } from '../services/image.service';
 import { checkAndDeductCredits, refundCredits } from '../services/credits.service';
+import { CREDIT_COSTS } from '../config/credits';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
 import { canPublishUnderPlan, consumeMonthlyCreate, getPlanStatus } from '../services/plan.service';
 
@@ -183,10 +184,10 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
 }
 
 // Credit cost of the AI image batch generated during page CREATION (hero +
-// up to 3 service images). Kept as a named constant so it is greppable next to
-// the regeneration costs in regenerateImageAi (4 for a full set, 1 for one
-// image) — see the audit note there about the two not matching.
-const AI_CREATE_IMAGE_COST = 1;
+// up to 3 service images). Same real work as a full-set regeneration in
+// regenerateImageAi, priced at half of it as a deliberate one-time acquisition
+// discount — the full reasoning for every number lives in src/config/credits.ts.
+const AI_CREATE_IMAGE_COST = CREDIT_COSTS.CREATE_IMAGE_SET;
 
 const VALID_IMAGE_SOURCES = ['none', 'upload', 'stock', 'ai'] as const;
 type ImageSource = (typeof VALID_IMAGE_SOURCES)[number];
@@ -776,7 +777,10 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
   };
 
   const fullSet = isFullSet === true;
-  const cost = fullSet ? 4 : 1;
+  // A full set is hero + up to 3 service images = 4 fal.ai calls, so it is
+  // priced as 4x a single regeneration rather than a flat fee (see
+  // src/config/credits.ts).
+  const cost = fullSet ? CREDIT_COSTS.IMAGE_FULL_SET : CREDIT_COSTS.IMAGE_SINGLE;
 
   if (!fullSet && (!slot?.trim() || !prompt?.trim())) {
     res.status(400).json({ error: 'slot and prompt are required for single-image regeneration' });
@@ -907,14 +911,25 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
     cost?: number;
   };
 
-  if (!sectionName?.trim() || typeof cost !== 'number') {
-    res.status(400).json({ error: 'sectionName and cost are required' });
+  if (!sectionName?.trim()) {
+    res.status(400).json({ error: 'sectionName is required' });
     return;
   }
 
-  const parsedCost = Math.round(cost);
-  if (parsedCost !== 1 && parsedCost !== 3) {
-    res.status(400).json({ error: 'cost must be 1 (section) or 3 (full page)' });
+  // The price is derived from the requested SCOPE on the server, never taken
+  // from the request body — a client-supplied price is a client-supplied money
+  // decision (README convention #3). A full-page rewrite runs the whole
+  // two-call generation pipeline; a single section is one small call.
+  const isFullPage = sectionName.trim() === 'all';
+  const parsedCost = isFullPage ? CREDIT_COSTS.TEXT_FULL_PAGE : CREDIT_COSTS.TEXT_SECTION;
+
+  // `cost` is still accepted, but only as the price the CLIENT displayed to the
+  // user. If it disagrees with the real price, the UI is stale — refuse rather
+  // than silently charging a number the user was never shown.
+  if (typeof cost === 'number' && Math.round(cost) !== parsedCost) {
+    res.status(409).json({
+      error: 'המחיר בעמוד אינו מעודכן. יש לרענן את הדף ולנסות שוב.',
+    });
     return;
   }
 
@@ -954,7 +969,7 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
   try {
     let updatedContent: AiContent;
 
-    if (parsedCost === 3) {
+    if (isFullPage) {
       // Full page rewrite — reconstruct GenerateInput from stored fields
       const vibeProxy = [page.about_business, page.design_style, page.business_name]
         .filter(Boolean)

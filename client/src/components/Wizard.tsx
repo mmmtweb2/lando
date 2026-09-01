@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useUser } from '../context/UserContext';
 import { LandoBot } from './Lando';
 import { authFetch } from '../lib/api';
+import { CREDIT_COSTS } from '../config/credits';
 import {
   Building2,
   Phone,
@@ -143,10 +144,10 @@ const IMAGE_OPTIONS: { value: ImageSource; label: string; desc: string; icon: Re
   { value: 'upload', label: 'העלאת תמונות שלי',           desc: 'העלו עד 3 תמונות מהמכשיר שלכם', icon: <Upload size={20} /> },
   { value: 'stock',  label: 'תמונות אווירה ממאגר חינמי', desc: 'תמונות מקצועיות מ-Unsplash',     icon: <Image size={20} /> },
   // AI image generation is the one option here that costs the user something:
-  // the backend deducts 1 credit for the creation image batch
-  // (AI_CREATE_IMAGE_COST in src/controllers/landing.controller.ts). Say so
-  // BEFORE the click — this was previously a silent deduction.
-  { value: 'ai',     label: 'יצירת תמונות עם AI (1 ✦)',  desc: 'תמונות שנוצרו עבור העסק שלכם · עולה קרדיט אחד',  icon: <Sparkles size={20} /> },
+  // the backend deducts CREDIT_COSTS.CREATE_IMAGE_SET for the creation image
+  // batch (AI_CREATE_IMAGE_COST in src/controllers/landing.controller.ts). Say
+  // so BEFORE the click — this was previously a silent deduction.
+  { value: 'ai',     label: `יצירת תמונות עם AI (${CREDIT_COSTS.CREATE_IMAGE_SET} ✦)`,  desc: `תמונות שנוצרו עבור העסק שלכם · עולה ${CREDIT_COSTS.CREATE_IMAGE_SET} קרדיטים`,  icon: <Sparkles size={20} /> },
 ];
 
 const PREVIEW_PALETTE: Record<string, { from: string; to: string }> = {
