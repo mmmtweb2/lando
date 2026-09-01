@@ -156,6 +156,23 @@ Found the referral system already exists and is already surfaced well in the UI 
 
 Still not deployed (migrations 009/010 confirmed run against production; 011 still needs to run before this round's credit prices take effect).
 
+## Pricing overhaul: subscriptions replaced with page bundles (2026-09-01, part 9)
+
+Moshe made the call: single page stays 249₪ one-time (deliberate market differentiation), but the yearly freelancer/agency SUBSCRIPTIONS are gone entirely, replaced with one-time, non-expiring page bundles: **חבילת 5 דפים** (₪930, ₪186/page, ~25% off) and **חבילת 10 דפים** (₪1,250, exactly half price) + permanent white-label as the 10-bundle's bonus. Built end-to-end (backend + both public/dashboard UI) in one dedicated pass, merged clean, `tsc` clean.
+
+**Model**: `user_profiles.page_credits` — a page-publish balance, +N on any purchase (single page = +1, same mechanism), -1 per publish, never expires, no "active plan" concept. `config/plans.ts` → `config/billing.ts`, `services/plan.service.ts` → `services/billing.service.ts` (renamed, since "plan" is exactly the concept removed). All the hard-won payment idempotency/replay protections from part 7 (SUMIT-PaymentID binding, atomic row-claim, CAS on credit writes) were verified preserved, not just carried over by copy-paste.
+
+**Judgment calls made (all documented in code comments too):**
+- Monthly page-*creation* cap (drafts, separate from publish balance): free tier's 5/month untouched; anyone who's ever bought page credits gets 60/month (a scripted-abuse backstop, not a real limit — paid accounts are much lower risk, but "unmetered" was exactly the hole closed for free tier a few hours earlier).
+- AI credit top-up per bundle: 10 credits/page bought (5-bundle→50, 10-bundle→100), derived directly from the already-shipped `credits.ts` unit costs (CREATE_IMAGE_SET + TEXT_FULL_PAGE) — a single 249₪ page still gets 0 bonus credits, deliberately, so the untouched single-page price doesn't get silently re-priced by a side door.
+- White-label: was derived live from an active subscription (lapsed with it); now a durable `white_label` boolean, set once on a 10-bundle purchase, never revoked.
+- **Grandfathering existing active subscribers** (`migrations/012_page_bundles.sql`): active freelancer → +10 page credits; active agency → +40 page credits + permanent white-label. Deliberately the FULL old `maxActivePages` number, not a pro-rated remainder — generous on purpose, tiny population, "err toward the customer" (same philosophy as the earlier proration fix). `plan`/`plan_expires_at` columns kept (not dropped) as the paper trail for what was converted. Migration is idempotent (guarded on `page_credits_total = 0`) and ends with a PostgREST schema-cache reload (the exact failure mode from migration 009 back in part 4/5).
+- A payment already in flight for the old `purpose:'plan'` at deploy time is still honored on identical grandfather terms (`grantLegacyPlan()`), so a real charge mid-transition still delivers value.
+
+**Before deploy**: run `migrations/012_page_bundles.sql` in Supabase (same as 009/010/011 — all four are now pending). Run 011 first if not already done (part 8) — 012 depends on the same `credits.ts`-derived numbers being live.
+
+**Explicitly out of scope for this round** (queued next): the renewal-lifecycle build (reminders, grace period, freeze, 12-month retention/restore) — Moshe approved the manual-renewal path (no SUMIT auto-renew for now) and the 12-month retention recommendation from part 8, not yet built. The image-persistence prerequisite flagged in part 8 (uploads on container-local disk, not a durable volume) still needs fixing before any restore promise is real.
+
 ## Agent log
 
 Append one entry per work session — what you touched, what you decided, what's still open. Keep it to a few lines.
