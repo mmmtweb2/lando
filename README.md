@@ -114,7 +114,7 @@ Moshe approved the full strategic roadmap above and additionally asked for a com
 - Removed the unbounded free-tier credit mint (+10 credits per page creation, unmetered) entirely — no user-visible feature depended on it.
 - Found and fixed a **second, worse** credit mint in the same code path: a stale-read-then-write on the AI-image batch charge could restore credits spent concurrently elsewhere.
 - Proration fixed: upgrading/renewing now carries forward any remaining time on the existing `plan_expires_at` instead of blindly resetting to +1 year. Policy: always +1 year from whichever is later — existing expiry (if still future) or now. Documented in code; Dashboard now tells the customer this before payment.
-- **Most serious find**: `/api/payments/return` didn't bind a SUMIT PaymentID to the specific payment row being settled — a real paid transaction's ID could be replayed against a second pending purchase to grant it for free. Fixed with an ownership check + `migrations/010_payments_idempotency.sql` (a partial unique index) — **this migration still needs to be run in the Supabase SQL Editor**, same as 009. If it fails on a uniqueness violation, do NOT force it — that means a double-grant already happened; the migration file includes the query to find it.
+- **Most serious find**: `/api/payments/return` didn't bind a SUMIT PaymentID to the specific payment row being settled — a real paid transaction's ID could be replayed against a second pending purchase to grant it for free. Fixed with an ownership check + `migrations/010_payments_idempotency.sql` (a partial unique index). **Run and confirmed successful by Moshe** — no uniqueness violation, meaning no double-grant ever actually happened; the payments data is clean.
 - Fixed a read-then-act race on the payment-return handler that could double-grant on concurrent/duplicate returns (now claims the row atomically via a `processing` status first).
 - Fixed: no refund when paid-for AI regeneration work failed (credits taken, nothing delivered, and a failed full-image-set regen could wipe existing images with an empty result).
 - Fixed: several other read-then-write credit races (referral bonuses, credit-pack purchases) that could lose or duplicate grants under concurrency.
@@ -133,7 +133,7 @@ Moshe approved the full strategic roadmap above and additionally asked for a com
 
 **AI intake interview — shipped:** new optional wizard step (after the business-description step) that generates 3-4 short, business-specific follow-up questions via a cheap Haiku call (mock fallback when no API key), fully skippable, answers feed into the existing free-text channel into the generation prompt. Added a companion prompt rule (`NO_FABRICATION_RULE` itself untouched) telling the model to use a provided specific verbatim instead of falling back to vague language when one exists. New wizard step means the progress bar now shows 6 steps instead of 5 — worth a quick mobile-width visual check next time someone's in `Wizard.tsx`.
 
-Still not pushed to GitHub (main is ahead locally) or deployed. **Before deploying: run `migrations/010_payments_idempotency.sql` in Supabase, same as noted for 009.**
+Still not pushed to GitHub (main is ahead locally) or deployed. Both migrations (009, 010) are confirmed run against production Supabase.
 
 ## Agent log
 
