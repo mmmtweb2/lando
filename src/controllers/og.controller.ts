@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { supabase } from '../config/supabase';
-import { getPlanStatus } from '../services/plan.service';
+import { getAccountStatus } from '../services/billing.service';
 
 function escapeHtml(str: string): string {
   return str
@@ -91,7 +91,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   let whiteLabel = false;
   if (page.owner_email) {
     try {
-      whiteLabel = (await getPlanStatus(page.owner_email as string)).whiteLabel;
+      whiteLabel = (await getAccountStatus(page.owner_email as string)).whiteLabel;
     } catch (e) {
       console.error('servePageWithOgTags: failed to resolve whiteLabel status', e);
     }

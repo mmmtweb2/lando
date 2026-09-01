@@ -1,17 +1,15 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
-import { publishPageById } from './landing.controller';
+import { publishPageWithCredit } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
-import { PLANS, PlanKey } from '../config/plans';
-import { activatePlan, canPublishUnderPlan } from '../services/plan.service';
+import { BUNDLES, BundleKey, SINGLE_PAGE_PRICE, isBundleKey } from '../config/billing';
+import { canPublishFromBalance, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 // Where we send the user after we finish handling the return (the client app).
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
-
-const PAGE_PRICE = 249;
 
 interface PaymentRow {
   id: string;
@@ -53,43 +51,46 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
       res.status(409).json({ error: 'הדף כבר מפורסם.' });
       return;
     }
-    // Never open a 249₪ charge for something the customer's plan already
-    // covers. The client's publish flow tries the free plan-publish endpoint
-    // first, but that is a client-side courtesy — a direct call to this
+    // Never open a 249₪ charge for a page the customer's page-publish balance
+    // already covers. The client's publish flow tries the free balance-publish
+    // endpoint first, but that is a client-side courtesy — a direct call to this
     // endpoint (or a stale tab) could still start a real charge for a page the
-    // user is entitled to publish for free.
+    // user has already paid for via a bundle.
     try {
-      const { covered } = await canPublishUnderPlan(email);
+      const { covered } = await canPublishFromBalance(email);
       if (covered) {
         res.status(409).json({
-          coveredByPlan: true,
-          error: 'המסלול שלך כבר מכסה את פרסום הדף — אין צורך בתשלום. פרסמו את הדף מתוך הדף עצמו.',
+          coveredByBalance: true,
+          error: 'יש לך יתרת דפים לפרסום — אין צורך בתשלום נוסף. פרסמו את הדף מתוך הדף עצמו.',
         });
         return;
       }
     } catch (e) {
-      // Fail OPEN to the paid flow: if plan status can't be read we must not
+      // Fail OPEN to the paid flow: if the balance can't be read we must not
       // block a customer who genuinely needs to pay. publishLandingPage
-      // re-checks coverage on its own path anyway.
-      console.error('[PAYMENT] plan-coverage pre-check failed, continuing to paid flow:', e);
+      // re-checks the balance on its own path anyway.
+      console.error('[PAYMENT] balance pre-check failed, continuing to paid flow:', e);
     }
-    amount = PAGE_PRICE;
+    amount = SINGLE_PAGE_PRICE;
     itemName = `דף נחיתה - ${(page as { business_name?: string }).business_name ?? 'Pagey'}`;
   } else if (purpose === 'credits') {
     const pack = reference ? CREDIT_PACKS[reference] : undefined;
     if (!pack) { res.status(400).json({ error: `pack must be one of: ${Object.keys(CREDIT_PACKS).join(', ')}` }); return; }
     amount = pack.price;
     itemName = `${pack.credits} קרדיטים - Pagey`;
-  } else if (purpose === 'plan') {
-    const plan = reference ? PLANS[reference as PlanKey] : undefined;
-    if (!plan || plan.key === 'free') {
-      res.status(400).json({ error: `plan must be one of: ${Object.keys(PLANS).filter((k) => k !== 'free').join(', ')}` });
+  } else if (purpose === 'bundle') {
+    // One-time page bundle. Replaced the yearly 'plan' subscription purpose on
+    // 2026-09-01; 'plan' can no longer be STARTED (grantPaymentValue still
+    // settles any row that was already in flight — see there).
+    const bundle = isBundleKey(reference) ? BUNDLES[reference as BundleKey] : undefined;
+    if (!bundle) {
+      res.status(400).json({ error: `bundle must be one of: ${Object.keys(BUNDLES).join(', ')}` });
       return;
     }
-    amount = plan.priceYear;
-    itemName = `מנוי ${plan.label} - Pagey (שנה)`;
+    amount = bundle.price;
+    itemName = `${bundle.label} - Pagey`;
   } else {
-    res.status(400).json({ error: "purpose must be 'publish', 'credits' or 'plan'" });
+    res.status(400).json({ error: "purpose must be 'publish', 'credits' or 'bundle'" });
     return;
   }
 
@@ -194,11 +195,37 @@ async function grantPaymentValue(pay: PaymentRow): Promise<boolean> {
       });
       return false;
     }
-    return (await publishPageById(pay.reference)) !== null;
+
+    // Since 2026-09-01 a single 249₪ page purchase goes through the SAME
+    // page-publish balance as a bundle: it buys one page credit, which is then
+    // immediately spent on the page that was paid for. Unifying the two removes
+    // the second, parallel notion of "this page is paid for".
+    //
+    // The order matters for the customer. Grant FIRST, publish SECOND:
+    //  • grantSinglePageCredit is all-or-nothing, so `false` proves nothing was
+    //    written and the row can safely be retried by the admin tools.
+    //  • if the grant lands but the publish then fails, the customer keeps the
+    //    credit and can simply hit Publish again — no support ticket, no
+    //    'needs_review', and above all no charge without value. That is why a
+    //    failed publish still returns true here: the money bought a page credit,
+    //    and the page credit is in the account.
+    if (!(await grantSinglePageCredit(pay.user_email))) return false;
+    const { ok, reason } = await publishPageWithCredit(pay.user_email, pay.reference);
+    if (!ok) {
+      console.error('[PAYMENT] page credit granted but publish failed — customer holds the credit', {
+        payment: pay.id, reference: pay.reference, reason,
+      });
+    }
+    return true;
   } else if (pay.purpose === 'credits' && pay.reference) {
     return (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
+  } else if (pay.purpose === 'bundle' && pay.reference) {
+    return grantBundle(pay.user_email, pay.reference);
   } else if (pay.purpose === 'plan' && pay.reference) {
-    return activatePlan(pay.user_email, pay.reference);
+    // LEGACY: a yearly-subscription payment that was already in flight when
+    // bundles shipped. The card was charged, so it must still deliver value —
+    // converted to page credits on the same terms as migration 012.
+    return grantLegacyPlan(pay.user_email, pay.reference);
   }
   return false;
 }

@@ -3,9 +3,9 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { processMockPayment } from '../services/payment.service';
 import { ensureUserProfile } from '../services/profile.service';
-import { getPlanStatus } from '../services/plan.service';
+import { getAccountStatus } from '../services/billing.service';
 import { addCredits } from '../services/credits.service';
-import { PLANS } from '../config/plans';
+import { BUNDLES, SINGLE_PAGE_PRICE } from '../config/billing';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
 const REFERRAL_BONUS = 5; // credits granted to BOTH the referrer and the new user
@@ -142,16 +142,18 @@ export async function getCredits(req: Request, res: Response): Promise<void> {
   res.json({ credits: profile.credits ?? 0 });
 }
 
-// ─── Current user's plan + usage (for the dashboard) ──────────────────────────
-// Also returns the plan catalog so the client renders pricing from one source.
+// ─── Current user's page balance + usage (for the dashboard) ─────────────────
+// Also returns the bundle catalog + single-page price so the client renders all
+// pricing from one source. The route stays /api/users/plan (see the note at the
+// top of billing.service.ts) — only the payload changed.
 export async function getPlan(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) {
     res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
-  const status = await getPlanStatus(email);
-  res.json({ status, plans: PLANS });
+  const status = await getAccountStatus(email);
+  res.json({ status, bundles: BUNDLES, singlePagePrice: SINGLE_PAGE_PRICE });
 }
 
 // ─── Credit pack purchase (mock checkout — DEV/TEST ONLY, see below) ──────────

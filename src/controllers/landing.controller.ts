@@ -6,7 +6,9 @@ import { processAndSave, generateFalImage } from '../services/image.service';
 import { checkAndDeductCredits, refundCredits } from '../services/credits.service';
 import { CREDIT_COSTS } from '../config/credits';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
-import { canPublishUnderPlan, consumeMonthlyCreate, getPlanStatus } from '../services/plan.service';
+import {
+  canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
+} from '../services/billing.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -137,12 +139,14 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
 
   const ownerEmail = (data as { owner_email?: string | null }).owner_email ?? null;
 
-  // Deliver the agency plan's white-label perk: hide the "Made with Pagey" badge
-  // on the public page when the owner has an active plan with whiteLabel:true.
+  // Deliver the white-label perk: hide the "Made with Pagey" badge on the public
+  // page when the owner has it. Since 2026-09-01 this is a permanent flag on the
+  // profile, granted by the 10-page bundle (previously: derived from an active
+  // agency subscription, which could silently lapse).
   let whiteLabel = false;
   if (ownerEmail) {
     try {
-      const status = await getPlanStatus(ownerEmail);
+      const status = await getAccountStatus(ownerEmail);
       whiteLabel = status.whiteLabel;
     } catch (e) {
       console.error('getLandingPage: failed to resolve whiteLabel status', e);
@@ -324,14 +328,15 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Monthly page-creation cap — enforced only for active PAID plans (free users
-    // and admins are never capped). Blocks BEFORE any AI cost is spent.
+    // Monthly page-creation cap — free tier 5/month, page-bundle buyers 60/month
+    // (admins are never capped; see src/config/billing.ts for the reasoning).
+    // Blocks BEFORE any AI cost is spent.
     if (req.authEmail) {
       try {
         await consumeMonthlyCreate(req.authEmail);
       } catch (e) {
         if (e instanceof Error && e.message === 'monthly_create_limit') {
-          res.status(429).json({ error: 'הגעת למכסת יצירת הדפים החודשית של המסלול שלך. המכסה מתחדשת בתחילת החודש הבא.' });
+          res.status(429).json({ error: 'הגעת למכסת יצירת הדפים החודשית של החשבון שלך. המכסה מתחדשת בתחילת החודש הבא.' });
           return;
         }
         throw e;
@@ -595,15 +600,16 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       // NOTE (2026-08-31, payment-enforcement audit): page creation used to grant
       // the owner +10 credits unconditionally, on EVERY page created. Creation
       // itself is not metered (only later regeneration is), and free-tier page
-      // creation is deliberately uncapped (`monthlyCreate: 0` in config/plans.ts),
-      // so that grant was a net-positive, scriptable credit mint against real
-      // AI spend: create a draft in a loop, collect 10 credits each time.
+      // creation was at the time uncapped (`monthlyCreate: 0`; the free tier is
+      // now capped at 5/month, see src/config/billing.ts), so that grant was a
+      // net-positive, scriptable credit mint against real AI spend: create a
+      // draft in a loop, collect 10 credits each time.
       // The grant is removed rather than reduced — ANY positive per-page grant
       // is net-positive while creation is uncapped and unmetered. The editing
       // allowance it was meant to provide already exists elsewhere and is
-      // bounded: new profiles start with `credits DEFAULT 10`
-      // (migrations/006_consolidate_schema.sql), referrals grant +5, plan
-      // activation refills `monthlyCredits`, and packs can be purchased.
+      // bounded: new profiles start with a real credit grant
+      // (migrations/011_credit_repricing.sql: 24), referrals grant +5, a page
+      // bundle grants a one-time AI-credit top-up, and packs can be purchased.
       // No user-visible gate was added or changed by this — the pre-existing
       // credit checks are untouched.
 
@@ -660,34 +666,81 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
   return data as PublishedPage;
 }
 
-// Plan-aware publish. If the caller has an ACTIVE paid plan with a free live-page
-// slot, the page is published immediately at no per-page charge. Otherwise we
-// return 402 { needsPayment:true } and the client falls back to the per-page
-// (249₪) SUMIT checkout. Ownership is already enforced by requireOwnPage.
+/**
+ * Publish a page by spending ONE page credit from the owner's balance.
+ *
+ * The single place that turns a page-publish balance into a live page — used
+ * both by the free publish endpoint below and by the SUMIT return handler after
+ * a 249₪ single-page purchase, so there is exactly one ordering of
+ * "take the credit, then publish, and give it back if publishing failed".
+ *
+ * Returns a `reason` instead of throwing so each caller can phrase its own
+ * response. `already_published` costs nothing: re-publishing a live page must
+ * never burn a second credit (under the old slot model this was harmless, under
+ * a balance model it would silently charge the customer again).
+ */
+export async function publishPageWithCredit(
+  email: string,
+  id: string,
+): Promise<{ ok: boolean; page: PublishedPage | null; reason?: string }> {
+  const { data: existing } = await supabase
+    .from('landing_pages')
+    .select('id, slug, status, published_at, expires_at')
+    .eq('id', id)
+    .single();
+  if (!existing) return { ok: false, page: null, reason: 'not_found' };
+  if ((existing as { status?: string }).status === 'published') {
+    return { ok: true, page: existing as PublishedPage, reason: 'already_published' };
+  }
+
+  if (!(await consumePageCredit(email))) {
+    // Either the balance is empty, or it emptied between the caller's check and
+    // here. Publish nothing — the caller falls back to the paid flow.
+    return { ok: false, page: null, reason: 'no_page_credits' };
+  }
+
+  const page = await publishPageById(id);
+  if (!page) {
+    // Never keep a credit for a page that did not go live.
+    await refundPageCredit(email);
+    return { ok: false, page: null, reason: 'publish_failed' };
+  }
+  return { ok: true, page };
+}
+
+// Balance-aware publish. If the caller holds at least one page credit, the page
+// is published immediately at no extra charge and the balance drops by one.
+// Otherwise we return 402 { needsPayment:true } and the client falls back to the
+// per-page (249₪) SUMIT checkout. Ownership is already enforced by requireOwnPage.
 export async function publishLandingPage(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
 
-  const { covered, reason } = await canPublishUnderPlan(email);
+  const { covered } = await canPublishFromBalance(email);
   if (!covered) {
-    const atLimit = reason === 'active_limit_reached';
     res.status(402).json({
       needsPayment: true,
-      reason,
-      error: atLimit
-        ? 'הגעת למספר הדפים הפעילים המרבי במסלול שלך. שדרגו מסלול או הסירו דף פעיל כדי לפרסם דף נוסף.'
-        : 'לפרסום דף נדרש תשלום או מנוי פעיל.',
+      reason: 'no_page_credits',
+      error: 'אין לך יתרת דפים לפרסום. אפשר לשלם על הדף הזה בנפרד, או לרכוש חבילת דפים ולחסוך.',
     });
     return;
   }
 
-  const data = await publishPageById(id);
-  if (!data) {
+  const { ok, page, reason } = await publishPageWithCredit(email, id);
+  if (!ok || !page) {
+    if (reason === 'no_page_credits') {
+      res.status(402).json({
+        needsPayment: true,
+        reason: 'no_page_credits',
+        error: 'אין לך יתרת דפים לפרסום. אפשר לשלם על הדף הזה בנפרד, או לרכוש חבילת דפים ולחסוך.',
+      });
+      return;
+    }
     res.status(500).json({ error: 'Publish failed' });
     return;
   }
-  res.json({ ...data, coveredByPlan: true });
+  res.json({ ...page, coveredByBalance: true });
 }
 
 // ─── Inline image editing helpers ────────────────────────────────────────────
