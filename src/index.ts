@@ -4,6 +4,7 @@ import './env';
 
 import app from './app';
 import { supabase } from './config/supabase';
+import { startRenewalSweep } from './services/renewal.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -18,6 +19,12 @@ async function start() {
   } else {
     console.log('Database connection established');
   }
+
+  // Annual page-renewal lifecycle: reminder emails, freeze after the grace
+  // period, hard delete after the frozen-retention window. There is no cron in
+  // this deployment, so the sweep is an interval owned by the web process —
+  // see src/services/renewal.service.ts for why 6h and why that is safe.
+  startRenewalSweep();
 }
 
 start().catch((err) => {

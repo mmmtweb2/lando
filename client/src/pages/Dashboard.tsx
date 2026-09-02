@@ -23,9 +23,38 @@ interface PageRow {
   business_name: string;
   created_at: string;
   logo_url: string | null;
-  status: 'draft' | 'published' | null;
+  // 'frozen' = published, expired, and past its 7-day grace period. The page is
+  // offline to the public but fully intact and restorable for 99₪ — see
+  // src/services/renewal.service.ts.
+  status: 'draft' | 'published' | 'frozen' | null;
   published_at: string | null;
   expires_at: string | null;
+  frozen_at: string | null;
+  renewal_count: number | null;
+}
+
+/** Annual renewal price. Mirrors RENEWAL_PRICE in src/config/billing.ts. */
+const RENEWAL_PRICE = 99;
+
+/** Show the renewal prompt on a live page once it is this close to expiring —
+ *  the same T-30 threshold at which the first reminder email goes out, so the
+ *  dashboard and the inbox never disagree about whether action is needed. */
+const RENEWAL_NOTICE_DAYS = 30;
+
+/** Whole days until `iso`; negative once past. null when there is no date. */
+function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return null;
+  return Math.ceil(ms / 86400000);
+}
+
+/** A page needs the owner's attention when it is frozen, or expiring soon. */
+function needsRenewal(p: PageRow): boolean {
+  if (p.status === 'frozen') return true;
+  if (p.status !== 'published') return false;
+  const d = daysUntil(p.expires_at);
+  return d !== null && d <= RENEWAL_NOTICE_DAYS;
 }
 
 // Shape of GET /api/users/plan since 2026-09-01: subscriptions are gone,
@@ -170,6 +199,13 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
 }
 
 function StatusBadge({ status }: { status: PageRow['status'] }) {
+  if (status === 'frozen') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 text-xs font-bold px-2.5 py-1 flex-shrink-0">
+        <Clock size={10} /> לא פעיל
+      </span>
+    );
+  }
   if (status === 'published') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 flex-shrink-0">
@@ -226,7 +262,48 @@ function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
 
 // ─── Page cards ───────────────────────────────────────────────────────────────
 
-function PageGrid({ pages, onDelete }: { pages: PageRow[]; onDelete: (id: string, name: string) => void }) {
+/**
+ * The renewal call-to-action on a page card. Rendered only when the page is
+ * frozen or inside the 30-day warning window, so a healthy page's card is
+ * completely unchanged — the prompt is a signal, and a permanent one is noise.
+ */
+function RenewalNotice({
+  page, onRenew, busy,
+}: { page: PageRow; onRenew: (id: string) => void; busy: boolean }) {
+  const frozen = page.status === 'frozen';
+  const days = daysUntil(page.expires_at);
+
+  // Frozen states the consequence and the remedy together — never a bare
+  // "expired", which tells the owner their page is gone when in fact everything
+  // is intact and one payment away from being live again.
+  const text = frozen
+    ? 'הדף ירד מהאוויר. התוכן והלידים שמורים — חידוש יחזיר אותו מיד.'
+    : days !== null && days <= 0
+      ? 'הדף פג תוקף היום. הוא יישאר באוויר עוד שבוע.'
+      : `הדף יפוג בעוד ${days} ימים.`;
+
+  return (
+    <div className={`rounded-2xl px-3 py-2.5 text-xs ${frozen ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-800'}`}>
+      <p className="font-semibold leading-relaxed">{text}</p>
+      <button
+        onClick={() => onRenew(page.id)}
+        disabled={busy}
+        className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${frozen ? 'bg-sky-600 hover:bg-sky-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+      >
+        {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${RENEWAL_PRICE} ₪`}
+      </button>
+    </div>
+  );
+}
+
+function PageGrid({
+  pages, onDelete, onRenew, renewingId,
+}: {
+  pages: PageRow[];
+  onDelete: (id: string, name: string) => void;
+  onRenew: (id: string) => void;
+  renewingId: string | null;
+}) {
   if (pages.length === 0) {
     return (
       <div className="rounded-3xl border-2 border-dashed border-[#C6D2F2] bg-[#EEF1FB]/40 p-12 flex flex-col items-center gap-3 text-center">
@@ -272,6 +349,9 @@ function PageGrid({ pages, onDelete }: { pages: PageRow[]; onDelete: (id: string
             <StatusBadge status={p.status} />
           </div>
           <p className="text-xs text-slate-400">{formatDate(p.created_at)}</p>
+          {needsRenewal(p) && (
+            <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} />
+          )}
           <div className="mt-auto pt-2 border-t border-[#E9EEFB] flex items-center justify-between">
             <Link
               to={`/p/${p.slug}`}
@@ -334,6 +414,7 @@ export default function Dashboard() {
   const [showPlans, setShowPlans] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [renewingId, setRenewingId] = useState<string | null>(null);
 
   // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
   useEffect(() => {
@@ -362,6 +443,20 @@ export default function Dashboard() {
     if (q.get('bundles') !== '1' && q.get('upgrade') !== '1') return;
     setShowPlans(true);
     window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
+  // Deep link from a renewal reminder email (?renew=<page id>). Deliberately
+  // does NOT open the charge automatically: an email link must never be able to
+  // start a payment on its own. It just lands the owner on the pages tab, where
+  // the card for that page is already showing its renewal button, and says so.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.get('renew')) return;
+    setActiveTab('pages');
+    setPaymentNotice({ text: 'הדף מסומן לחידוש — לחצו על כפתור החידוש בכרטיס הדף.', ok: true });
+    window.history.replaceState({}, '', window.location.pathname);
+    const t = setTimeout(() => setPaymentNotice(null), 8000);
+    return () => clearTimeout(t);
   }, []);
 
   async function handleDeletePage(id: string, name: string) {
@@ -460,6 +555,31 @@ export default function Dashboard() {
     } catch (e) {
       setBuyMsg({ text: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה', ok: false });
       setUpgrading(false);
+    }
+  }
+
+  /**
+   * Start a 99₪ annual renewal for one page.
+   *
+   * Identical shape to the bundle/credits flows: the server opens the SUMIT
+   * charge and the page is only actually renewed on the verified return, so
+   * nothing here can grant anything on its own.
+   */
+  async function handleRenewPage(id: string) {
+    if (!user?.email || renewingId) return;
+    setRenewingId(id);
+    try {
+      const r = await authFetch('/api/payments/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'renew', reference: id }),
+      });
+      const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
+      if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
+      window.location.href = data.redirectUrl;
+    } catch (e) {
+      setBuyMsg({ text: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה', ok: false });
+      setRenewingId(null);
     }
   }
 
@@ -832,7 +952,14 @@ export default function Dashboard() {
                     transition={{ duration: 0.18 }}
                   >
                     {activeTab === 'pages' ? (
-                      dataLoading ? <PageGridSkeleton /> : <PageGrid pages={pages} onDelete={handleDeletePage} />
+                      dataLoading ? <PageGridSkeleton /> : (
+                        <PageGrid
+                          pages={pages}
+                          onDelete={handleDeletePage}
+                          onRenew={handleRenewPage}
+                          renewingId={renewingId}
+                        />
+                      )
                     ) : (
                       dataLoading ? (
                         <div className="flex items-center justify-center py-16">

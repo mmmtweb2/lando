@@ -59,7 +59,21 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // in a shareable link preview before the owner has chosen to publish. The
   // owner's own browser still gets the real draft content a moment later,
   // once the SPA hydrates and calls the (now owner-gated) page-data API.
-  if ((page as { status?: string | null }).status === 'draft') {
+  //
+  // A FROZEN page (expired, past its grace week, not yet renewed) is handled
+  // identically here, and — like draft — with NO owner exception, for exactly
+  // the same pre-auth reason: this route runs before any JS or auth, so it
+  // cannot tell the owner from a WhatsApp link-preview bot.
+  //
+  // The *friendly* "this page is temporarily offline" message a human visitor
+  // sees is served by the SPA a moment later, off the 410 from
+  // GET /api/landing/:slug (see getLandingPage). What is withheld HERE is only
+  // the link PREVIEW — no business name, description or hero image in the OG
+  // tags. A lapsed page must not keep generating rich, live-looking previews in
+  // WhatsApp and Facebook that promise a working page and deliver an offline
+  // one; that reflects worse on the customer than a plain link does.
+  const ogStatus = (page as { status?: string | null }).status;
+  if (ogStatus === 'draft' || ogStatus === 'frozen') {
     const shell = await loadHtmlShell();
     res.status(200).setHeader('Content-Type', 'text/html').send(shell);
     return;

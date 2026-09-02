@@ -886,15 +886,29 @@ export default function LandingViewer() {
   // ── Section visibility (hidden_sections synced from page.ai_content) ──────
   const [hiddenSections, setHiddenSections] = useState<string[]>([]);
 
+  // Set when the API answers 410 Gone — the page exists but is frozen (expired,
+  // unrenewed). Drives the friendly offline screen instead of the 404 screen.
+  const [frozenBusiness, setFrozenBusiness] = useState<string | null>(null);
+
   useEffect(() => {
     if (!slug) return;
     authFetch(`/api/landing/${slug}`)
-      .then((r) => {
+      .then(async (r) => {
         if (r.status === 404) throw new Error('הדף לא נמצא');
+        // 410 Gone = the page expired and was frozen (see getLandingPage). It is
+        // NOT deleted, and the visitor is very likely a real lead who followed a
+        // link the business handed out. Say the page is temporarily unavailable
+        // and name the business, so they call instead of assuming it closed —
+        // a bare "not found" would lose that lead for the customer twice over.
+        if (r.status === 410) {
+          const body = await r.json().catch(() => ({})) as { business_name?: string | null };
+          setFrozenBusiness(body.business_name ?? '');
+          throw new Error('__frozen__');
+        }
         if (!r.ok) throw new Error('שגיאה בטעינת הדף');
         return r.json() as Promise<LandingPage>;
       })
-      .then(setPage)
+      .then((p) => { if (p) setPage(p as LandingPage); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [slug]);
@@ -907,6 +921,27 @@ export default function LandingViewer() {
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
       <Loader2 size={36} className="animate-spin text-[#2E63F6]" />
       <p className="text-sm text-slate-500" dir="rtl">טוען את הדף...</p>
+    </div>
+  );
+
+  // Frozen page — a real business whose page simply lapsed. No "create a page"
+  // upsell here: this visitor came looking for that business, not for Pagey.
+  if (frozenBusiness !== null) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center" dir="rtl">
+      <p className="text-5xl">🌙</p>
+      <h1 className="text-xl font-bold text-slate-700">
+        {frozenBusiness ? `הדף של ${frozenBusiness} אינו זמין כרגע` : 'הדף אינו זמין כרגע'}
+      </h1>
+      <p className="max-w-md text-sm leading-relaxed text-slate-500">
+        תוקף הדף פג והוא ירד מהאוויר באופן זמני. אם הגעתם לכאן דרך קישור שקיבלתם,
+        מומלץ ליצור קשר ישירות עם בעל העסק.
+      </p>
+      <p className="mt-2 text-xs text-slate-400">
+        בעלי הדף? התחברו לחשבון שלכם כדי לחדש אותו ולהחזירו לאוויר.
+      </p>
+      <Link to="/dashboard" className="mt-1 text-sm font-semibold text-[#2E63F6] hover:underline">
+        ← לאזור האישי
+      </Link>
     </div>
   );
 

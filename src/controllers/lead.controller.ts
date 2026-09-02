@@ -133,8 +133,16 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  if ((page as { status?: string }).status !== 'published') {
-    res.status(403).json({ error: 'הדף עדיין בטיוטה ואינו מקבל פניות. לאחר פרסום הדף ניתן יהיה לשלוח דרכו הודעות.' });
+  // A FROZEN page is covered by the same rule and needs no extra branch — it is
+  // not 'published', so it stops here. Only the wording changes: telling the
+  // owner of a lapsed page that it is "still a draft" would be simply false.
+  const leadPageStatus = (page as { status?: string }).status;
+  if (leadPageStatus !== 'published') {
+    res.status(403).json({
+      error: leadPageStatus === 'frozen'
+        ? 'הדף אינו פעיל כרגע ואינו מקבל פניות.'
+        : 'הדף עדיין בטיוטה ואינו מקבל פניות. לאחר פרסום הדף ניתן יהיה לשלוח דרכו הודעות.',
+    });
     return;
   }
 
