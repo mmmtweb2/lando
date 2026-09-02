@@ -505,10 +505,10 @@ export default function MarketingLanding() {
           <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
             <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">930</span><span className="text-lg font-bold">₪</span>
+              <span className="text-4xl font-extrabold">990</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">186 ₪ לדף — חיסכון של 25%</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">198 ₪ לדף — חיסכון של 20%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['5 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '50 קרדיטי AI במתנה', 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
@@ -524,10 +524,10 @@ export default function MarketingLanding() {
             <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>הכי משתלם</span>
             <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">1,250</span><span className="text-lg font-bold">₪</span>
+              <span className="text-4xl font-extrabold">1,490</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">125 ₪ לדף — חצי ממחיר דף בודד</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">149 ₪ לדף — חיסכון של כ-40%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['10 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '100 קרדיטי AI במתנה', 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
@@ -555,7 +555,7 @@ export default function MarketingLanding() {
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
           <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
-          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה 930 ₪ (186 ₪ לדף) וחבילת 10 דפים 1,250 ₪ (125 ₪ לדף — חצי ממחיר דף בודד, וגם בלי מיתוג Pagey על הדפים). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. רוכשים מהאזור האישי." />
+          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה 990 ₪ (198 ₪ לדף) וחבילת 10 דפים 1,490 ₪ (149 ₪ לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-350 ₪, גם על דף בודד. רוכשים מהאזור האישי." />
           <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
         </div>
       </Section>
