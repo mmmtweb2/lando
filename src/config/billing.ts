@@ -10,9 +10,13 @@
 //   • Single page — 249₪, buys 1 page credit. UNCHANGED, deliberately: Moshe
 //     wants the core product to stay a one-time purchase, as differentiation
 //     against the subscription-only market.
-//   • חבילת 5 דפים  —   930₪  → 5 page credits  (186₪/page, ~25% off)
-//   • חבילת 10 דפים — 1,250₪  → 10 page credits (125₪/page, exactly half price)
+//   • חבילת 5 דפים  —   990₪  → 5 page credits  (198₪/page, ~20% off)
+//   • חבילת 10 דפים — 1,490₪  → 10 page credits (149₪/page, ~40% off)
 //                              + PERMANENT white-label (hide the Pagey badge)
+//   • תוסף מיתוג אישי —  350₪  → PERMANENT white-label on its own, no pages
+//                              (2026-09-02: closes the gap where the 5-bundle
+//                              was economically dominated by the 10-bundle —
+//                              see the BUNDLES block below for the full note)
 //
 // A bundle never expires and has no renewal date. It is not a plan: there is no
 // `plan_expires_at` cliff, no monthly refill, no "active plan" state. Buy once,
@@ -96,7 +100,7 @@ export const PAID_TIER: TierDef = {
 
 // ─── Bundles ─────────────────────────────────────────────────────────────────
 
-export type BundleKey = 'bundle5' | 'bundle10';
+export type BundleKey = 'bundle5' | 'bundle10' | 'whitelabel_addon';
 
 export interface BundleDef {
   key: BundleKey;
@@ -144,7 +148,7 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     key: 'bundle5',
     label: 'חבילת 5 דפים',
     pages: 5,
-    price: 930, // 186₪/page — ~25% off the 249₪ single-page price
+    price: 990, // 198₪/page — ~20% off the 249₪ single-page price
     aiCredits: 5 * CREDITS_PER_BUNDLE_PAGE, // 50
     whiteLabel: false,
   },
@@ -152,24 +156,48 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     key: 'bundle10',
     label: 'חבילת 10 דפים',
     pages: 10,
-    price: 1250, // 125₪/page — exactly half the 249₪ single-page price
+    price: 1490, // 149₪/page — ~40% off the 249₪ single-page price
     aiCredits: 10 * CREDITS_PER_BUNDLE_PAGE, // 100
     whiteLabel: true, // the 10-bundle's bonus perk (was the old agency tier's)
+  },
+  // 2026-09-02: standalone white-label purchase, decided with Moshe to close two
+  // problems at once — the 5-bundle was economically dominated by the 10-bundle
+  // (anyone who could afford 930₪ could nearly always stretch to 1,250₪ for a
+  // better per-page rate AND white-label, so the 5-bundle had no real reason to
+  // exist), and permanent white-label was under-priced relative to recurring
+  // competitor equivalents (~490₪/MONTH elsewhere). Zero pages, zero AI credits —
+  // pure account-level perk, available to any account regardless of what it has
+  // already bought (deliberately not gated behind owning a bundle: simpler to
+  // implement, and it is its own revenue line even for existing single-page or
+  // 10-bundle-less customers). `grantPageCredits`'s existing
+  // `pages<=0 && aiCredits<=0 && !whiteLabel` guard already tolerates a
+  // whiteLabel-only grant — no other code change was needed to support this.
+  whitelabel_addon: {
+    key: 'whitelabel_addon',
+    label: 'מיתוג אישי (הסרת "נוצר באמצעות Pagey")',
+    pages: 0,
+    price: 350,
+    aiCredits: 0,
+    whiteLabel: true,
   },
 };
 
 export function isBundleKey(key: string | undefined | null): key is BundleKey {
-  return key === 'bundle5' || key === 'bundle10';
+  return key === 'bundle5' || key === 'bundle10' || key === 'whitelabel_addon';
 }
 
-/** Price per page inside a bundle, for "save X%" copy. Rounded to whole ₪. */
+/**
+ * Price per page inside a bundle, for "save X%" copy. Rounded to whole ₪.
+ * Returns 0 for a 0-page product (e.g. the white-label addon) rather than
+ * dividing by zero — that product has no per-page framing to begin with.
+ */
 export function bundlePerPagePrice(b: BundleDef): number {
-  return Math.round(b.price / b.pages);
+  return b.pages > 0 ? Math.round(b.price / b.pages) : 0;
 }
 
-/** Whole-percent saving vs. buying the same number of pages one at a time. */
+/** Whole-percent saving vs. buying the same number of pages one at a time. 0 for a 0-page product. */
 export function bundleSavingPercent(b: BundleDef): number {
-  return Math.round((1 - b.price / (b.pages * SINGLE_PAGE_PRICE)) * 100);
+  return b.pages > 0 ? Math.round((1 - b.price / (b.pages * SINGLE_PAGE_PRICE)) * 100) : 0;
 }
 
 // ─── Legacy subscription conversion (read-only compatibility) ────────────────

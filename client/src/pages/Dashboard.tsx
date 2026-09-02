@@ -540,7 +540,7 @@ export default function Dashboard() {
     navigate('/login', { replace: true });
   }
 
-  async function handleBuyBundle(bundleKey: 'bundle5' | 'bundle10') {
+  async function handleBuyBundle(bundleKey: 'bundle5' | 'bundle10' | 'whitelabel_addon') {
     if (!user?.email || upgrading) return;
     setUpgrading(true);
     try {
@@ -822,6 +822,21 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
+                <div className="flex items-center justify-between gap-3 p-4 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-bold text-slate-800 text-sm">{bundlesCatalog.whitelabel_addon.label}</span>
+                    <span className="text-xs text-slate-500">תוסף עצמאי, לא תלוי בחבילת דפים — לתמיד, ללא תלות במה שכבר רכשת.</span>
+                  </div>
+                  <button
+                    disabled={upgrading}
+                    onClick={() => handleBuyBundle('whitelabel_addon')}
+                    className="flex-shrink-0 rounded-xl py-2 px-4 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white transition disabled:opacity-50"
+                  >
+                    {upgrading ? 'מעבד…' : `רכישה — ₪${bundlesCatalog.whitelabel_addon.price}`}
+                  </button>
+                </div>
+              )}
               {buyMsg && !buyMsg.ok && (
                 <p className="text-sm text-center font-semibold rounded-xl px-3 py-2 text-red-600 bg-red-50">{buyMsg.text}</p>
               )}
