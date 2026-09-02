@@ -30,6 +30,25 @@ import { CREDIT_COSTS } from './credits';
 /** One-time price of publishing a single page, bought on its own. Unchanged. */
 export const SINGLE_PAGE_PRICE = 249;
 
+/**
+ * Annual renewal of ONE already-published page — 99₪, one-time, manual.
+ *
+ * This number is not a new pricing decision: pagey.co.il's marketing page has
+ * been promising "חידוש שנתי — 99 ₪ בלבד" since launch, while no renewal
+ * mechanism existed at all. It is fixed here so the promise and the charge come
+ * from the same constant.
+ *
+ * A renewal is deliberately NOT a page credit. Page credits buy the right to
+ * publish a NEW page (249₪ of value); a renewal buys another year for a page
+ * that is already the customer's. Charging a renewal against `page_credits`
+ * would silently spend 249₪ of balance on a 99₪ product, so `grantRenewal`
+ * never touches the balance in either direction.
+ *
+ * NOT a subscription: there is no SUMIT standing order and no auto-charge. The
+ * customer is emailed at T-30/T-7/T-0 and pays by hand, each year, on purpose.
+ */
+export const RENEWAL_PRICE = 99;
+
 // ─── Monthly page-CREATION caps ──────────────────────────────────────────────
 // This is the anti-abuse cap on how many DRAFT pages an account can generate per
 // calendar month. It is completely separate from the page-publish balance: a
