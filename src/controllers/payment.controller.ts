@@ -52,6 +52,16 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
       res.status(409).json({ error: 'הדף כבר מפורסם.' });
       return;
     }
+    // A frozen page is an expired page, not an unpublished one. Selling a 249₪
+    // publish for it would charge two and a half times the renewal price for the
+    // same outcome — the customer is entitled to bring it back for 99₪.
+    if ((page as { status?: string }).status === 'frozen') {
+      res.status(409).json({
+        needsRenewal: true,
+        error: 'הדף פג תוקף. כדי להחזירו לאוויר יש לחדש אותו — 99 ₪ לשנה, ולא לשלם שוב על פרסום.',
+      });
+      return;
+    }
     // Never open a 249₪ charge for a page the customer's page-publish balance
     // already covers. The client's publish flow tries the free balance-publish
     // endpoint first, but that is a client-side courtesy — a direct call to this

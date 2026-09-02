@@ -34,7 +34,7 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at')
+    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count')
     .eq('owner_email', email)
     .order('created_at', { ascending: false });
 
@@ -168,7 +168,21 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   // to anyone with the link, minus the lead form" as it was before. A random
   // visitor hitting a draft slug now gets exactly the 404 they'd get for a slug
   // that doesn't exist — no signal that a page exists but isn't published yet.
-  if ((data as { status?: string | null }).status === 'draft' && !isOwner) {
+  //
+  // 'frozen' is the same lockdown with a different public answer. A frozen page
+  // is a PAYING CUSTOMER'S LAPSED ASSET, not a work-in-progress secret: the page
+  // was publicly live under this exact slug for a year, so there is nothing left
+  // to hide, and its old links are still being clicked by real people. Those
+  // visitors get 410 Gone with a short explanation instead of a bare 404 — a
+  // dead-end 404 tells a customer's would-be lead nothing, while "this page is
+  // temporarily offline" tells them to phone the business instead of assuming it
+  // closed. 410 (not 404) also tells search engines the URL is intentionally
+  // gone, which is the truth and is reversible if the owner renews.
+  //
+  // The owner and admins still get the full page, so the owner can see exactly
+  // what they are renewing.
+  const pageStatus = (data as { status?: string | null }).status ?? null;
+  if ((pageStatus === 'draft' || pageStatus === 'frozen') && !isOwner) {
     let isAdminViewer = false;
     if (req.authEmail) {
       const { data: prof } = await supabase
@@ -179,6 +193,18 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
       isAdminViewer = !!prof?.is_admin;
     }
     if (!isAdminViewer) {
+      if (pageStatus === 'frozen') {
+        // Deliberately minimal: the business name (already public for a year)
+        // so the message can name the business, and nothing else. No owner
+        // email, no content, no expiry date — a lapsed page must not become a
+        // scraping endpoint for the customer's details.
+        res.status(410).json({
+          frozen: true,
+          business_name: (data as { business_name?: string | null }).business_name ?? null,
+          error: 'הדף אינו זמין כרגע. ניתן ליצור קשר עם בעל העסק לחידושו.',
+        });
+        return;
+      }
       res.status(404).json({ error: 'Landing page not found' });
       return;
     }
@@ -692,6 +718,15 @@ export async function publishPageWithCredit(
   if ((existing as { status?: string }).status === 'published') {
     return { ok: true, page: existing as PublishedPage, reason: 'already_published' };
   }
+  // A FROZEN page must never be brought back through the publish path. It would
+  // work — the page would go live again — but it would spend a page credit
+  // (249₪ of value) on something the customer is entitled to buy for 99₪, and
+  // would reset published_at as if the page were new. Restoring a frozen page is
+  // a RENEWAL: purpose 'renew' → grantRenewal, which charges 99₪ and touches no
+  // balance. Refuse here and point the caller at that flow.
+  if ((existing as { status?: string }).status === 'frozen') {
+    return { ok: false, page: null, reason: 'frozen_needs_renewal' };
+  }
 
   if (!(await consumePageCredit(email))) {
     // Either the balance is empty, or it emptied between the caller's check and
@@ -729,6 +764,14 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
 
   const { ok, page, reason } = await publishPageWithCredit(email, id);
   if (!ok || !page) {
+    if (reason === 'frozen_needs_renewal') {
+      res.status(409).json({
+        needsRenewal: true,
+        reason: 'frozen_needs_renewal',
+        error: 'הדף פג תוקף וירד מהאוויר. כדי להחזירו לאוויר יש לחדש אותו — 99 ₪ לשנה.',
+      });
+      return;
+    }
     if (reason === 'no_page_credits') {
       res.status(402).json({
         needsPayment: true,
