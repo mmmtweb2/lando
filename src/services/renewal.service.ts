@@ -243,6 +243,9 @@ interface ReminderRow {
   business_name: string | null;
   owner_email: string | null;
   expires_at: string | null;
+  renewal_reminder_30_at?: string | null;
+  renewal_reminder_7_at?: string | null;
+  renewal_reminder_0_at?: string | null;
 }
 
 /**
@@ -277,7 +280,7 @@ async function sendDueReminders(now: Date): Promise<number> {
 
     const { data, error } = await supabase
       .from('landing_pages')
-      .select('id, slug, business_name, owner_email, expires_at')
+      .select('id, slug, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
       .eq('status', 'published')
       .is(column, null)
       .not('expires_at', 'is', null)
@@ -292,8 +295,15 @@ async function sendDueReminders(now: Date): Promise<number> {
     for (const row of (data ?? []) as ReminderRow[]) {
       const stamp = new Date().toISOString();
       const marks: Record<string, string> = { [column]: stamp };
-      // Collapse the already-passed, less urgent thresholds in the same write.
-      for (const c of lessUrgentColumns) marks[c] = stamp;
+      // Collapse the already-passed, less urgent thresholds in the same write —
+      // but ONLY the ones never sent. In the normal year-long flow T-7 has
+      // genuinely been sent by the time T-0 fires, and stamping it again would
+      // overwrite the real send time with today's, destroying exactly the
+      // "did we actually warn this customer, and when?" record these columns
+      // exist to keep.
+      for (const c of lessUrgentColumns) {
+        if (!(row as unknown as Record<string, string | null>)[c]) marks[c] = stamp;
+      }
 
       // Claim the send atomically: only the pass that flips this column from
       // NULL gets to mail. Two overlapping sweeps (a slow pass still running
