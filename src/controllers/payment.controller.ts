@@ -3,8 +3,9 @@ import { supabase } from '../config/supabase';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
 import { publishPageWithCredit } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
-import { BUNDLES, BundleKey, SINGLE_PAGE_PRICE, isBundleKey } from '../config/billing';
+import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey } from '../config/billing';
 import { canPublishFromBalance, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
+import { checkRenewEligibility, grantRenewal } from '../services/renewal.service';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -73,6 +74,38 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     }
     amount = SINGLE_PAGE_PRICE;
     itemName = `דף נחיתה - ${(page as { business_name?: string }).business_name ?? 'Pagey'}`;
+  } else if (purpose === 'renew') {
+    // Annual renewal of ONE existing page — 99₪ flat, manual, no standing
+    // order. Eligibility is checked here so we never open a charge that
+    // grantRenewal would later refuse to fulfil, and checked AGAIN at grant
+    // time (the page can change, and the admin force-activate tool reaches the
+    // grant without ever passing through this endpoint).
+    if (!reference) { res.status(400).json({ error: 'reference (page id) required' }); return; }
+
+    const eligibility = await checkRenewEligibility(email, reference);
+    if (!eligibility.ok) {
+      if (eligibility.reason === 'not_renewable') {
+        // A draft was never published, so there is no year to extend — it needs
+        // a 249₪ publish, not a 99₪ renewal. Taking the 99₪ here would leave
+        // the page exactly as offline as before.
+        res.status(409).json({
+          error: 'ניתן לחדש רק דף שפורסם. דף בטיוטה יש לפרסם תחילה.',
+        });
+        return;
+      }
+      // not_found and not_owner are answered identically on purpose: a probe
+      // must not be able to tell "this page id exists but isn't yours" from
+      // "this page id doesn't exist".
+      res.status(403).json({ error: 'אין לך הרשאה לחדש דף זה.' });
+      return;
+    }
+
+    // NOTE: page_credits are deliberately NOT consulted. A page credit buys the
+    // right to publish a NEW page (249₪ of value); spending one on a 99₪
+    // renewal would quietly overcharge the customer. Renewal is always its own
+    // flat fee — see RENEWAL_PRICE in config/billing.ts.
+    amount = RENEWAL_PRICE;
+    itemName = `חידוש שנתי לדף נחיתה - ${eligibility.businessName ?? 'Pagey'}`;
   } else if (purpose === 'credits') {
     const pack = reference ? CREDIT_PACKS[reference] : undefined;
     if (!pack) { res.status(400).json({ error: `pack must be one of: ${Object.keys(CREDIT_PACKS).join(', ')}` }); return; }
@@ -90,7 +123,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     amount = bundle.price;
     itemName = `${bundle.label} - Pagey`;
   } else {
-    res.status(400).json({ error: "purpose must be 'publish', 'credits' or 'bundle'" });
+    res.status(400).json({ error: "purpose must be 'publish', 'renew', 'credits' or 'bundle'" });
     return;
   }
 
@@ -217,6 +250,23 @@ async function grantPaymentValue(pay: PaymentRow): Promise<boolean> {
       });
     }
     return true;
+  } else if (pay.purpose === 'renew' && pay.reference) {
+    // Annual renewal — another year for a page the payer already owns.
+    //
+    // grantRenewal re-checks ownership AND renewability at grant time (not just
+    // at startPayment time) for the same reason the 'publish' branch above
+    // re-checks ownership: this dispatch point is also reached from the admin
+    // re-verify and force-activate tools, long after the charge was opened, by
+    // which time the page could have been deleted, transferred, or already
+    // renewed by a competing payment.
+    //
+    // It is all-or-nothing and its final write is a compare-and-swap on the
+    // page's status AND renewal_count, so `false` here proves nothing was
+    // written: the payment row is safely retryable, and one charge can never
+    // add two years. Nothing else is touched — in particular the page-publish
+    // balance is neither spent nor granted, because a renewal is a flat 99₪
+    // fee and not a page credit.
+    return grantRenewal(pay.user_email, pay.reference);
   } else if (pay.purpose === 'credits' && pay.reference) {
     return (await grantCreditsForPack(pay.user_email, pay.reference)) !== null;
   } else if (pay.purpose === 'bundle' && pay.reference) {
