@@ -875,6 +875,13 @@ export default function LandingViewer() {
   const [creditsRefreshKey, setCreditsRefreshKey] = useState<number>(0);
   const [rewriteStatus, setRewriteStatus] = useState<'idle' | 'rewriting'>('idle');
   const [colorOverrides, setColorOverrides] = useState<{ primary?: string; accent?: string }>({});
+  // Starts closed: this panel used to render permanently at a fixed
+  // top/left position and had no close control, which collided with the
+  // draft banner's publish button occupying the same corner (bug report,
+  // 2026-09-02) and never went away, even after "שמור שינויים". Now it is
+  // an explicit open/close toggle, moved to the opposite side of the
+  // screen from the publish button, and closes itself on save.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // ── FAQ accordion open index ──────────────────────────────────────────────
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -1116,6 +1123,7 @@ export default function LandingViewer() {
       setPage((prev) => prev ? { ...prev, ai_content: data.ai_content } : prev);
       setEdits({});
       setColorOverrides({});
+      setPaletteOpen(false);
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
     } catch {
@@ -3490,24 +3498,43 @@ export default function LandingViewer() {
         </div>
       )}
 
-      {/* Global palette editor — owner only, in edit mode */}
+      {/* Global palette editor — owner only, in edit mode.
+          Right side + a real open/close toggle, on purpose: the publish
+          button lives in the draft banner's top-left corner, and this panel
+          used to sit fixed on top of it (same corner, higher z-index) with no
+          way to dismiss it. Right side + closed-by-default fixes both. */}
       {isEditingMode && (
-        <div className="fixed top-20 left-4 z-50 w-44 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl p-4 flex flex-col gap-3" dir="rtl">
-          <p className="text-xs font-bold text-slate-700">🎨 צבעי הדף</p>
-          <label className="flex items-center justify-between text-sm text-slate-600">
-            ראשי
-            <input type="color" value={primary}
-              onChange={(e) => setColorOverrides((c) => ({ ...c, primary: e.target.value }))}
-              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
-          </label>
-          <label className="flex items-center justify-between text-sm text-slate-600">
-            הדגשה
-            <input type="color" value={secondaryAccent}
-              onChange={(e) => setColorOverrides((c) => ({ ...c, accent: e.target.value }))}
-              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
-          </label>
-          <p className="text-[11px] text-slate-400 leading-tight">השינוי נשמר עם "שמור שינויים"</p>
-        </div>
+        <>
+          <button
+            onClick={() => setPaletteOpen((v) => !v)}
+            title="צבעי הדף"
+            aria-label="פתיחת עורך הצבעים"
+            className="fixed top-20 right-4 z-50 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg flex items-center justify-center text-lg hover:scale-105 transition"
+          >
+            🎨
+          </button>
+          {paletteOpen && (
+            <div className="fixed top-[4.75rem] right-4 z-50 w-44 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl p-4 flex flex-col gap-3" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-slate-700">🎨 צבעי הדף</p>
+                <button onClick={() => setPaletteOpen(false)} aria-label="סגירה" className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs leading-none">×</button>
+              </div>
+              <label className="flex items-center justify-between text-sm text-slate-600">
+                ראשי
+                <input type="color" value={primary}
+                  onChange={(e) => setColorOverrides((c) => ({ ...c, primary: e.target.value }))}
+                  className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
+              </label>
+              <label className="flex items-center justify-between text-sm text-slate-600">
+                הדגשה
+                <input type="color" value={secondaryAccent}
+                  onChange={(e) => setColorOverrides((c) => ({ ...c, accent: e.target.value }))}
+                  className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
+              </label>
+              <p className="text-[11px] text-slate-400 leading-tight">השינוי נשמר עם "שמור שינויים"</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
