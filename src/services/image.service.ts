@@ -1,7 +1,6 @@
 import sharp from 'sharp';
-import path from 'path';
-import fs from 'fs';
 import * as fal from '@fal-ai/serverless-client';
+import { uploadImage } from './storage.service';
 
 // Configure once at module load — FAL_KEY may be absent in dev, guarded at call site
 fal.config({ credentials: process.env.FAL_KEY });
@@ -44,14 +43,48 @@ export async function generateFalImage(
   return url;
 }
 
+/**
+ * Resize + re-encode an uploaded image to WebP and store it durably.
+ *
+ * Returns an ABSOLUTE Supabase Storage URL, where this used to return a
+ * site-relative `/uploads/...` path.
+ *
+ * ── Why the change ───────────────────────────────────────────────────────────
+ * This function wrote to `public/uploads/` — the container's own disk, with no
+ * persistent volume declared anywhere in the Dockerfile or Coolify config. That
+ * directory is destroyed on every redeploy, so every customer logo and photo
+ * silently disappeared at the next deploy and live, paid landing pages were
+ * left with broken images. Uploads now go to Supabase Storage (see
+ * storage.service.ts), on the same service-role credentials the rest of the
+ * backend already uses.
+ *
+ * ── Why the changed return value is safe ─────────────────────────────────────
+ * Every consumer already treats these values as opaque strings handed straight
+ * to an <img src> or stored in landing_pages.logo_url / user_images: the
+ * wizard, the inline image editor, the OG-tag builder. An absolute URL works in
+ * all of them, and AI-generated images (generateFalImage above) have always
+ * returned absolute third-party URLs through the same fields — so absolute URLs
+ * in these columns are the pre-existing normal case, not a new one.
+ *
+ * Existing `/uploads/...` values in the database are NOT migrated (Moshe's
+ * call: current uploads are test data). app.ts still serves /public statically,
+ * so they resolve exactly as well — and as badly — as they do today.
+ *
+ * Throws if the upload fails. Deliberately no fall back to local disk: a silent
+ * fallback would look like success and break at the next redeploy, which is the
+ * precise bug being removed here.
+ */
 export async function processAndSave(buffer: Buffer, maxWidth: number, prefix = 'file'): Promise<string> {
-  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-  fs.mkdirSync(uploadsDir, { recursive: true });
-
   const filename = `${prefix}-${Date.now()}-${Math.random().toString(36).substring(7)}.webp`;
-  await sharp(buffer)
+
+  // Re-encode in memory rather than via .toFile() — there is no longer a local
+  // path to write to, and the buffer goes straight to object storage.
+  const webp = await sharp(buffer)
     .resize({ width: maxWidth, withoutEnlargement: true })
     .webp({ quality: 80 })
-    .toFile(path.join(uploadsDir, filename));
-  return `/uploads/${filename}`;
+    .toBuffer();
+
+  const url = await uploadImage(webp, filename, 'image/webp');
+  console.log('[IMAGE] stored', { filename, bytes: webp.length });
+  return url;
 }
