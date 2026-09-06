@@ -35,7 +35,20 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { purpose, reference, couponCode } = req.body as { purpose?: string; reference?: string; couponCode?: string };
+  const { purpose, reference, couponCode, refundAck } = req.body as {
+    purpose?: string; reference?: string; couponCode?: string; refundAck?: boolean;
+  };
+
+  // The refund/no-refund disclosure (RefundAck.tsx) must be checked before a
+  // charge opens — never trust the client's disabled button alone; a direct
+  // call to this endpoint could omit it entirely. Stamped onto the payments
+  // row below as server-side proof for a chargeback dispute. 'renew' has no
+  // RefundAck UI (it's a flat annual renewal, not a new purchase decision) so
+  // it's excluded from this gate, same as it's excluded from the coupon UI.
+  if (purpose !== 'renew' && refundAck !== true) {
+    res.status(400).json({ error: 'יש לאשר את מדיניות הביטולים לפני התשלום.' });
+    return;
+  }
 
   let amount: number;
   let itemName: string;
@@ -200,6 +213,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     .insert({
       user_email: email, purpose, reference: reference ?? null, amount, status: 'pending',
       coupon_id: couponId, discount_amount: discountAmount,
+      refund_ack: refundAck === true, refund_ack_at: refundAck === true ? new Date().toISOString() : null,
     })
     .select('id')
     .single();
@@ -571,6 +585,26 @@ export async function reverifyPayment(req: Request, res: Response): Promise<void
     return;
   }
 
+  // Claim the row ATOMICALLY before granting anything — same pattern as
+  // paymentReturn's claim. The `pay.status === 'paid'` check above is a
+  // read-then-act check: two concurrent admin re-verify calls (or a raw HTTP
+  // replay) on the same stuck payment could both read a non-'paid' status and
+  // both call grantPaymentValue, double-granting credits off one charge. This
+  // conditional update only matches while the row is still un-granted, so
+  // exactly one request wins it.
+  const { data: claimed } = await supabase
+    .from('payments')
+    .update({ status: 'processing' })
+    .eq('id', id)
+    .in('status', ['pending', 'needs_review', 'failed'])
+    .select('id')
+    .maybeSingle();
+  if (!claimed) {
+    const { data: fresh } = await supabase.from('payments').select('status').eq('id', id).single();
+    res.status(409).json({ error: 'Payment is already being processed or was already resolved.', status: (fresh as { status?: string } | null)?.status });
+    return;
+  }
+
   const ok = await grantPaymentValue(pay);
   await supabase
     .from('payments')
@@ -586,6 +620,23 @@ export async function forceActivatePayment(req: Request, res: Response): Promise
   const pay = payData as PaymentRow | null;
   if (!pay) { res.status(404).json({ error: 'Payment not found' }); return; }
   if (pay.status === 'paid') { res.json({ status: 'paid', note: 'already granted' }); return; }
+
+  // Claim the row ATOMICALLY before granting anything — same pattern as
+  // paymentReturn's claim (see reverifyPayment above for the full rationale).
+  // Without this, two concurrent force-activate calls on the same stuck
+  // payment could both pass the stale 'paid' check and both grant.
+  const { data: claimed } = await supabase
+    .from('payments')
+    .update({ status: 'processing' })
+    .eq('id', id)
+    .in('status', ['pending', 'needs_review', 'failed'])
+    .select('id')
+    .maybeSingle();
+  if (!claimed) {
+    const { data: fresh } = await supabase.from('payments').select('status').eq('id', id).single();
+    res.status(409).json({ error: 'Payment is already being processed or was already resolved.', status: (fresh as { status?: string } | null)?.status });
+    return;
+  }
 
   const ok = await grantPaymentValue(pay);
   console.warn('[PAYMENT ADMIN] force-activate', { id, purpose: pay.purpose, user_email: pay.user_email, ok, by: adminEmail });

@@ -28,11 +28,21 @@ const suggestLimiter = rateLimit({
   message: 'יותר מדי בקשות בזמן קצר. נסו שוב מאוחר יותר.',
 });
 
+// Public page-view read (GET /:slug) — legitimate traffic can be bursty (a
+// shared link, a business's own refreshing dashboard tab), so this is
+// deliberately generous compared to the write-side limiters above; it exists
+// only to stop a scripted flood from hammering the DB on every hit.
+const pageViewLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,
+  message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
+});
+
 router.post('/', requireAuth, aiLimiter, handleUpload, createLandingPage);
 router.post('/suggest-questions', requireAuth, suggestLimiter, suggestQuestions); // must be before /:slug-style params
 router.get('/my-pages', requireAuth, getMyPages);   // must be before /:slug
 router.get('/my-leads', requireAuth, getMyLeads);   // must be before /:slug
-router.get('/:slug', optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner
+router.get('/:slug', pageViewLimiter, optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner
 
 // ── Destructive / owner-only actions ──────────────────────────────────────────
 // requireAuth verifies the caller's identity from a real Supabase token;
