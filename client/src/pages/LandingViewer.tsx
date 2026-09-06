@@ -8,6 +8,7 @@ import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
 import { CREDIT_COSTS } from '../config/credits';
 import { LandoMark } from '../components/Lando';
+import PageLegalFooter from '../components/PageLegalFooter';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -3177,6 +3178,18 @@ export default function LandingViewer() {
           </a>
         </div>
       </footer>
+
+      {/* Per-page terms of use + accessibility statement, in the page owner's
+          own name. Accessibility duties attach to the business that owns the
+          page, not to Pagey — see components/PageLegalFooter.tsx. */}
+      <PageLegalFooter
+        businessName={business_name}
+        phone={ai_content.contact?.phone || phone_number || undefined}
+        email={ai_content.contact?.email || undefined}
+        address={ai_content.contact?.address || undefined}
+        accent={accent}
+        extraBottomPad={whiteLabel && toolbarVisible}
+      />
 
       {/* Viral credit line — hidden for owners who paid for white-label (the 10-page bundle) */}
       {!whiteLabel && (
