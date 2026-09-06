@@ -73,6 +73,23 @@ const REMINDERS: { kind: ReminderKind; daysBefore: number; column: string }[] = 
 /** All reminder columns — cleared on renewal so the next year gets fresh ones. */
 const REMINDER_COLUMNS = REMINDERS.map((r) => r.column);
 
+/**
+ * Mid-freeze check-in reminders (2026-09-06, retention fixes). Without these,
+ * a page gets exactly one 'frozen' email at the moment it freezes and then
+ * silence for up to FROZEN_RETENTION_MONTHS before hardDeleteFrozenPages
+ * permanently deletes it and its leads — miss that one email and there is no
+ * further warning before irreversible data loss. MOST URGENT FIRST, same
+ * convention as REMINDERS above: a page overdue for both fires only the more
+ * urgent one and marks the other as handled too (see sendDueFrozenReminders).
+ */
+const FROZEN_REMINDERS: { kind: ReminderKind; monthsFrozen: number; column: string }[] = [
+  { kind: 'frozen_11mo', monthsFrozen: 11, column: 'frozen_reminder_11mo_at' },
+  { kind: 'frozen_6mo',  monthsFrozen: 6,  column: 'frozen_reminder_6mo_at'  },
+];
+
+/** Cleared on renewal, same reasoning as REMINDER_COLUMNS. */
+const FROZEN_REMINDER_COLUMNS = FROZEN_REMINDERS.map((r) => r.column);
+
 function addYears(from: Date, years: number): Date {
   const d = new Date(from);
   d.setFullYear(d.getFullYear() + years);
@@ -188,7 +205,13 @@ export async function grantRenewal(email: string, id: string): Promise<boolean> 
   const base = currentExpiry && currentExpiry.getTime() > now.getTime() ? currentExpiry : now;
   const newExpiry = addYears(base, 1);
 
-  const clearedReminders = Object.fromEntries(REMINDER_COLUMNS.map((c) => [c, null]));
+  // Clears BOTH the pre-expiry reminder columns and the mid-freeze check-in
+  // columns: a page renewed today may freeze again in a future year, and that
+  // future freeze deserves its own fresh set of reminders, not stale send
+  // timestamps left over from this freeze.
+  const clearedReminders = Object.fromEntries(
+    [...REMINDER_COLUMNS, ...FROZEN_REMINDER_COLUMNS].map((c) => [c, null]),
+  );
 
   // Compare-and-swap on BOTH the status and the renewal count we just read.
   // Two verified payments for the same page arriving together (a double-click
@@ -246,6 +269,9 @@ interface ReminderRow {
   renewal_reminder_30_at?: string | null;
   renewal_reminder_7_at?: string | null;
   renewal_reminder_0_at?: string | null;
+  frozen_at?: string | null;
+  frozen_reminder_6mo_at?: string | null;
+  frozen_reminder_11mo_at?: string | null;
 }
 
 /**
@@ -411,6 +437,91 @@ async function freezeExpiredPages(now: Date): Promise<number> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sweep stage 2b — mid-freeze check-in reminders (before hard-delete)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Send at most one mid-freeze reminder per page per pass, most-urgent-first —
+ * same de-dup / collapsing discipline as sendDueReminders above, applied to
+ * FROZEN_REMINDERS instead of REMINDERS, and measured from `frozen_at` instead
+ * of `expires_at`. Without this, a page's only warning before hard-delete is
+ * the single 'frozen' email sent at freeze time (freezeExpiredPages above) —
+ * miss it and there is silence for up to FROZEN_RETENTION_MONTHS before
+ * permanent deletion.
+ *
+ * The claim-before-send and stamp-before-send ordering matches
+ * sendDueReminders exactly, for the same reasons: under-sending (a crash right
+ * after the claim) is recoverable by the next threshold or the next sweep;
+ * double-sending is not something to risk.
+ */
+async function sendDueFrozenReminders(now: Date): Promise<number> {
+  let sent = 0;
+
+  for (let i = 0; i < FROZEN_REMINDERS.length; i++) {
+    const { kind, monthsFrozen, column } = FROZEN_REMINDERS[i];
+    // Less urgent thresholds = the ones LATER in the array (smaller monthsFrozen,
+    // i.e. further from the 12-month hard-delete deadline).
+    const lessUrgentColumns = FROZEN_REMINDERS.slice(i + 1).map((r) => r.column);
+
+    const threshold = addMonths(now, -monthsFrozen);
+
+    const { data, error } = await supabase
+      .from('landing_pages')
+      .select('id, slug, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
+      .eq('status', 'frozen')
+      .is(column, null)
+      .not('frozen_at', 'is', null)
+      .lte('frozen_at', threshold.toISOString())
+      .limit(BATCH_LIMIT);
+
+    if (error) {
+      console.error(`[SWEEP] frozen-reminder query failed (${kind}):`, error.message);
+      continue;
+    }
+
+    for (const row of (data ?? []) as ReminderRow[]) {
+      const stamp = new Date().toISOString();
+      const marks: Record<string, string> = { [column]: stamp };
+      for (const c of lessUrgentColumns) {
+        if (!(row as unknown as Record<string, string | null | undefined>)[c]) marks[c] = stamp;
+      }
+
+      // Claim atomically: only the pass that flips this column from NULL sends.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('landing_pages')
+        .update(marks)
+        .eq('id', row.id)
+        .is(column, null)
+        .select('id')
+        .maybeSingle();
+
+      if (claimErr) {
+        console.error(`[SWEEP] failed to claim frozen reminder ${kind} for ${row.id}:`, claimErr.message);
+        continue;
+      }
+      if (!claimed) continue; // another pass took it
+
+      if (!row.owner_email) {
+        console.warn('[SWEEP] frozen page has no owner_email — reminder skipped', { id: row.id, kind });
+        continue;
+      }
+
+      const ok = await sendRenewalReminder({
+        kind,
+        to: row.owner_email,
+        pageId: row.id,
+        slug: row.slug,
+        businessName: row.business_name ?? 'העסק שלך',
+        expiresAt: row.frozen_at ?? null,
+      });
+      if (ok) sent++;
+    }
+  }
+
+  return sent;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sweep stage 3 — hard delete after 12 months frozen
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -495,22 +606,27 @@ async function hardDeleteFrozenPages(now: Date): Promise<number> {
  * One full pass over the lifecycle. Safe to call at any time, from anywhere:
  * every stage is idempotent and guarded, so an extra run is a no-op.
  *
- * Stage order is deliberate — reminders, then freeze, then delete — so a page
- * always gets its T-0 email in the same pass that it would otherwise be frozen
- * by, never after.
+ * Stage order is deliberate — pre-expiry reminders, then freeze, then
+ * mid-freeze reminders, then delete — so a page always gets its T-0 email in
+ * the same pass that it would otherwise be frozen by (never after), and a page
+ * old enough to be hard-deleted this same pass still got its 11-month
+ * last-chance email first, in this pass, not skipped.
  */
-export async function runRenewalSweep(): Promise<{ reminded: number; frozen: number; deleted: number }> {
+export async function runRenewalSweep(): Promise<{
+  reminded: number; frozen: number; frozenReminded: number; deleted: number;
+}> {
   const now = new Date();
   const started = Date.now();
 
   const reminded = await sendDueReminders(now);
   const frozen = await freezeExpiredPages(now);
+  const frozenReminded = await sendDueFrozenReminders(now);
   const deleted = await hardDeleteFrozenPages(now);
 
-  if (reminded || frozen || deleted) {
-    console.log('[SWEEP] renewal sweep done', { reminded, frozen, deleted, ms: Date.now() - started });
+  if (reminded || frozen || frozenReminded || deleted) {
+    console.log('[SWEEP] renewal sweep done', { reminded, frozen, frozenReminded, deleted, ms: Date.now() - started });
   }
-  return { reminded, frozen, deleted };
+  return { reminded, frozen, frozenReminded, deleted };
 }
 
 /**

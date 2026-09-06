@@ -16,7 +16,7 @@ import { RENEWAL_PRICE } from '../config/billing';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 
-export type ReminderKind = 'month' | 'week' | 'expiry_day' | 'frozen';
+export type ReminderKind = 'month' | 'week' | 'expiry_day' | 'frozen' | 'frozen_6mo' | 'frozen_11mo';
 
 export interface ReminderParams {
   kind: ReminderKind;
@@ -95,7 +95,6 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         accent: '#ef4444',
       };
     case 'frozen':
-    default:
       return {
         subject: `דף הנחיתה של ${businessName} ירד מהאוויר — ניתן להחזירו`,
         emoji: '🔒',
@@ -104,6 +103,32 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו שמורים אצלנו במלואם, והדף יחזור לאוויר באותה כתובת בדיוק ברגע שתחדשו — ${RENEWAL_PRICE} ₪ לשנה. הדף נשמר אצלנו למשך 12 חודשים; אם לא יחודש עד אז, הוא והלידים שלו יימחקו לצמיתות.`,
         cta: `החזירו את הדף לאוויר — ${RENEWAL_PRICE} ₪`,
         accent: '#0ea5e9',
+      };
+    // Mid-freeze check-ins (2026-09-06, retention fixes): the single 'frozen'
+    // email above used to be the last word before a silent 12-month countdown
+    // to hard-delete — miss it and you get zero further warning before
+    // permanent data loss. These two fill that gap; see
+    // migrations/017_frozen_reminders.sql and renewal.service.ts.
+    case 'frozen_6mo':
+      return {
+        subject: `תזכורת: דף הנחיתה של ${businessName} עדיין מושהה`,
+        emoji: '📦',
+        headline: 'הדף עדיין מושהה — אפשר להחזיר אותו',
+        lead: `דף הנחיתה של <strong>${name}</strong> מושהה כבר כחצי שנה ועדיין לא חודש.`,
+        body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו עדיין שמורים אצלנו במלואם, ואפשר להחזיר את הדף לאוויר בכל רגע — באותה כתובת בדיוק — תמורת ${RENEWAL_PRICE} ₪ לשנה. בהתאם למדיניות השמירה שלנו, דף שלא יחודש יימחק לצמיתות 12 חודשים ממועד ההשהיה.`,
+        cta: `החזירו את הדף לאוויר — ${RENEWAL_PRICE} ₪`,
+        accent: '#0ea5e9',
+      };
+    case 'frozen_11mo':
+    default:
+      return {
+        subject: `הזדמנות אחרונה: דף הנחיתה של ${businessName} יימחק בקרוב לצמיתות`,
+        emoji: '🚨',
+        headline: 'הזדמנות אחרונה לפני מחיקה סופית',
+        lead: `דף הנחיתה של <strong>${name}</strong> מושהה כבר כ־11 חודשים.`,
+        body: `בעוד כחודש, אם הדף לא יחודש, הוא <strong>וכל הלידים שנאספו בו יימחקו לצמיתות</strong> ולא ניתן יהיה לשחזר אותם. עד אז, עדיין אפשר להחזיר את הכול לאוויר — באותה כתובת בדיוק — תמורת ${RENEWAL_PRICE} ₪ לשנה.`,
+        cta: `החזירו את הדף עכשיו — ${RENEWAL_PRICE} ₪`,
+        accent: '#dc2626',
       };
   }
 }
