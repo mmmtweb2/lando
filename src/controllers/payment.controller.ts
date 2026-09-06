@@ -6,6 +6,9 @@ import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
 import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey } from '../config/billing';
 import { canPublishFromBalance, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
 import { checkRenewEligibility, grantRenewal } from '../services/renewal.service';
+import {
+  CouponRow, checkCoupon, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption,
+} from '../services/coupon.service';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -32,7 +35,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { purpose, reference } = req.body as { purpose?: string; reference?: string };
+  const { purpose, reference, couponCode } = req.body as { purpose?: string; reference?: string; couponCode?: string };
 
   let amount: number;
   let itemName: string;
@@ -137,15 +140,84 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // ─── Coupon (optional) ──────────────────────────────────────────────────
+  // Applied HERE: after the list price for this purpose is settled, before the
+  // payments row is written. The client may have previewed a discount through
+  // /validate-coupon, but nothing it sends is trusted — every rule is checked
+  // again from scratch against the database, and the price the customer is
+  // actually charged is computed here and only here.
+  let couponId: string | null = null;
+  let discountAmount: number | null = null;
+  let redeemedCoupon: CouponRow | null = null;
+
+  if (couponCode && couponCode.trim()) {
+    const check = await checkCoupon(couponCode, purpose, email);
+    if (!check.ok) { res.status(400).json({ error: check.error }); return; }
+
+    // Consume one use BEFORE opening the SUMIT redirect. If this compare-and-
+    // swap matches zero rows the coupon was exhausted or switched off between
+    // the check above and now, and we must not open a discounted checkout.
+    //
+    // ── WHY THE COUNT MOVES AT CHECKOUT-OPEN, NOT AT PAYMENT-VERIFIED ───────
+    // Deliberate, and load-bearing. Counting only once a payment comes back
+    // verified would mean every concurrent checkout sees the same stale
+    // redemptions_count, so N customers could all get the last use of a
+    // one-use coupon and all be charged the discounted price — a real-money
+    // race with no atomic point to defend. Claiming the use up front gives us
+    // exactly one such point (this CAS), which is what makes max_redemptions
+    // airtight. The accepted cost: an abandoned checkout still burns one use of
+    // a tightly-limited coupon. That is a support question, not a money leak.
+    // If you are about to "fix" this into count-on-paid, you are re-opening the
+    // race. Release-on-failure below covers the only case where nothing was
+    // opened at all.
+    const claimed = await redeemCoupon(check.coupon.id);
+    if (!claimed) {
+      res.status(409).json({ error: 'הקופון מוצה או אינו פעיל עוד. נסו שוב ללא קופון.' });
+      return;
+    }
+    redeemedCoupon = claimed;
+
+    const priced = priceWithCoupon(claimed, amount);
+    amount = priced.finalAmount;   // never below MIN_CHARGE — SUMIT needs a positive charge
+    discountAmount = priced.discountAmount;
+    couponId = claimed.id;
+  }
+
+  /** Hands back a use claimed above when the checkout it was claimed for never
+   *  actually opened. Best-effort; never blocks the response. */
+  const releaseCoupon = async (paymentId: string | null) => {
+    if (!redeemedCoupon) return;
+    await releaseRedemption(redeemedCoupon.id, redeemedCoupon.redemptions_count);
+    if (paymentId) {
+      const { error: delErr } = await supabase.from('coupon_redemptions').delete().eq('payment_id', paymentId);
+      if (delErr) console.error('[COUPON] failed to remove audit row for an unopened checkout', delErr.message);
+    }
+  };
+
   // Persist the pending intent so the return handler knows what to grant.
   const { data: pay, error } = await supabase
     .from('payments')
-    .insert({ user_email: email, purpose, reference: reference ?? null, amount, status: 'pending' })
+    .insert({
+      user_email: email, purpose, reference: reference ?? null, amount, status: 'pending',
+      coupon_id: couponId, discount_amount: discountAmount,
+    })
     .select('id')
     .single();
-  if (error || !pay) { res.status(500).json({ error: error?.message ?? 'DB error' }); return; }
+  if (error || !pay) {
+    await releaseCoupon(null);
+    res.status(500).json({ error: error?.message ?? 'DB error' });
+    return;
+  }
 
   const payId = (pay as { id: string }).id;
+
+  // Audit trail, written as close to the CAS as Supabase allows (there are no
+  // multi-statement transactions on this client). Non-blocking on purpose —
+  // recordRedemption logs loudly and swallows its own failure, because the
+  // counter above is the source of truth for the cap and refusing an already-
+  // claimed checkout over a missing audit row helps nobody.
+  if (redeemedCoupon) await recordRedemption(redeemedCoupon.id, email, payId);
+
   try {
     const { redirectUrl } = await beginRedirect({
       itemName,
@@ -159,8 +231,70 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     res.json({ redirectUrl });
   } catch (e) {
     await supabase.from('payments').update({ status: 'failed' }).eq('id', payId);
+    // The SUMIT page never opened, so this checkout consumed nothing the
+    // customer could have completed — give the coupon use back.
+    await releaseCoupon(payId);
     res.status(502).json({ error: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה.' });
   }
+}
+
+// ─── Coupon preview (read-only) ───────────────────────────────────────────────
+/**
+ * The list price of `purpose` (+ `reference`, where the purpose has variants),
+ * with none of startPayment's eligibility checks.
+ *
+ * Kept intentionally thin: this exists ONLY so the coupon preview can show a
+ * real "before / after" price. Whether the customer may buy this thing at all
+ * is startPayment's job, and re-implementing those checks here would mean two
+ * places that could disagree about who is allowed to pay for what.
+ */
+function basePriceForPurpose(purpose: string, reference?: string): number | null {
+  if (purpose === 'publish') return SINGLE_PAGE_PRICE;
+  if (purpose === 'renew') return RENEWAL_PRICE;
+  if (purpose === 'credits') return reference ? (CREDIT_PACKS[reference]?.price ?? null) : null;
+  if (purpose === 'bundle') return isBundleKey(reference) ? BUNDLES[reference as BundleKey].price : null;
+  return null;
+}
+
+/**
+ * POST /api/payments/validate-coupon — live price preview for a typed-in code.
+ *
+ * Read-only by design: no CAS, no increment, no audit row. A customer typing a
+ * code into the box has not committed to anything, and burning a use of a
+ * limited coupon on a preview would let anyone exhaust a promo without ever
+ * opening a checkout. The real enforcement happens in startPayment, which
+ * re-runs every one of these checks against the database and ignores whatever
+ * this endpoint told the client earlier.
+ */
+export async function validateCoupon(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
+
+  const { code, purpose, reference } = req.body as { code?: string; purpose?: string; reference?: string };
+  if (!code || !code.trim()) { res.status(400).json({ error: 'יש להזין קוד קופון.' }); return; }
+  if (!purpose) { res.status(400).json({ error: "purpose must be 'publish', 'renew', 'credits' or 'bundle'" }); return; }
+
+  const baseAmount = basePriceForPurpose(purpose, reference);
+  if (baseAmount === null) {
+    res.status(400).json({ error: 'לא ניתן לחשב את מחיר הרכישה עבור הקופון.' });
+    return;
+  }
+
+  const check = await checkCoupon(code, purpose, email);
+  if (!check.ok) { res.status(400).json({ valid: false, error: check.error }); return; }
+
+  const { finalAmount, discountAmount } = priceWithCoupon(check.coupon, baseAmount);
+  res.json({
+    valid: true,
+    // The normalized code, so the client sends back exactly what we matched.
+    code: check.coupon.code,
+    discountType: check.coupon.discount_type,
+    discountValue: Number(check.coupon.discount_value),
+    baseAmount,
+    discountAmount,
+    finalAmount,
+    // `notes` is admin-internal and deliberately NOT returned here.
+  });
 }
 
 // Every query-param key SUMIT (or any proxy/CDN in front of it) might use for
