@@ -9,6 +9,7 @@ import { ensureUserProfile, type MinimalProfile } from '../services/profile.serv
 import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
+import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -310,6 +311,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       secondary_color,
       auto_extract_colors,
       include_testimonials,
+      testimonial_quote,
+      testimonial_author,
     } = req.body as {
       business_name?: string;
       phone_number?: string;
@@ -331,6 +334,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       secondary_color?: string;
       auto_extract_colors?: string;
       include_testimonials?: string;
+      testimonial_quote?: string;
+      testimonial_author?: string;
     };
 
     if (!business_name || !phone_number || !vibe) {
@@ -385,6 +390,10 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     const safeCtaType        = ['whatsapp', 'email', 'phone', 'link'].includes(cta_type ?? '') ? cta_type! : 'whatsapp';
     const safeAutoExtract         = auto_extract_colors === 'true';
     const safeIncludeTestimonials = include_testimonials === 'true';
+    // Optional real testimonial the owner typed in the wizard — only meaningful
+    // when the testimonials section is actually being included.
+    const safeTestimonialQuote  = safeIncludeTestimonials ? (testimonial_quote?.trim() || undefined) : undefined;
+    const safeTestimonialAuthor = safeIncludeTestimonials ? (testimonial_author?.trim() || undefined) : undefined;
     const safePrimaryColor   = /^#[0-9a-fA-F]{6}$/.test(primary_color ?? '') ? primary_color : undefined;
     const safeSecondaryColor = /^#[0-9a-fA-F]{6}$/.test(secondary_color ?? '') ? secondary_color : undefined;
 
@@ -460,6 +469,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         secondary_color: safeSecondaryColor,
         auto_extract_colors: safeAutoExtract,
         include_testimonials: safeIncludeTestimonials,
+        testimonial_quote: safeTestimonialQuote,
+        testimonial_author: safeTestimonialAuthor,
       };
       // Pass raw logo buffer for vision-based color extraction when requested
       if (safeAutoExtract && files?.logo?.[0]) {
@@ -682,13 +693,28 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
       expires_at: expiresAt.toISOString(),
     })
     .eq('id', id)
-    .select('id, slug, status, published_at, expires_at')
+    .select('id, slug, status, published_at, expires_at, owner_email')
     .single();
 
   if (error || !data) {
     console.error('[PUBLISH] update failed:', error?.message);
     return null;
   }
+
+  // Referral bonus (see referral.service.ts): fires on the owner's first
+  // published page, not at signup — closes the self-referral credit-mint loop
+  // that used to grant +5/+5 on signup alone, no usage required. This is the
+  // one choke point every publish passes through (balance-covered or a paid
+  // 249₪ publish), so it is the natural hook. Best-effort and fire-and-forget
+  // on purpose: a referral-bonus hiccup must never fail or delay a publish
+  // that has otherwise already succeeded.
+  const ownerEmail = (data as PublishedPage & { owner_email?: string | null }).owner_email;
+  if (ownerEmail) {
+    grantReferralBonusOnFirstPublish(ownerEmail).catch((err) => {
+      console.error('[PUBLISH] referral bonus grant threw', { id, error: err instanceof Error ? err.message : err });
+    });
+  }
+
   return data as PublishedPage;
 }
 

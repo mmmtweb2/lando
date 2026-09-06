@@ -616,8 +616,8 @@ function ImageSelectorModal({
                   <button
                     onClick={handleAiRegenerate}
                     disabled={!promptText.trim()}
-                    className="w-full py-3 rounded-xl text-sm font-bold text-white transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                    style={{ backgroundColor: primaryColor }}
+                    className="w-full py-3 rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{ backgroundColor: primaryColor, color: textOnColor(primaryColor) }}
                   >
                     <Sparkles size={16} />
                     צור תמונה
@@ -869,6 +869,8 @@ export default function LandingViewer() {
   const [checkoutStatus, setCheckoutStatus] =
     useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // Copy-link feedback for the publish-success modal's share nudge.
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Required pre-payment acknowledgment that the transaction is not
   // cancellable (חוק הגנת הצרכן s.14ג(ד)(3) — see legal/refundPolicy.ts).
@@ -1081,7 +1083,7 @@ export default function LandingViewer() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'publish', reference: page.id, couponCode: publishCoupon?.code }),
+        body: JSON.stringify({ purpose: 'publish', reference: page.id, couponCode: publishCoupon?.code, refundAck }),
       });
       if (!r.ok) {
         const b = await r.json().catch(() => ({})) as { error?: string };
@@ -1845,8 +1847,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('היתרונות שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
+            {sectionKicker(ai_content.benefits_kicker || 'היתרונות שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.benefits_heading || 'למה לבחור בנו'}</h2>
             {divider}
           </motion.div>
 
@@ -1900,8 +1902,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('התהליך שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
+            {sectionKicker(ai_content.process_kicker || 'התהליך שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.process_heading || 'איך זה עובד'}</h2>
             {divider}
           </motion.div>
 
@@ -1961,8 +1963,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('לקוחות מספרים')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה לקוחות אומרים</h2>
+            {sectionKicker(ai_content.testimonials_kicker || 'לקוחות מספרים')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.testimonials_heading || 'מה לקוחות אומרים'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -2022,8 +2024,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-2xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-12">
-            {sectionKicker('עזרה ותשובות')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>שאלות נפוצות</h2>
+            {sectionKicker(ai_content.faq_kicker || 'עזרה ותשובות')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.faq_heading || 'שאלות נפוצות'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col gap-2">
@@ -2331,7 +2333,7 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>השירותים שלנו</h2>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'השירותים שלנו'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -2350,7 +2352,7 @@ export default function LandingViewer() {
         variants={V.editorial.body} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto">
           <p className="text-xs font-black tracking-[0.3em] uppercase text-center mb-12" style={{ color: primary }}>
-            השירותים שלנו
+            {ai_content.services_kicker || 'השירותים שלנו'}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 items-end">
             {services.map((s, i) => {
@@ -2401,8 +2403,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto flex flex-col gap-3">
           <motion.div variants={V.classic.item} className="text-center mb-6">
-            {sectionKicker('השירותים שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {sectionKicker(ai_content.services_kicker || 'השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'מה אנחנו מציעים'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col gap-14 sm:gap-20 mt-8">
@@ -2453,8 +2455,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-3xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-14">
-            {sectionKicker('השירותים שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {sectionKicker(ai_content.services_kicker || 'השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'מה אנחנו מציעים'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col divide-y" style={{ borderColor: `${primary}1a` }}>
@@ -2495,8 +2497,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('היתרונות שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
+            {sectionKicker(ai_content.benefits_kicker || 'היתרונות שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.benefits_heading || 'למה לבחור בנו'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
@@ -2539,8 +2541,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('התהליך שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
+            {sectionKicker(ai_content.process_kicker || 'התהליך שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.process_heading || 'איך זה עובד'}</h2>
             {divider}
           </motion.div>
           <div className="relative flex flex-col gap-0">
@@ -2617,7 +2619,7 @@ export default function LandingViewer() {
                   <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
                 <span className="text-xs font-bold tracking-wide" style={{ color: onPrimary, opacity: 0.9 }}>
-                  מאות לקוחות מרוצים
+                  מענה אישי ומהיר · שירות אמין ומקצועי
                 </span>
               </div>
             )}
@@ -2654,6 +2656,13 @@ export default function LandingViewer() {
     );
   }
 
+  // Disabled from AI selection (page-quality fix, 2026-09): this block's rows
+  // ("מענה אישי ומהיר", "מחיר שקוף ללא הפתעות", "ניסיון מוכח בתחום") and its
+  // unnamed "אחרים" (competitors) column are hardcoded, unverifiable claims —
+  // a NO_FABRICATION_RULE violation. ai.service.ts no longer offers
+  // "comparison_table" as a selectable block, so this renderer is currently
+  // unreachable for newly-generated pages. Left in place (not deleted) in case
+  // it's revisited with real, AI-personalized content later.
   function renderComparisonTableBlock(isAlt: boolean) {
     const bg = isAlt ? sectionBgAlt : sectionBg;
     const rows: Array<{ feature: string; us: boolean; them: boolean }> = [
@@ -3089,8 +3098,8 @@ export default function LandingViewer() {
       <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
           <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold px-4 py-2 text-white transition hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: primary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
+            className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
+            style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
           </a>
           {canEdit && user?.email && (
@@ -3245,7 +3254,7 @@ export default function LandingViewer() {
               {checkoutStatus !== 'paying' && (
                 <button
                   onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
+                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
                   aria-label="סגור">×</button>
               )}
 
@@ -3340,11 +3349,6 @@ export default function LandingViewer() {
                   </>
                 ) : `המשך לתשלום מאובטח — ${publishQuote ? publishQuote.finalAmount : 249} ש״ח`}
               </button>
-
-              <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5" aria-hidden><path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" /></svg>
-                סביבת בדיקה — לא יחויב כרטיס אמיתי
-              </div>
             </div>
           </div>
         </div>
@@ -3375,7 +3379,7 @@ export default function LandingViewer() {
               {checkoutStatus !== 'confirmPaying' && (
                 <button
                   onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
+                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
                   aria-label="סגור">×</button>
               )}
 
@@ -3457,12 +3461,30 @@ export default function LandingViewer() {
                   ? `נוכה דף אחד מיתרת הדפים שלך — נשארו ${planStatus.pageCredits - 1}. הדף כעת גלוי לציבור.`
                   : 'הדף כעת גלוי לציבור.'}
               </p>
-              <button
-                onClick={() => setCheckoutStatus('idle')}
-                className="w-full py-3 rounded-xl text-sm font-extrabold text-white transition active:scale-95 shadow-lg"
-                style={{ backgroundColor: primary }}>
-                מעולה
-              </button>
+              <div className="w-full flex flex-col gap-2.5">
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`https://pagey.co.il/p/${page.slug}`);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    } catch { /* clipboard unavailable — ignore, link is shown in the address bar too */ }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95">
+                  {linkCopied ? 'הקישור הועתק! ✓' : 'העתקת קישור לדף'}
+                </button>
+                <Link
+                  to="/dashboard?leads=1"
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95 text-center">
+                  צפייה בלידים
+                </Link>
+                <button
+                  onClick={() => setCheckoutStatus('idle')}
+                  className="w-full py-3 rounded-xl text-sm font-extrabold transition active:scale-95 shadow-lg"
+                  style={{ backgroundColor: primary, color: onPrimary }}>
+                  מעולה
+                </button>
+              </div>
             </div>
           </div>
         </div>

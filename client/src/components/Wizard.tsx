@@ -20,6 +20,8 @@ import {
   Mail,
   Link2,
   Loader2,
+  Quote,
+  User,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -42,6 +44,11 @@ interface FormState {
   cta_type: 'whatsapp' | 'email' | 'phone' | 'link';
   enable_form: boolean;
   include_testimonials: boolean;
+  // Optional real testimonial the owner types in themselves — when present,
+  // the generator uses it verbatim instead of the usual placeholder quote
+  // (see USE_PROVIDED_SPECIFICS_RULE in ai.service.ts). Never required.
+  testimonial_quote: string;
+  testimonial_author: string;
   logo: File | null;
   primary_color: string;
   secondary_color: string;
@@ -186,7 +193,7 @@ function Field({ label, icon, children }: { label: string; icon?: React.ReactNod
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-        {icon && <span className="text-indigo-500">{icon}</span>}
+        {icon && <span className="text-[#2E63F6]">{icon}</span>}
         {label}
       </label>
       {children}
@@ -222,7 +229,7 @@ function ToggleSwitch({
     >
       <div
         className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${
-          checked ? 'bg-indigo-500' : 'bg-slate-200'
+          checked ? 'bg-[#2E63F6]' : 'bg-slate-200'
         }`}
       >
         <span
@@ -247,11 +254,11 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
         <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
           <div
             className={`h-1.5 w-full rounded-full transition-all duration-500 ${
-              i < current ? 'bg-indigo-500' : i === current ? 'bg-indigo-300' : 'bg-slate-200'
+              i < current ? 'bg-[#2E63F6]' : i === current ? 'bg-indigo-300' : 'bg-slate-200'
             }`}
           />
           <span className={`text-xs font-medium transition-colors ${
-            i === current ? 'text-indigo-600' : i < current ? 'text-slate-500' : 'text-slate-300'
+            i === current ? 'text-[#1E4FD6]' : i < current ? 'text-slate-500' : 'text-slate-300'
           }`}>
             {STEPS[i]}
           </span>
@@ -278,11 +285,11 @@ function DesignStyleCards({
           type="button"
           onClick={() => onChange(opt.value)}
           className={`flex flex-col gap-1 rounded-xl border-2 px-3 py-2.5 text-right transition-all ${
-            value === opt.value ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200'
+            value === opt.value ? 'border-[#2E63F6] bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200'
           }`}
         >
           <div className="flex items-center gap-1.5">
-            <span className={`text-base ${value === opt.value ? 'text-indigo-500' : 'text-slate-400'}`}>{opt.emoji}</span>
+            <span className={`text-base ${value === opt.value ? 'text-[#2E63F6]' : 'text-slate-400'}`}>{opt.emoji}</span>
             <p className={`text-xs font-semibold leading-tight ${value === opt.value ? 'text-indigo-700' : 'text-slate-700'}`}>
               {opt.label}
             </p>
@@ -312,7 +319,7 @@ function PageGoalCards({
           onClick={() => onChange(opt.value)}
           className={`flex items-center gap-4 rounded-2xl border-2 px-5 py-4 text-right transition-all ${
             value === opt.value
-              ? 'border-indigo-500 bg-indigo-50 shadow-md'
+              ? 'border-[#2E63F6] bg-indigo-50 shadow-md'
               : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50'
           }`}
         >
@@ -324,7 +331,7 @@ function PageGoalCards({
             <p className="text-xs text-slate-400 leading-snug">{opt.desc}</p>
           </div>
           <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-            value === opt.value ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'
+            value === opt.value ? 'border-[#2E63F6] bg-[#2E63F6]' : 'border-slate-300'
           }`}>
             {value === opt.value && (
               <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none">
@@ -425,7 +432,7 @@ function BrandColorSection({
         onClick={() => hasLogo && onAutoExtractChange(!autoExtract)}
         className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 text-right transition-colors ${
           autoExtract
-            ? 'border-indigo-500 bg-indigo-50'
+            ? 'border-[#2E63F6] bg-indigo-50'
             : hasLogo
             ? 'border-slate-200 bg-white hover:border-indigo-200'
             : 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
@@ -433,7 +440,7 @@ function BrandColorSection({
       >
         <div
           className={`relative flex-shrink-0 mt-0.5 w-10 h-5 rounded-full transition-colors duration-200 ${
-            autoExtract ? 'bg-indigo-500' : 'bg-slate-200'
+            autoExtract ? 'bg-[#2E63F6]' : 'bg-slate-200'
           }`}
         >
           <span
@@ -470,7 +477,7 @@ function BrandColorSection({
         />
       </div>
       {autoExtract && (
-        <p className="text-xs text-indigo-500 text-center -mt-1">
+        <p className="text-xs text-[#2E63F6] text-center -mt-1">
           הצבעים ייחלצו אוטומטית מהלוגו שהעליתם
         </p>
       )}
@@ -516,12 +523,12 @@ function LogoUpload({ file, onChange }: { file: File | null; onChange: (f: File 
             className="absolute top-2 left-2 rounded-full bg-white p-1 shadow text-slate-500 hover:text-red-500 transition">
             <X size={14} />
           </button>
-          <p className="text-xs text-indigo-600 font-medium">{file?.name}</p>
+          <p className="text-xs text-[#1E4FD6] font-medium">{file?.name}</p>
         </>
       ) : (
         <>
           <div className="rounded-full bg-slate-100 p-3 text-slate-400"><Upload size={20} /></div>
-          <p className="text-sm text-slate-500"><span className="font-medium text-indigo-600">לחצו להעלאה</span></p>
+          <p className="text-sm text-slate-500"><span className="font-medium text-[#1E4FD6]">לחצו להעלאה</span></p>
           <p className="text-xs text-slate-400">PNG, JPG, WEBP עד 10MB</p>
         </>
       )}
@@ -571,7 +578,7 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
             onChange={(e) => handlePick(e.target.files)} />
           <Upload size={16} className="text-slate-400" />
           <p className="text-xs text-slate-500">
-            <span className="font-medium text-indigo-600">הוסיפו תמונות</span>{' '}({files.length}/3)
+            <span className="font-medium text-[#1E4FD6]">הוסיפו תמונות</span>{' '}({files.length}/3)
           </p>
         </div>
       )}
@@ -587,10 +594,10 @@ function ImageSourceCards({ value, onChange }: { value: ImageSource; onChange: (
       {IMAGE_OPTIONS.map((opt) => (
         <button key={opt.value} type="button" onClick={() => onChange(opt.value)}
           className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 text-right transition-all ${
-            value === opt.value ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200'
+            value === opt.value ? 'border-[#2E63F6] bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200'
           }`}>
           <div className={`mt-0.5 rounded-lg p-1.5 flex-shrink-0 transition-colors ${
-            value === opt.value ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500'
+            value === opt.value ? 'bg-[#2E63F6] text-white' : 'bg-slate-100 text-slate-500'
           }`}>
             {opt.icon}
           </div>
@@ -795,6 +802,8 @@ export default function Wizard() {
     cta_type: 'whatsapp',
     enable_form: false,
     include_testimonials: false,
+    testimonial_quote: '',
+    testimonial_author: '',
     logo: null,
     primary_color: '',
     secondary_color: '',
@@ -941,6 +950,10 @@ export default function Wizard() {
       if (form.page_goal) fd.append('page_goal', form.page_goal);
       fd.append('enable_form', String(form.enable_form));
       fd.append('include_testimonials', String(form.include_testimonials));
+      if (form.include_testimonials) {
+        if (form.testimonial_quote.trim())  fd.append('testimonial_quote', form.testimonial_quote.trim());
+        if (form.testimonial_author.trim()) fd.append('testimonial_author', form.testimonial_author.trim());
+      }
       fd.append('owner_email', user.email);
       // Merge the optional intake answers into the SAME free-text channel the
       // generator already reads (`user_provided_text`) rather than adding a new
@@ -1031,7 +1044,7 @@ export default function Wizard() {
         <button
           type="button"
           onClick={() => setShowGuidingQuestions((v) => !v)}
-          className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 transition self-start mt-0.5"
+          className="flex items-center gap-1.5 text-xs text-[#2E63F6] hover:text-indigo-700 transition self-start mt-0.5"
         >
           <Sparkles size={12} />
           {showGuidingQuestions ? 'סגור שאלות מנחות' : 'אין לך טקסט? לחצו לשאלות מנחות'}
@@ -1046,7 +1059,7 @@ export default function Wizard() {
               className="overflow-hidden"
             >
               <div className="flex flex-col gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3.5 mt-1">
-                <p className="text-xs font-semibold text-indigo-600">ענו על השאלות האלה בתיבה למעלה:</p>
+                <p className="text-xs font-semibold text-[#1E4FD6]">ענו על השאלות האלה בתיבה למעלה:</p>
                 {[
                   'מה הלקוחות הכי אוהבים בשירות שלך?',
                   'מה הבעיה הכי גדולה שאתה פותר להם?',
@@ -1074,7 +1087,7 @@ export default function Wizard() {
     >
       {intakeLoading ? (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-100 bg-slate-50 py-8 text-sm text-slate-500">
-          <Loader2 size={16} className="animate-spin text-indigo-500" />
+          <Loader2 size={16} className="animate-spin text-[#2E63F6]" />
           מכינים שאלות שמתאימות לעסק שלכם…
         </div>
       ) : intakeQuestions.length === 0 ? (
@@ -1132,7 +1145,7 @@ export default function Wizard() {
             { v: 'link', label: 'קישור חיצוני' },
           ] as { v: FormState['cta_type']; label: string }[]).map((o) => (
             <button key={o.v} type="button" onClick={() => handleCtaTypeChange(o.v)}
-              className={`px-3 py-2 rounded-xl border text-sm font-medium transition ${form.cta_type === o.v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              className={`px-3 py-2 rounded-xl border text-sm font-medium transition ${form.cta_type === o.v ? 'border-[#2E63F6] bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
               {o.label}
             </button>
           ))}
@@ -1174,6 +1187,24 @@ export default function Wizard() {
         onChange={(v) => update('include_testimonials', v)}
         label="הוסף אזור המלצות מלקוחות (Testimonials)"
       />
+      {/* Optional real quote — genuinely optional: leaving these empty keeps the
+          existing placeholder-quote behavior (hidden from real visitors until
+          the owner edits it in later). Filled in, the AI uses it verbatim
+          instead of generating a placeholder — see USE_PROVIDED_SPECIFICS_RULE. */}
+      <AnimatePresence>
+        {form.include_testimonials && (
+          <motion.div key="testimonial-fields" {...fadeIn} className="flex flex-col gap-3">
+            <Field label="ציטוט אמיתי מלקוח (אופציונלי)" icon={<Quote size={15} />}>
+              <textarea className={inputCls} rows={2} placeholder="למשל: 'קיבלנו שירות מהיר ומקצועי, ממליצים בחום'"
+                value={form.testimonial_quote} onChange={(e) => update('testimonial_quote', e.target.value)} />
+            </Field>
+            <Field label="שם הלקוח (אופציונלי)" icon={<User size={15} />}>
+              <input className={inputCls} placeholder="לדוגמה: דנה כהן"
+                value={form.testimonial_author} onChange={(e) => update('testimonial_author', e.target.value)} />
+            </Field>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Step>,
 
     // ── Step 5: Images ────────────────────────────────────────────────────────
@@ -1186,7 +1217,7 @@ export default function Wizard() {
           <button key={String(opt.value)} type="button" onClick={() => setWantsImages(opt.value)}
             className={`rounded-xl border-2 py-3 text-sm font-medium transition ${
               form.wants_images === opt.value
-                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                ? 'border-[#2E63F6] bg-indigo-50 text-indigo-700'
                 : 'border-slate-200 text-slate-600 hover:border-indigo-200'
             }`}>
             {opt.label}

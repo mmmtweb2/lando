@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, Settings, Users, LogOut,
-  CheckCircle, Check, Clock, Trash2, Menu, X,
+  CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -476,6 +476,15 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, []);
 
+  // Deep link from the publish-success modal's "see your leads" nudge
+  // (?leads=1) — just switches to the leads tab, nothing to acknowledge.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('leads') !== '1') return;
+    setActiveTab('leads');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   async function handleDeletePage(id: string, name: string) {
     if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
     const r = await authFetch(`/api/landing/${id}`, { method: 'DELETE' });
@@ -566,7 +575,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey, couponCode: bundleCoupon?.code }),
+        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey, couponCode: bundleCoupon?.code, refundAck: bundleAck }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -611,7 +620,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'credits', reference: pack, couponCode: creditsCoupon?.code }),
+        body: JSON.stringify({ purpose: 'credits', reference: pack, couponCode: creditsCoupon?.code, refundAck: creditsAck }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -701,9 +710,9 @@ export default function Dashboard() {
                 <button
                   onClick={() => setMobileNavOpen(false)}
                   aria-label="סגור תפריט"
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               </div>
 
@@ -764,10 +773,10 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              className="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
               aria-label="פתח תפריט"
             >
-              <Menu size={18} />
+              <Menu size={20} />
             </button>
           </div>
         </header>
@@ -779,8 +788,8 @@ export default function Dashboard() {
                 <h3 className="text-base font-semibold tracking-tight text-slate-900">טעינת קרדיטים</h3>
                 {!buying && (
                   <button onClick={() => setShowBuyCredits(false)} aria-label="סגור"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
-                    <X size={16} />
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={18} />
                   </button>
                 )}
               </div>
@@ -818,7 +827,6 @@ export default function Dashboard() {
                     {buyMsg.text}
                   </p>
                 )}
-                <p className="text-[11px] text-slate-400 text-center">תשלום מדומה לצורכי בדיקה</p>
               </div>
             </div>
           </div>
@@ -831,8 +839,8 @@ export default function Dashboard() {
                 <h3 className="text-base font-semibold tracking-tight text-slate-900">רכישת חבילת דפים</h3>
                 {!upgrading && (
                   <button onClick={() => setShowPlans(false)} aria-label="סגור"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
-                    <X size={16} />
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={18} />
                   </button>
                 )}
               </div>
@@ -965,6 +973,35 @@ export default function Dashboard() {
                   <Plus size={14} className="text-slate-400" /> טען קרדיטים
                 </button>
               </div>
+
+              {/* Standalone white-label surfacing (2026-09-06, retention fixes):
+                  previously the ₪350 white-label add-on was only reachable from
+                  inside the "buy pages" modal, itself only reachable via a
+                  "buy pages" button — a customer who already has enough page
+                  balance and just wants the badge gone had no reason to ever
+                  open that modal and no prompt telling them the option exists,
+                  even though the badge shows on every page they publish. This
+                  is a second, low-effort entry point into the SAME purchase
+                  flow (handleBuyBundle('whitelabel_addon') via the existing
+                  bundle modal + RefundAck gating) — not a new purchase path. */}
+              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
+                <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="mt-0.5 flex-shrink-0 text-[#2E63F6]"><Sparkles size={16} /></span>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900">הסרת מיתוג Pagey מהדפים שלך</span>
+                      <span className="text-xs text-slate-500 leading-relaxed">
+                        כרגע כל דף שלך מציג "נוצר באמצעות Pagey" בתחתית. תוסף חד־פעמי של ₪{bundlesCatalog.whitelabel_addon.price.toLocaleString()} מסיר את התיוג לצמיתות, מכל הדפים — גם הקיימים וגם העתידיים.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setBundleAck(false); setShowPlans(true); }}
+                    className={btnSecondary}>
+                    הסרת המיתוג
+                  </button>
+                </div>
+              )}
             </motion.div>
           ) : (
             <>
