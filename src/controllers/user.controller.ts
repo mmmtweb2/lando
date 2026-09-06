@@ -8,7 +8,6 @@ import { addCredits } from '../services/credits.service';
 import { BUNDLES, SINGLE_PAGE_PRICE } from '../config/billing';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
-const REFERRAL_BONUS = 5; // credits granted to BOTH the referrer and the new user
 
 // Credit packs. Prices in ₪.
 export const CREDIT_PACKS: Record<string, { credits: number; price: number }> = {
@@ -73,32 +72,26 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // New user — validate referral code if provided
+  // New user — validate referral code if provided. NOTE (2026-09-06, retention
+  // fixes): this used to ALSO grant +5 credits to both the referrer and this
+  // new user right here, at signup, with no purchase or usage requirement —
+  // a self-referral credit-mint loop (sign up under your own link with a
+  // burner email, collect +5/+5, repeat), already flagged unfixed in the
+  // README's backlog. The bonus itself now fires later, from
+  // grantReferralBonusOnFirstPublish (referral.service.ts), on the referred
+  // user's first published page — a real usage milestone. All this does now
+  // is validate the code and attribute the relationship (`referred_by_code`)
+  // so that later grant knows who to reward.
   let validRef: string | null = null;
   if (normalizedRef) {
     const { data: referrer } = await supabase
       .from('user_profiles')
-      .select('email, affiliate_code, earned_coupons, credits')
+      .select('email, affiliate_code')
       .eq('affiliate_code', normalizedRef)
       .single();
 
     if (referrer) {
       validRef = normalizedRef;
-      // Reward the referrer: +1 coupon (for tracking) AND +5 real credits.
-      // The coupon counter can stay a plain write, but the credit balance goes
-      // through addCredits: the referrer is an active user whose balance may be
-      // changing at the same moment, and a read-then-write here would undo
-      // whatever they spent in between (restoring spent credits = a mint).
-      const referrerEmail = (referrer as { email?: string }).email;
-      await supabase
-        .from('user_profiles')
-        .update({ earned_coupons: (referrer.earned_coupons ?? 0) + 1 })
-        .eq('affiliate_code', normalizedRef);
-      if (referrerEmail) {
-        await addCredits(referrerEmail, REFERRAL_BONUS);
-      } else {
-        console.error('[REFERRAL] referrer row has no email — credit bonus skipped', { code: normalizedRef });
-      }
     }
   }
 
@@ -117,13 +110,6 @@ export async function authUser(req: Request, res: Response): Promise<void> {
   if (error) {
     res.status(500).json({ error: error.message });
     return;
-  }
-
-  // Reward the referred new user: +5 credits on top of the signup default.
-  if (validRef && data) {
-    const profile = data as { credits?: number };
-    const newCredits = await addCredits(normalizedEmail, REFERRAL_BONUS);
-    if (newCredits !== null) profile.credits = newCredits;
   }
 
   res.status(201).json(data);

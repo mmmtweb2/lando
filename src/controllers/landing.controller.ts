@@ -9,6 +9,7 @@ import { ensureUserProfile, type MinimalProfile } from '../services/profile.serv
 import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
+import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -682,13 +683,28 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
       expires_at: expiresAt.toISOString(),
     })
     .eq('id', id)
-    .select('id, slug, status, published_at, expires_at')
+    .select('id, slug, status, published_at, expires_at, owner_email')
     .single();
 
   if (error || !data) {
     console.error('[PUBLISH] update failed:', error?.message);
     return null;
   }
+
+  // Referral bonus (see referral.service.ts): fires on the owner's first
+  // published page, not at signup — closes the self-referral credit-mint loop
+  // that used to grant +5/+5 on signup alone, no usage required. This is the
+  // one choke point every publish passes through (balance-covered or a paid
+  // 249₪ publish), so it is the natural hook. Best-effort and fire-and-forget
+  // on purpose: a referral-bonus hiccup must never fail or delay a publish
+  // that has otherwise already succeeded.
+  const ownerEmail = (data as PublishedPage & { owner_email?: string | null }).owner_email;
+  if (ownerEmail) {
+    grantReferralBonusOnFirstPublish(ownerEmail).catch((err) => {
+      console.error('[PUBLISH] referral bonus grant threw', { id, error: err instanceof Error ? err.message : err });
+    });
+  }
+
   return data as PublishedPage;
 }
 

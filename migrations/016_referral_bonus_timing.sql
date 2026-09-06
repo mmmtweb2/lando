@@ -1,0 +1,46 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 016_referral_bonus_timing.sql — move the referral credit bonus from signup
+--                                 to the referee's first published page
+--                                 (run in the Supabase SQL editor, same as 009-015)
+--
+-- ── The problem this closes ──────────────────────────────────────────────────
+-- Both the referrer and the referee received +5 AI credits (REFERRAL_BONUS) the
+-- moment a new account signed up under a referral code — no purchase, no page,
+-- no usage of any kind required. That is a self-referral credit-mint loop:
+-- create burner-email accounts under your own referral link and collect +5/+5
+-- indefinitely. Flagged (unfixed) in this repo's own README backlog.
+--
+-- Fix (src/services/referral.service.ts, src/controllers/landing.controller.ts):
+-- the bonus now fires the first time the referred user actually publishes a
+-- page — a real usage milestone — instead of at signup. `authUser`
+-- (user.controller.ts) still records WHO referred whom (`referred_by_code`,
+-- already existed), it just no longer pays out on its own.
+--
+-- ── This migration ───────────────────────────────────────────────────────────
+-- Adds exactly one column: a per-referee flag recording whether their referral
+-- bonus has already been granted, so the grant (claimed via compare-and-swap,
+-- see referral.service.ts) can never fire twice for the same referee under
+-- concurrency — the same CAS discipline used throughout this codebase for every
+-- other credit grant (credits.service.ts's addCredits, billing.service.ts's
+-- grantPageCredits, renewal.service.ts's grantRenewal).
+--
+-- SAFE / RE-RUNNABLE: `IF NOT EXISTS`, additive only, changes no existing data.
+-- Every existing row (referred or not, already at signup-bonus or not) gets
+-- `referral_bonus_granted = false` by the column default — meaning every
+-- ALREADY-REFERRED existing account whose bonus was already paid out at signup
+-- under the old code would, in principle, be eligible to receive it again the
+-- next time they publish. Deliberately accepted rather than worked around: (a)
+-- it is a small, bounded, one-time cost — the exact `REFERRAL_BONUS` amount,
+-- once, per already-referred existing account, not an ongoing mint — and (b)
+-- correctly excluding only the accounts that were ALREADY paid under the old
+-- signup-time logic would need a data migration cross-referencing history this
+-- schema doesn't keep (no ledger of past referral grants), which is a much
+-- larger and riskier change for a one-time, capped cost. Flagged here for
+-- Moshe's awareness rather than silently absorbed.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS referral_bonus_granted BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Reload PostgREST's schema cache so the new column is visible immediately —
+-- the exact failure mode that stalled migration 009 (see README backlog).
+NOTIFY pgrst, 'reload schema';
