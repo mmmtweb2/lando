@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, Settings, Users, LogOut,
-  CheckCircle, Check, Clock, Trash2, Menu, X,
+  CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -965,6 +965,35 @@ export default function Dashboard() {
                   <Plus size={14} className="text-slate-400" /> טען קרדיטים
                 </button>
               </div>
+
+              {/* Standalone white-label surfacing (2026-09-06, retention fixes):
+                  previously the ₪350 white-label add-on was only reachable from
+                  inside the "buy pages" modal, itself only reachable via a
+                  "buy pages" button — a customer who already has enough page
+                  balance and just wants the badge gone had no reason to ever
+                  open that modal and no prompt telling them the option exists,
+                  even though the badge shows on every page they publish. This
+                  is a second, low-effort entry point into the SAME purchase
+                  flow (handleBuyBundle('whitelabel_addon') via the existing
+                  bundle modal + RefundAck gating) — not a new purchase path. */}
+              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
+                <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="mt-0.5 flex-shrink-0 text-[#2E63F6]"><Sparkles size={16} /></span>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900">הסרת מיתוג Pagey מהדפים שלך</span>
+                      <span className="text-xs text-slate-500 leading-relaxed">
+                        כרגע כל דף שלך מציג "נוצר באמצעות Pagey" בתחתית. תוסף חד־פעמי של ₪{bundlesCatalog.whitelabel_addon.price.toLocaleString()} מסיר את התיוג לצמיתות, מכל הדפים — גם הקיימים וגם העתידיים.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setBundleAck(false); setShowPlans(true); }}
+                    className={btnSecondary}>
+                    הסרת המיתוג
+                  </button>
+                </div>
+              )}
             </motion.div>
           ) : (
             <>
