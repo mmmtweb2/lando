@@ -20,6 +20,8 @@ import {
   Mail,
   Link2,
   Loader2,
+  Quote,
+  User,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -42,6 +44,11 @@ interface FormState {
   cta_type: 'whatsapp' | 'email' | 'phone' | 'link';
   enable_form: boolean;
   include_testimonials: boolean;
+  // Optional real testimonial the owner types in themselves — when present,
+  // the generator uses it verbatim instead of the usual placeholder quote
+  // (see USE_PROVIDED_SPECIFICS_RULE in ai.service.ts). Never required.
+  testimonial_quote: string;
+  testimonial_author: string;
   logo: File | null;
   primary_color: string;
   secondary_color: string;
@@ -795,6 +802,8 @@ export default function Wizard() {
     cta_type: 'whatsapp',
     enable_form: false,
     include_testimonials: false,
+    testimonial_quote: '',
+    testimonial_author: '',
     logo: null,
     primary_color: '',
     secondary_color: '',
@@ -941,6 +950,10 @@ export default function Wizard() {
       if (form.page_goal) fd.append('page_goal', form.page_goal);
       fd.append('enable_form', String(form.enable_form));
       fd.append('include_testimonials', String(form.include_testimonials));
+      if (form.include_testimonials) {
+        if (form.testimonial_quote.trim())  fd.append('testimonial_quote', form.testimonial_quote.trim());
+        if (form.testimonial_author.trim()) fd.append('testimonial_author', form.testimonial_author.trim());
+      }
       fd.append('owner_email', user.email);
       // Merge the optional intake answers into the SAME free-text channel the
       // generator already reads (`user_provided_text`) rather than adding a new
@@ -1174,6 +1187,24 @@ export default function Wizard() {
         onChange={(v) => update('include_testimonials', v)}
         label="הוסף אזור המלצות מלקוחות (Testimonials)"
       />
+      {/* Optional real quote — genuinely optional: leaving these empty keeps the
+          existing placeholder-quote behavior (hidden from real visitors until
+          the owner edits it in later). Filled in, the AI uses it verbatim
+          instead of generating a placeholder — see USE_PROVIDED_SPECIFICS_RULE. */}
+      <AnimatePresence>
+        {form.include_testimonials && (
+          <motion.div key="testimonial-fields" {...fadeIn} className="flex flex-col gap-3">
+            <Field label="ציטוט אמיתי מלקוח (אופציונלי)" icon={<Quote size={15} />}>
+              <textarea className={inputCls} rows={2} placeholder="למשל: 'קיבלנו שירות מהיר ומקצועי, ממליצים בחום'"
+                value={form.testimonial_quote} onChange={(e) => update('testimonial_quote', e.target.value)} />
+            </Field>
+            <Field label="שם הלקוח (אופציונלי)" icon={<User size={15} />}>
+              <input className={inputCls} placeholder="לדוגמה: דנה כהן"
+                value={form.testimonial_author} onChange={(e) => update('testimonial_author', e.target.value)} />
+            </Field>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Step>,
 
     // ── Step 5: Images ────────────────────────────────────────────────────────

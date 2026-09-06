@@ -84,6 +84,12 @@ export interface AiContent {
   about?: { heading?: string; content?: string };
   services_or_benefits?: ServiceItem[];
   services?: ServiceItem[];    // v1 compat
+  // AI-generated section headings/kickers — added so each section reads as
+  // written for THIS business rather than a fixed literal string. Optional:
+  // pages generated before this change have none of these, so every renderer
+  // must fall back to its old hardcoded Hebrew heading when a field is absent.
+  services_heading?: string;
+  services_kicker?: string;
   contact?: {
     phone?: string;
     email?: string;
@@ -96,9 +102,17 @@ export interface AiContent {
   design_hints?: DesignHints;  // v1 compat
   // v2 long-form sections
   benefits?: Array<{ title: string; description: string }>;
+  benefits_heading?: string;
+  benefits_kicker?: string;
   faq?: Array<{ question: string; answer: string }>;
+  faq_heading?: string;
+  faq_kicker?: string;
   process_steps?: Array<{ step_number: number; title: string; description: string }>;
+  process_heading?: string;
+  process_kicker?: string;
   testimonials?: Array<{ quote: string; author: string; role: string }>;
+  testimonials_heading?: string;
+  testimonials_kicker?: string;
   cta_banner_subline?: string; // closing copy for CTA section, from Call B
   seo_title?: string;          // max 60 chars — for <title> and OG tags
   seo_description?: string;    // max 150 chars — for meta description and OG
@@ -134,6 +148,11 @@ export interface GenerateInput {
   logo_media_type?: string;
   // Content options
   include_testimonials?: boolean;
+  // Optional REAL testimonial supplied by the owner in the wizard — when
+  // present, USE_PROVIDED_SPECIFICS_RULE applies: the AI must use it verbatim
+  // instead of writing the usual "fill this in yourself" placeholder quote.
+  testimonial_quote?: string;
+  testimonial_author?: string;
 }
 
 // ─── Internal parallel-call intermediate types ────────────────────────────────
@@ -160,6 +179,8 @@ interface CoreOutput {
   aboutHeading: string;
   aboutContent: string;
   services: Array<{ id: string; title: string; description: string; serviceImagePrompt: string; serviceIconKeyword: string }>;
+  servicesHeading: string;
+  servicesKicker: string;
   whatsappMessage: string;
   imageKeywords: string[];
   imageStyle: 'photo' | 'icon';
@@ -167,9 +188,17 @@ interface CoreOutput {
 
 interface TrustOutput {
   benefits: Array<{ title: string; description: string }>;
+  benefitsHeading: string;
+  benefitsKicker: string;
   processSteps: Array<{ stepNumber: number; title: string; description: string }>;
+  processHeading: string;
+  processKicker: string;
   faq: Array<{ question: string; answer: string }>;
+  faqHeading: string;
+  faqKicker: string;
   testimonials: Array<{ quote: string; author: string; role: string }>;
+  testimonialsHeading: string;
+  testimonialsKicker: string;
   trustBadges: Array<{ label: string }>;
   ctaBannerSubline: string;
 }
@@ -237,6 +266,8 @@ function getMockContent(input: GenerateInput): AiContent {
         service_icon_keyword: 'quality value',
       },
     ],
+    services_heading: 'השירותים שלנו',
+    services_kicker: 'מה אנחנו מציעים',
     contact: {
       phone: input.phone_number,
       email: input.email ?? '',
@@ -256,20 +287,35 @@ function getMockContent(input: GenerateInput): AiContent {
       { title: 'ניסיון מוכח', description: 'שנות שטח שהביאו עשרות לקוחות מרוצים.' },
       { title: 'תמחור שקוף', description: 'מחיר ברור מראש. אפס הפתעות.' },
     ],
+    benefits_heading: 'למה לבחור בנו',
+    benefits_kicker: 'היתרונות שלנו',
     faq: [
       { question: 'כיצד ניצור קשר לתיאום?', answer: 'בוואטסאפ, טלפון, או טופס הפנייה — נחזור תוך 24 שעות.' },
       { question: 'כמה זמן לוקח התהליך?', answer: 'בונים לוח זמנים מותאם אישית כבר בשיחה הראשונה.' },
       { question: 'האם יש אחריות?', answer: 'כן. עומדים מאחורי כל עבודה עד לשביעות רצונכם המלאה.' },
     ],
+    faq_heading: 'שאלות נפוצות',
+    faq_kicker: 'עזרה ותשובות',
     process_steps: [
       { step_number: 1, title: 'יצירת קשר', description: 'פנו אלינו ונקבע שיחת היכרות.' },
       { step_number: 2, title: 'התאמה אישית', description: 'נבנה פתרון מדויק לצרכים שלכם.' },
       { step_number: 3, title: 'תוצאה מיידית', description: 'מקבלים שירות מקצועי ותוצאה אמיתית.' },
     ],
-    testimonials: [
-      { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
-      { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
-    ],
+    process_heading: 'איך זה עובד',
+    process_kicker: 'התהליך שלנו',
+    testimonials: input.include_testimonials
+      ? (input.testimonial_quote?.trim()
+          ? [
+              { quote: input.testimonial_quote.trim(), author: input.testimonial_author?.trim() || 'שם הלקוח', role: '' },
+              { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
+            ]
+          : [
+              { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
+              { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
+            ])
+      : [],
+    testimonials_heading: 'מה לקוחות אומרים',
+    testimonials_kicker: 'לקוחות מספרים',
     cta_banner_subline: `נשמח לענות על כל שאלה ולעזור לכם להתחיל`,
     seo_title: `${input.business_name} | שירות מקצועי`,
     seo_description: `גלו את ${input.business_name} — פתרונות מותאמים אישית במחיר שקוף. צרו קשר עוד היום.`,
@@ -345,6 +391,9 @@ WORD DIET (STRICT — no exceptions):
 - Each service description: Hebrew — max 20 words. Format as Action + Benefit. Example: "במקום X, קבלו Y". No passive voice.
 - seoTitle: max 60 characters — business name + primary keyword, written for search engines
 - seoDescription: max 150 characters — one compelling sentence, main benefit, written for meta description
+- servicesHeading: maximum 4 Hebrew words — a section heading specific to what THIS business offers, never a generic
+  label like "השירותים שלנו" or "מה אנחנו מציעים"
+- servicesKicker: maximum 3 Hebrew words — a short uppercase eyebrow label above servicesHeading, specific to the niche
 
 ANTI-CLICHÉ RULE (CRITICAL — violations will be rejected):
 Banned words — NEVER use any of these in any Hebrew text field:
@@ -370,7 +419,12 @@ LAYOUT COMPOSITION RULES:
 Available block IDs (use ONLY these exact strings):
 hero_center, hero_split, services_bento, services_grid, benefits_list, benefits_cards,
 process_timeline, process_horizontal, testimonials_grid, faq_accordion, cta_banner,
-comparison_table, portfolio_grid
+portfolio_grid
+// NOTE: "comparison_table" is intentionally NOT offered here (page-quality fix,
+// 2026-09) — its rendered rows are 3 hardcoded generic claims plus an unnamed
+// "אחרים" (competitors) column making blanket unverifiable comparisons, which
+// violates NO_FABRICATION_RULE. Do not add it back without first making the
+// section's content AI-personalized per business.
 
 Strict rules:
 1. Start with exactly ONE hero: hero_center OR hero_split (never both)
@@ -381,8 +435,8 @@ Strict rules:
 
 Art direction:
 - Visual / beauty / retail / construction → hero_center, portfolio_grid, services_grid, benefits_list, faq_accordion, cta_banner
-- Consulting / law / medical / coaching / direct_sale → hero_split, comparison_table, process_timeline, benefits_cards, testimonials_grid (if allowed), faq_accordion, cta_banner
-- Tech / startup / agency / SaaS → hero_split, comparison_table, services_bento, benefits_cards, faq_accordion, cta_banner
+- Consulting / law / medical / coaching / direct_sale → hero_split, process_timeline, benefits_cards, testimonials_grid (if allowed), faq_accordion, cta_banner
+- Tech / startup / agency / SaaS → hero_split, services_bento, benefits_cards, faq_accordion, cta_banner
 - Food / local / traditional / community → hero_center, services_grid, benefits_list, process_horizontal, faq_accordion, cta_banner
 
 Also, choose a macro structuralLayout based on the niche:
@@ -443,6 +497,8 @@ Return EXACTLY this JSON (ALL fields required — do not omit any):
   "ctaText": "Hebrew — exactly 3-4 words",
   "aboutHeading": "Hebrew — 2-3 words",
   "aboutContent": "Hebrew — 2-3 sentences, drawn heavily from user-provided text if present",
+  "servicesHeading": "Hebrew — max 4 words, specific to this business's actual offering, not generic",
+  "servicesKicker": "Hebrew — max 3 words, short uppercase eyebrow label specific to the niche",
   "services": [
     {
       "id": "1",
@@ -489,6 +545,23 @@ function buildCoreUser(input: GenerateInput): string {
 
 // ─── Call B: Trust & Conversion — benefits, process, faq, testimonials ────────
 
+// Builds the literal "testimonials" example array embedded in Call B's JSON
+// schema. When the owner supplied a real quote in the wizard, the FIRST
+// example testimonial is that real quote/author (verbatim, JSON-escaped) so
+// the model has an unambiguous, concrete example to copy instead of having to
+// infer the substitution from prose rules alone.
+function buildTestimonialsExampleJson(input: GenerateInput): string {
+  if (!input.include_testimonials) return '[]';
+  const placeholder = '{ "quote": "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו", "author": "שם הלקוח", "role": "תפקיד או עיר" }';
+  const realQuote = input.testimonial_quote?.trim();
+  if (realQuote) {
+    const realAuthor = input.testimonial_author?.trim() || 'שם הלקוח';
+    const real = `{ "quote": ${JSON.stringify(realQuote)}, "author": ${JSON.stringify(realAuthor)}, "role": "" }`;
+    return `[\n    ${real},\n    ${placeholder}\n  ]`;
+  }
+  return `[\n    ${placeholder},\n    ${placeholder}\n  ]`;
+}
+
 function buildTrustSystem(input: GenerateInput): string {
   return `You are an elite Hebrew conversion copywriter for Israeli small businesses.
 
@@ -512,6 +585,10 @@ WORD DIET (STRICT — no exceptions):
 - Each FAQ answer: maximum 25 Hebrew words — authoritative, no hedging
 - ctaBannerSubline: 1 punchy Hebrew sentence, max 15 words — creates urgency or desire
 - Do NOT use vague superlatives or filler. Be direct and authoritative.
+- benefitsHeading, processHeading, testimonialsHeading, faqHeading: maximum 4 Hebrew words each — a section
+  heading specific to this business/niche, never a generic label like "למה לבחור בנו" or "איך זה עובד"
+- benefitsKicker, processKicker, testimonialsKicker, faqKicker: maximum 3 Hebrew words each — short uppercase
+  eyebrow labels above their matching heading, specific to the niche
 
 ANTI-CLICHÉ RULE (CRITICAL):
 Banned words — NEVER use any of these in any Hebrew text:
@@ -531,8 +608,17 @@ TRUST BADGES RULE:
 
 TESTIMONIALS RULE:
 - include_testimonials = ${input.include_testimonials ? 'TRUE' : 'FALSE'}
-- If FALSE: "testimonials" MUST be an empty array []. Do NOT generate any quotes, names, or roles.
-- If TRUE: both "quote" fields MUST be EXACTLY "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו" — verbatim, unaltered. "author" MUST be EXACTLY "שם הלקוח", "role" MUST be EXACTLY "תפקיד או עיר". DO NOT invent real-sounding quotes, names, or roles.
+- If FALSE: "testimonials" MUST be an empty array []. Do NOT generate any quotes, names, or roles.${
+  input.include_testimonials && input.testimonial_quote?.trim()
+    ? `
+- If TRUE: a REAL customer quote was supplied by the owner (see below) — per USE_PROVIDED_SPECIFICS_RULE, the
+  FIRST testimonial's "quote" and "author" MUST be that real text VERBATIM, with NO rewriting or paraphrasing.
+  Its "role" MUST be "" (empty string) — do NOT invent a role/city that was not given. The SECOND testimonial
+  MUST still be EXACTLY the placeholder: quote "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו", author
+  "שם הלקוח", role "תפקיד או עיר".`
+    : `
+- If TRUE: both "quote" fields MUST be EXACTLY "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו" — verbatim, unaltered. "author" MUST be EXACTLY "שם הלקוח", "role" MUST be EXACTLY "תפקיד או עיר". DO NOT invent real-sounding quotes, names, or roles.`
+}
 
 Return EXACTLY this JSON (ALL fields required):
 {
@@ -541,22 +627,25 @@ Return EXACTLY this JSON (ALL fields required):
     { "title": "...", "description": "..." },
     { "title": "...", "description": "..." }
   ],
+  "benefitsHeading": "Hebrew — max 4 words, specific to this business, not generic",
+  "benefitsKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
   "processSteps": [
     { "stepNumber": 1, "title": "Hebrew 2-3 words", "description": "Hebrew max 15 words" },
     { "stepNumber": 2, "title": "...", "description": "..." },
     { "stepNumber": 3, "title": "...", "description": "..." }
   ],
+  "processHeading": "Hebrew — max 4 words, specific to this business, not generic",
+  "processKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
   "faq": [
     { "question": "Hebrew question specific to this business", "answer": "Hebrew max 25 words" },
     { "question": "...", "answer": "..." },
     { "question": "...", "answer": "..." }
   ],
-  "testimonials": ${input.include_testimonials
-    ? `[
-    { "quote": "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו", "author": "שם הלקוח", "role": "תפקיד או עיר" },
-    { "quote": "הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו", "author": "שם הלקוח", "role": "תפקיד או עיר" }
-  ]`
-    : '[]'},
+  "faqHeading": "Hebrew — max 4 words, specific to this business, not generic",
+  "faqKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
+  "testimonials": ${buildTestimonialsExampleJson(input)},
+  "testimonialsHeading": "Hebrew — max 4 words, specific to this business, not generic",
+  "testimonialsKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
   "trustBadges": [
     { "label": "Hebrew 2-3 words" },
     { "label": "..." },
@@ -577,6 +666,14 @@ function buildTrustUser(input: GenerateInput): string {
   if (input.about_business) lines.push(`- About: ${input.about_business}`);
   if (input.user_provided_text) {
     lines.push(`- PRIORITY — Existing marketing text (ground benefits/FAQ in this):\n${input.user_provided_text}`);
+  }
+  if (input.include_testimonials && input.testimonial_quote?.trim()) {
+    lines.push(
+      `- REAL customer testimonial supplied by the owner — use it VERBATIM per USE_PROVIDED_SPECIFICS_RULE (do not rewrite, paraphrase, or invent a role/city for it): "${input.testimonial_quote.trim()}"`,
+    );
+    if (input.testimonial_author?.trim()) {
+      lines.push(`- REAL testimonial author name — use it VERBATIM: "${input.testimonial_author.trim()}"`);
+    }
   }
   lines.push(`\nReturn ONLY the JSON.`);
   return lines.join('\n');
@@ -608,6 +705,8 @@ function mapToAiContent(s: Step1Output, input: GenerateInput): AiContent {
       service_image_prompt: svc.serviceImagePrompt,
       service_icon_keyword: svc.serviceIconKeyword,
     })),
+    services_heading: s.servicesHeading || undefined,
+    services_kicker: s.servicesKicker || undefined,
     typography_pairing: s.typographyPairing || 'modern_clean',
     color_palette: s.colorPalette ? {
       primary: s.colorPalette.primary,
@@ -629,19 +728,32 @@ function mapToAiContent(s: Step1Output, input: GenerateInput): AiContent {
       image_keywords: s.imageKeywords,
     },
     benefits: s.benefits,
+    benefits_heading: s.benefitsHeading || undefined,
+    benefits_kicker: s.benefitsKicker || undefined,
     faq: s.faq,
+    faq_heading: s.faqHeading || undefined,
+    faq_kicker: s.faqKicker || undefined,
     process_steps: s.processSteps.map((step) => ({
       step_number: step.stepNumber,
       title: step.title,
       description: step.description,
     })),
+    process_heading: s.processHeading || undefined,
+    process_kicker: s.processKicker || undefined,
     testimonials: input.include_testimonials ? s.testimonials : [],
+    testimonials_heading: s.testimonialsHeading || undefined,
+    testimonials_kicker: s.testimonialsKicker || undefined,
     seo_title: s.seoTitle || undefined,
     seo_description: s.seoDescription || undefined,
     trust_badges: s.trustBadges?.length ? s.trustBadges : undefined,
     cta_banner_subline: s.ctaBannerSubline || undefined,
     layout_composition: (s.layoutComposition ?? []).filter(
-      (b) => b !== 'testimonials_grid' || input.include_testimonials,
+      (b) =>
+        (b !== 'testimonials_grid' || input.include_testimonials) &&
+        // Defensive: comparison_table is no longer an offered choice (see the
+        // "NOTE" in buildCoreSystem's LAYOUT COMPOSITION RULES) — strip it here
+        // too in case a model response drifts and includes it anyway.
+        b !== 'comparison_table',
     ),
     design_tokens: {
       image_treatment: s.designTokens?.imageTreatment || 'rounded',
@@ -872,7 +984,7 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
     let trust: TrustOutput;
     if (trustResult.status === 'rejected') {
       console.error('[AI] Call B (trust) failed — falling back to empty trust sections:', trustResult.reason);
-      trust = { benefits: [], processSteps: [], faq: [], testimonials: [], trustBadges: [], ctaBannerSubline: '' };
+      trust = { benefits: [], benefitsHeading: '', benefitsKicker: '', processSteps: [], processHeading: '', processKicker: '', faq: [], faqHeading: '', faqKicker: '', testimonials: [], testimonialsHeading: '', testimonialsKicker: '', trustBadges: [], ctaBannerSubline: '' };
     } else {
       try {
         const trustRaw = trustResult.value.content[0].type === 'text'
@@ -882,7 +994,7 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
         console.log('[AI] Call B (trust) done — benefits:', trust.benefits?.length, '| faq:', trust.faq?.length, '| steps:', trust.processSteps?.length);
       } catch (parseErr) {
         console.error('[AI] Call B response parse failed — falling back to empty trust sections:', parseErr);
-        trust = { benefits: [], processSteps: [], faq: [], testimonials: [], trustBadges: [], ctaBannerSubline: '' };
+        trust = { benefits: [], benefitsHeading: '', benefitsKicker: '', processSteps: [], processHeading: '', processKicker: '', faq: [], faqHeading: '', faqKicker: '', testimonials: [], testimonialsHeading: '', testimonialsKicker: '', trustBadges: [], ctaBannerSubline: '' };
       }
     }
 
