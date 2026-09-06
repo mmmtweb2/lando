@@ -9,6 +9,7 @@ import { authFetch } from '../lib/api';
 import { CREDIT_COSTS } from '../config/credits';
 import { LandoMark } from '../components/Lando';
 import PageLegalFooter from '../components/PageLegalFooter';
+import RefundAck from '../components/RefundAck';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -868,6 +869,12 @@ export default function LandingViewer() {
   const [checkoutStatus, setCheckoutStatus] =
     useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  // Required pre-payment acknowledgment that the transaction is not
+  // cancellable (חוק הגנת הצרכן s.14ג(ד)(3) — see legal/refundPolicy.ts).
+  // The pay button stays disabled until this is true; it resets whenever the
+  // checkout modal is re-opened, so a previous session can never pre-tick it.
+  const [refundAck, setRefundAck] = useState(false);
   // Applied coupon for the paid-publish flow. A PREVIEW only (see CouponField):
   // the price shown here is recomputed and re-authorised server-side when the
   // code is passed to /api/payments/start below.
@@ -990,6 +997,7 @@ export default function LandingViewer() {
   // reflects their actual page-credit balance at this exact moment, then routes
   // to the right screen — never straight to a charge or a silent publish.
   async function openPublishFlow() {
+    setRefundAck(false);
     if (!page) return;
     setCheckoutStatus('loadingPlan');
     setCheckoutError(null);
@@ -1046,6 +1054,9 @@ export default function LandingViewer() {
 
   async function checkout() {
     if (!page) return;
+    // The cancellation-exclusion acknowledgment gates the charge itself, not
+    // just the button: no payment starts without it.
+    if (!refundAck) return;
     setCheckoutStatus('paying');
     setCheckoutError(null);
     try {
@@ -3302,6 +3313,10 @@ export default function LandingViewer() {
                   re-validates it server-side. */}
               <CouponField purpose="publish" references={[page.id]} onChange={setPublishCoupon} />
 
+              {/* Cancellation disclosure + required acknowledgment. Must stay
+                  ABOVE the pay button and must gate it — see RefundAck. */}
+              <RefundAck variant="publish" checked={refundAck} onChange={setRefundAck} />
+
               {/* Error message — surfaces a failed publish instead of silently closing */}
               {checkoutError && (
                 <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 text-center">
@@ -3312,9 +3327,9 @@ export default function LandingViewer() {
               {/* Pay CTA */}
               <button
                 onClick={checkout}
-                disabled={checkoutStatus === 'paying'}
-                className="w-full py-4 rounded-xl text-base font-extrabold text-white transition active:scale-95 disabled:opacity-80 flex items-center justify-center gap-2.5 shadow-lg"
-                style={{ backgroundColor: checkoutStatus === 'paying' ? '#94a3b8' : primary }}>
+                disabled={checkoutStatus === 'paying' || !refundAck}
+                className="w-full py-4 rounded-xl text-base font-extrabold text-white transition active:scale-95 disabled:opacity-80 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg"
+                style={{ backgroundColor: (checkoutStatus === 'paying' || !refundAck) ? '#94a3b8' : primary }}>
                 {checkoutStatus === 'paying' ? (
                   <>
                     <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
