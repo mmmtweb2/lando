@@ -1030,6 +1030,17 @@ export default function Dashboard() {
           )}
 
         </main>
+
+        {/* Persistent legal footer — the dashboard is where purchases happen,
+            so the refund/renewal terms have to be reachable from it. */}
+        <footer className="border-t border-[#DCE4F7] px-5 py-6">
+          <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-400">
+            <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+            <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+            <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+            <span>© {new Date().getFullYear()} Pagey</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
