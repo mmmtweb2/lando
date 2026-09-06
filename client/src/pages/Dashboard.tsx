@@ -876,7 +876,7 @@ export default function Dashboard() {
                           {b.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> בונוס: הסרת מיתוג Pagey מהדפים, לתמיד</li>}
                         </ul>
                         <button
-                          disabled={upgrading}
+                          disabled={upgrading || !bundleAck}
                           onClick={() => handleBuyBundle(key)}
                           className={`mt-auto rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
                         >
