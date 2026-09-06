@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
 import { LandoMark, LandoBot } from '../components/Lando';
+import RefundAck from '../components/RefundAck';
 import LeadsTable, { type LeadRow } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
@@ -293,6 +294,14 @@ function RenewalNotice({
       >
         {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${RENEWAL_PRICE} ₪`}
       </button>
+      {/* Same pre-payment disclosure as the other paid entry points. No
+          checkbox here: a renewal re-buys a product this owner already bought
+          and is initiated from a card, not a checkout modal — the ack lives in
+          the two modals where a NEW product is purchased. */}
+      <p className="mt-1.5 text-[10px] leading-snug opacity-70">
+        חידוש הוא תשלום חד־פעמי, ללא חיוב אוטומטי. תוכן דיגיטלי המסופק מיידית — לא ניתן לביטול לאחר החידוש.{' '}
+        <Link to="/terms" target="_blank" rel="noopener noreferrer" className="underline">תנאי שימוש</Link>
+      </p>
     </div>
   );
 }
@@ -413,6 +422,12 @@ export default function Dashboard() {
   const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
   const [singlePagePrice, setSinglePagePrice] = useState(249);
   const [showPlans, setShowPlans] = useState(false);
+
+  // Required pre-payment acknowledgment that a digital purchase is not
+  // cancellable (חוק הגנת הצרכן s.14ג(ד)(3) — see legal/refundPolicy.ts).
+  // One flag per modal, both reset every time their modal opens.
+  const [bundleAck, setBundleAck] = useState(false);
+  const [creditsAck, setCreditsAck] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
@@ -448,6 +463,7 @@ export default function Dashboard() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (q.get('bundles') !== '1' && q.get('upgrade') !== '1') return;
+    setBundleAck(false);
     setShowPlans(true);
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
@@ -548,7 +564,9 @@ export default function Dashboard() {
   }
 
   async function handleBuyBundle(bundleKey: 'bundle5' | 'bundle10' | 'whitelabel_addon') {
-    if (!user?.email || upgrading) return;
+    // The cancellation-exclusion acknowledgment gates the charge itself, not
+    // just the button: no payment starts without it.
+    if (!user?.email || upgrading || !bundleAck) return;
     setUpgrading(true);
     try {
       const r = await authFetch('/api/payments/start', {
@@ -591,7 +609,7 @@ export default function Dashboard() {
   }
 
   async function handleBuyCredits(pack: 'small' | 'large') {
-    if (!user?.email || buying) return;
+    if (!user?.email || buying || !creditsAck) return;
     setBuying(true);
     try {
       // Start a real SUMIT payment and redirect to the secure page. Credits are
@@ -728,7 +746,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <WalletBadge email={user.email} refreshKey={walletKey} />
             <button
-              onClick={() => setShowBuyCredits(true)}
+              onClick={() => { setCreditsAck(false); setShowBuyCredits(true); }}
               className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
               + טען קרדיטים
             </button>
@@ -761,7 +779,7 @@ export default function Dashboard() {
               </div>
               <p className="text-sm text-slate-500">קרדיטים משמשים ליצירת תמונות וכתיבה מחדש ב-AI.</p>
               <div className="grid grid-cols-1 gap-3">
-                <button disabled={buying} onClick={() => handleBuyCredits('small')}
+                <button disabled={buying || !creditsAck} onClick={() => handleBuyCredits('small')}
                   className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50">
                   <span className="font-bold text-slate-800">10 קרדיטים</span>
                   <span className="font-extrabold text-indigo-600">
@@ -771,7 +789,7 @@ export default function Dashboard() {
                     ) : '₪49'}
                   </span>
                 </button>
-                <button disabled={buying} onClick={() => handleBuyCredits('large')}
+                <button disabled={buying || !creditsAck} onClick={() => handleBuyCredits('large')}
                   className="flex items-center justify-between p-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50/50 hover:border-indigo-500 transition disabled:opacity-50">
                   <span className="font-bold text-slate-800">100 קרדיטים <span className="text-xs font-semibold text-emerald-600">(הכי משתלם)</span></span>
                   <span className="font-extrabold text-indigo-600">
@@ -782,6 +800,7 @@ export default function Dashboard() {
                   </span>
                 </button>
               </div>
+              <RefundAck variant="purchase" checked={creditsAck} onChange={setCreditsAck} compact />
               <CouponField purpose="credits" references={['small', 'large']} onChange={setCreditsCoupon} />
               {buying && <p className="text-sm text-center text-slate-500">מעבד תשלום...</p>}
               {buyMsg && (
@@ -840,7 +859,7 @@ export default function Dashboard() {
                         {b.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> בונוס: הסרת מיתוג Pagey מהדפים, לתמיד</li>}
                       </ul>
                       <button
-                        disabled={upgrading}
+                        disabled={upgrading || !bundleAck}
                         onClick={() => handleBuyBundle(key)}
                         className={`mt-auto rounded-xl py-2.5 text-sm font-bold transition disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
                       >
@@ -857,7 +876,7 @@ export default function Dashboard() {
                     <span className="text-xs text-slate-500">תוסף עצמאי, לא תלוי בחבילת דפים — לתמיד, ללא תלות במה שכבר רכשת.</span>
                   </div>
                   <button
-                    disabled={upgrading}
+                    disabled={upgrading || !bundleAck}
                     onClick={() => handleBuyBundle('whitelabel_addon')}
                     className="flex-shrink-0 rounded-xl py-2 px-4 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white transition disabled:opacity-50"
                   >
@@ -870,6 +889,8 @@ export default function Dashboard() {
               {/* One coupon box for the whole modal: all three products share the
                   'bundle' purpose, so a coupon either applies to all of them or
                   to none — only the resulting price differs per product. */}
+              <RefundAck variant="purchase" checked={bundleAck} onChange={setBundleAck} compact />
+
               <CouponField
                 purpose="bundle"
                 references={['bundle5', 'bundle10', 'whitelabel_addon']}
@@ -913,7 +934,7 @@ export default function Dashboard() {
               </div>
 
               {plan ? (
-                <BalanceCard plan={plan} onBuyBundle={() => setShowPlans(true)} />
+                <BalanceCard plan={plan} onBuyBundle={() => { setBundleAck(false); setShowPlans(true); }} />
               ) : (
                 <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 text-sm text-slate-400">
                   טוען נתוני מסלול…
@@ -926,7 +947,7 @@ export default function Dashboard() {
                   <WalletBadge email={user.email} refreshKey={walletKey} />
                 </div>
                 <button
-                  onClick={() => setShowBuyCredits(true)}
+                  onClick={() => { setCreditsAck(false); setShowBuyCredits(true); }}
                   className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
                   + טען קרדיטים
                 </button>
@@ -963,7 +984,7 @@ export default function Dashboard() {
               </motion.div>
 
               {/* Plan + usage */}
-              {plan && <BalanceCard plan={plan} onBuyBundle={() => setShowPlans(true)} />}
+              {plan && <BalanceCard plan={plan} onBuyBundle={() => { setBundleAck(false); setShowPlans(true); }} />}
 
               {/* Referral */}
               {portalUser && <ReferralCard user={portalUser} />}
@@ -1030,6 +1051,17 @@ export default function Dashboard() {
           )}
 
         </main>
+
+        {/* Persistent legal footer — the dashboard is where purchases happen,
+            so the refund/renewal terms have to be reachable from it. */}
+        <footer className="border-t border-[#DCE4F7] px-5 py-6">
+          <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-400">
+            <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+            <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+            <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+            <span>© {new Date().getFullYear()} Pagey</span>
+          </div>
+        </footer>
       </div>
     </div>
   );

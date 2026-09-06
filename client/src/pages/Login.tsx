@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -309,6 +309,11 @@ export default function Login() {
         <p className="mt-4 text-center text-xs text-slate-400">
           ✦ Pagey
         </p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
+          <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+          <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+          <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+        </div>
       </motion.div>
     </div>
   );
