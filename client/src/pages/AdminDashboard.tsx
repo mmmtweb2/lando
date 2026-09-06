@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authFetch } from '../lib/api';
@@ -27,7 +27,34 @@ interface PaymentRow {
   paid_at: string | null;
 }
 
+interface CouponRow {
+  id: string;
+  created_at: string;
+  code: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
+  applicable_purposes: string[] | null;
+  max_redemptions: number | null;
+  redemptions_count: number;
+  max_per_user: number | null;
+  active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  notes: string | null;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+/** Where the admin-panel password lives for the lifetime of this TAB. Session
+ *  storage, not localStorage: closing the tab must forget it. */
+const ADMIN_PW_KEY = 'pagey_admin_panel_pw';
+
+const PURPOSE_LABELS: Record<string, string> = {
+  publish: 'פרסום דף',
+  renew:   'חידוש שנתי',
+  credits: 'קרדיטים',
+  bundle:  'חבילות',
+};
 
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   upload:  { label: 'העלאה',  color: '#2E63F6' },
@@ -154,18 +181,71 @@ export default function AdminDashboard() {
   const [confirmDelete, setConfirmDelete] = useState<PageRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
+  // ── Admin-panel password ──────────────────────────────────────────────────
+  // A second, deliberately crude layer on top of the real login: the server
+  // requires a matching `x-admin-password` header on every /api/admin/* call
+  // (requireAdminPanelPassword), in addition to the Supabase session and the
+  // is_admin flag it already enforced. Kept in sessionStorage so it dies with
+  // the tab and never touches disk.
+  const [adminPw, setAdminPw] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(ADMIN_PW_KEY); } catch { return null; }
+  });
+  const [pwInput, setPwInput] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
+
+  /**
+   * authFetch + the admin-panel password header. Every /api/admin/* call on
+   * this page goes through it.
+   *
+   * A rejection that carries `adminPassword: true` is specifically the password
+   * gate (not the pre-existing is_admin denial, which has no such flag), so we
+   * can drop the stored value and re-prompt with "wrong password" instead of
+   * showing the generic access-denied screen for what is a typo.
+   */
+  const adminFetch = useCallback(async (input: string, init: RequestInit = {}): Promise<Response> => {
+    const headers = new Headers(init.headers);
+    if (adminPw) headers.set('x-admin-password', adminPw);
+    const res = await authFetch(input, { ...init, headers });
+    if (res.status === 401 || res.status === 503) {
+      const body = await res.clone().json().catch(() => ({})) as { adminPassword?: boolean; error?: string };
+      if (body.adminPassword) {
+        try { sessionStorage.removeItem(ADMIN_PW_KEY); } catch { /* private mode — nothing to clear */ }
+        setAdminPw(null);
+        setPwError(body.error ?? 'סיסמה שגויה.');
+      }
+    }
+    return res;
+  }, [adminPw]);
+
+  function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    const value = pwInput.trim();
+    if (!value) return;
+    try { sessionStorage.setItem(ADMIN_PW_KEY, value); } catch { /* private mode — kept in memory only */ }
+    setPwError(null);
+    setPwInput('');
+    setAdminPw(value);
+  }
+
   useEffect(() => {
-    if (!user) return;
-    authFetch('/api/admin/pages')
+    if (!user || !adminPw) return;
+    setLoading(true);
+    adminFetch('/api/admin/pages')
       .then((r) => {
-        if (r.status === 401 || r.status === 403) { setDenied(true); throw new Error('denied'); }
+        // A password rejection has already been handled by adminFetch (it
+        // cleared the stored password and re-prompts), so only treat this as a
+        // real is_admin denial when it is not the password gate talking.
+        if (r.status === 401 || r.status === 403) {
+          if (r.status === 403) setDenied(true);
+          throw new Error('denied');
+        }
         if (!r.ok) throw new Error('טעינת הדפים נכשלה');
         return r.json() as Promise<PageRow[]>;
       })
       .then(setPages)
       .catch((e: Error) => { if (e.message !== 'denied') setFetchError(e.message); })
       .finally(() => setLoading(false));
-  }, [user]);
+  }, [user, adminPw, adminFetch]);
 
   const [reviewPayments, setReviewPayments] = useState<PaymentRow[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
@@ -175,7 +255,7 @@ export default function AdminDashboard() {
 
   function loadReviewPayments() {
     setPaymentsLoading(true);
-    authFetch('/api/admin/payments?status=needs_review')
+    adminFetch('/api/admin/payments?status=needs_review')
       .then((r) => {
         if (!r.ok) throw new Error('טעינת התשלומים נכשלה');
         return r.json() as Promise<PaymentRow[]>;
@@ -186,15 +266,17 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    if (!user || denied) return;
+    if (!user || denied || !adminPw) return;
     loadReviewPayments();
-  }, [user, denied]);
+    loadCoupons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, denied, adminPw]);
 
   async function handlePaymentAction(id: string, action: 'reverify' | 'force-activate') {
     setPaymentBusyId(id);
     setPaymentActionMsg((m) => ({ ...m, [id]: '' }));
     try {
-      const r = await authFetch(`/api/admin/payments/${id}/${action}`, { method: 'POST' });
+      const r = await adminFetch(`/api/admin/payments/${id}/${action}`, { method: 'POST' });
       const data = await r.json().catch(() => ({})) as { status?: string; error?: string };
       if (!r.ok) throw new Error(data.error ?? 'הפעולה נכשלה');
       setPaymentActionMsg((m) => ({ ...m, [id]: data.status === 'paid' ? '✓ אושר' : `עדיין: ${data.status}` }));
@@ -205,6 +287,93 @@ export default function AdminDashboard() {
       setPaymentActionMsg((m) => ({ ...m, [id]: e instanceof Error ? e.message : 'הפעולה נכשלה' }));
     } finally {
       setPaymentBusyId(null);
+    }
+  }
+
+  // ── Coupons ───────────────────────────────────────────────────────────────
+  const [coupons, setCoupons] = useState<CouponRow[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(true);
+  const [couponsError, setCouponsError] = useState<string | null>(null);
+  const [couponBusyId, setCouponBusyId] = useState<string | null>(null);
+  const [couponCreateBusy, setCouponCreateBusy] = useState(false);
+  const [couponMsg, setCouponMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [form, setForm] = useState({
+    code: '',
+    discountType: 'percent' as 'percent' | 'fixed',
+    discountValue: '',
+    expiresAt: '',
+    maxRedemptions: '',
+    maxPerUser: '1',
+    purposes: [] as string[],
+    notes: '',
+  });
+
+  function loadCoupons() {
+    setCouponsLoading(true);
+    setCouponsError(null);
+    adminFetch('/api/admin/coupons')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת הקופונים נכשלה');
+        return r.json() as Promise<CouponRow[]>;
+      })
+      .then(setCoupons)
+      .catch((e: Error) => setCouponsError(e.message))
+      .finally(() => setCouponsLoading(false));
+  }
+
+  async function handleCreateCoupon(e: React.FormEvent) {
+    e.preventDefault();
+    if (couponCreateBusy) return;
+    setCouponCreateBusy(true);
+    setCouponMsg(null);
+    try {
+      const r = await adminFetch('/api/admin/coupons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: form.code,
+          discount_type: form.discountType,
+          discount_value: Number(form.discountValue),
+          // An empty list means "any purpose" — the server normalizes [] to null.
+          applicable_purposes: form.purposes,
+          // Empty string = no limit. The server reads null/'' as unlimited and
+          // only defaults max_per_user to 1 when the key is absent entirely,
+          // so both fields are always sent explicitly from here.
+          max_redemptions: form.maxRedemptions === '' ? null : Number(form.maxRedemptions),
+          max_per_user: form.maxPerUser === '' ? null : Number(form.maxPerUser),
+          expires_at: form.expiresAt || null,
+          notes: form.notes || null,
+        }),
+      });
+      const data = await r.json().catch(() => ({})) as CouponRow & { error?: string };
+      if (!r.ok) throw new Error(data.error ?? 'יצירת הקופון נכשלה');
+      setCoupons((prev) => [data, ...prev]);
+      setCouponMsg({ text: `הקופון ${data.code} נוצר.`, ok: true });
+      setForm({ code: '', discountType: 'percent', discountValue: '', expiresAt: '', maxRedemptions: '', maxPerUser: '1', purposes: [], notes: '' });
+    } catch (err) {
+      setCouponMsg({ text: err instanceof Error ? err.message : 'יצירת הקופון נכשלה', ok: false });
+    } finally {
+      setCouponCreateBusy(false);
+    }
+  }
+
+  /** The admin-facing "delete": a coupon that has priced real payments is never
+   *  removed, it is switched off. Same call re-enables it. */
+  async function toggleCouponActive(c: CouponRow) {
+    setCouponBusyId(c.id);
+    try {
+      const r = await adminFetch(`/api/admin/coupons/${c.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !c.active }),
+      });
+      const data = await r.json().catch(() => ({})) as CouponRow & { error?: string };
+      if (!r.ok) throw new Error(data.error ?? 'העדכון נכשל');
+      setCoupons((prev) => prev.map((x) => (x.id === c.id ? data : x)));
+    } catch (err) {
+      setCouponMsg({ text: err instanceof Error ? err.message : 'העדכון נכשל', ok: false });
+    } finally {
+      setCouponBusyId(null);
     }
   }
 
@@ -234,6 +403,33 @@ export default function AdminDashboard() {
           style={{ background: '#2E63F6' }}>
           התחברות
         </Link>
+      </GateShell>
+    );
+  }
+  // Password gate — an ADDITIONAL layer, not a replacement: the server still
+  // requires a real admin session on every call behind it. Rendered before the
+  // dashboard so no admin data is even requested without a password.
+  if (!adminPw) {
+    return (
+      <GateShell title="פאנל ניהול" subtitle="הזינו את סיסמת פאנל הניהול כדי להמשיך">
+        <form onSubmit={submitPassword} className="flex flex-col gap-3">
+          <input
+            type="password"
+            autoFocus
+            value={pwInput}
+            onChange={(e) => setPwInput(e.target.value)}
+            placeholder="סיסמת פאנל הניהול"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition text-center"
+          />
+          {pwError && <p className="text-xs text-red-500 font-medium">{pwError}</p>}
+          <button
+            type="submit"
+            disabled={!pwInput.trim()}
+            className="w-full py-3 rounded-xl text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: '#2E63F6' }}>
+            כניסה
+          </button>
+        </form>
       </GateShell>
     );
   }
@@ -380,6 +576,169 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
+
+          {/* ── Coupons ────────────────────────────────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-700 text-sm">קופונים</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  קוד הנחה מוריד את המחיר של תשלום אחד. השימוש נספר ברגע שנפתח דף התשלום —
+                  כך שגם אם הלקוח לא סיים לשלם, השימוש נוצל. כיבוי קופון ("פעיל") הוא המחיקה —
+                  קופון שכבר שימש בתשלום אמיתי לא נמחק לעולם.
+                </p>
+              </div>
+              <button onClick={loadCoupons}
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-[#2E63F6] hover:border-[#9DB0E8] transition flex-shrink-0">
+                רענון
+              </button>
+            </div>
+
+            {/* Create form */}
+            <form onSubmit={handleCreateCoupon} className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">קוד</span>
+                  <input required value={form.code} dir="ltr"
+                    onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                    placeholder="LAUNCH10"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">סוג הנחה</span>
+                  <select value={form.discountType}
+                    onChange={(e) => setForm((f) => ({ ...f, discountType: e.target.value as 'percent' | 'fixed' }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition">
+                    <option value="percent">אחוזים (%)</option>
+                    <option value="fixed">סכום קבוע (₪)</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">{form.discountType === 'percent' ? 'אחוז הנחה (1–100)' : 'הנחה בשקלים'}</span>
+                  <input required type="number" min="1" step="1" value={form.discountValue}
+                    onChange={(e) => setForm((f) => ({ ...f, discountValue: e.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">תוקף עד (אופציונלי)</span>
+                  <input type="date" value={form.expiresAt}
+                    onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">מקס׳ שימושים (ריק = ללא הגבלה)</span>
+                  <input type="number" min="1" step="1" value={form.maxRedemptions}
+                    onChange={(e) => setForm((f) => ({ ...f, maxRedemptions: e.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">מקס׳ ללקוח (ריק = ללא הגבלה)</span>
+                  <input type="number" min="1" step="1" value={form.maxPerUser}
+                    onChange={(e) => setForm((f) => ({ ...f, maxPerUser: e.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1 col-span-2">
+                  <span className="text-xs font-medium text-slate-500">הערה פנימית (לא מוצגת ללקוח)</span>
+                  <input value={form.notes}
+                    onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                    placeholder="קמפיין אינסטגרם"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-medium text-slate-500">תקף עבור (לא נבחר = הכול):</span>
+                {Object.entries(PURPOSE_LABELS).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <input type="checkbox" checked={form.purposes.includes(key)}
+                      onChange={(e) => setForm((f) => ({
+                        ...f,
+                        purposes: e.target.checked ? [...f.purposes, key] : f.purposes.filter((x) => x !== key),
+                      }))} />
+                    {label}
+                  </label>
+                ))}
+                <button type="submit" disabled={couponCreateBusy}
+                  className="mr-auto px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: '#2E63F6' }}>
+                  {couponCreateBusy ? 'יוצר…' : 'יצירת קופון'}
+                </button>
+              </div>
+
+              {couponMsg && (
+                <p className={`text-xs font-semibold rounded-lg px-3 py-2 ${couponMsg.ok ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+                  {couponMsg.text}
+                </p>
+              )}
+            </form>
+
+            {/* List */}
+            {couponsLoading ? (
+              <div className="py-10 text-center text-sm text-slate-400">טוען…</div>
+            ) : couponsError ? (
+              <div className="py-10 text-center text-sm text-red-400">{couponsError}</div>
+            ) : coupons.length === 0 ? (
+              <div className="py-10 text-center text-sm text-slate-400">אין קופונים עדיין.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-right" dir="rtl">
+                  <thead>
+                    <tr className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
+                      <th className="px-4 py-3">קוד</th>
+                      <th className="px-4 py-3">הנחה</th>
+                      <th className="px-4 py-3">שימושים</th>
+                      <th className="px-4 py-3 hidden md:table-cell">לכל לקוח</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">תקף עבור</th>
+                      <th className="px-4 py-3 hidden sm:table-cell">תוקף</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">הערה</th>
+                      <th className="px-4 py-3 text-left">סטטוס</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {coupons.map((c) => {
+                      const exhausted = c.max_redemptions !== null && c.redemptions_count >= c.max_redemptions;
+                      const expired = !!c.expires_at && new Date(c.expires_at).getTime() <= Date.now();
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-4 py-3.5 font-mono font-semibold text-slate-700" dir="ltr">{c.code}</td>
+                          <td className="px-4 py-3.5 text-slate-700 font-semibold">
+                            {c.discount_type === 'percent' ? `${c.discount_value}%` : `₪${c.discount_value}`}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-600">
+                            {c.redemptions_count} / {c.max_redemptions ?? '∞'}
+                            {exhausted && <span className="text-xs text-amber-600 font-semibold mr-1.5">מוצה</span>}
+                          </td>
+                          <td className="px-4 py-3.5 hidden md:table-cell text-slate-500">{c.max_per_user ?? '∞'}</td>
+                          <td className="px-4 py-3.5 hidden lg:table-cell text-slate-500 text-xs">
+                            {c.applicable_purposes && c.applicable_purposes.length > 0
+                              ? c.applicable_purposes.map((x) => PURPOSE_LABELS[x] ?? x).join(', ')
+                              : 'הכול'}
+                          </td>
+                          <td className="px-4 py-3.5 hidden sm:table-cell text-slate-500 text-xs">
+                            {c.expires_at ? formatDate(c.expires_at) : '—'}
+                            {expired && <span className="text-xs text-amber-600 font-semibold mr-1.5">פג</span>}
+                          </td>
+                          <td className="px-4 py-3.5 hidden lg:table-cell text-slate-400 text-xs">{c.notes ?? '—'}</td>
+                          <td className="px-4 py-3.5 text-left">
+                            <button
+                              disabled={couponBusyId === c.id}
+                              onClick={() => toggleCouponActive(c)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-40 ${
+                                c.active
+                                  ? 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100'
+                                  : 'text-slate-500 border-slate-200 bg-slate-50 hover:bg-slate-100'
+                              }`}>
+                              {c.active ? 'פעיל — כיבוי' : 'כבוי — הפעלה'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* ── Search + table ──────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
