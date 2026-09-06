@@ -8,6 +8,7 @@ import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
 import { CREDIT_COSTS } from '../config/credits';
 import { LandoMark } from '../components/Lando';
+import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -866,6 +867,11 @@ export default function LandingViewer() {
   const [checkoutStatus, setCheckoutStatus] =
     useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // Applied coupon for the paid-publish flow. A PREVIEW only (see CouponField):
+  // the price shown here is recomputed and re-authorised server-side when the
+  // code is passed to /api/payments/start below.
+  const [publishCoupon, setPublishCoupon] =
+    useState<{ code: string; quotes: Record<string, CouponQuote> } | null>(null);
   // Balance snapshot fetched fresh each time the publish flow opens, so the
   // numbers shown in the confirmation modal are never stale.
   const [planStatus, setPlanStatus] = useState<AccountStatus | null>(null);
@@ -1063,7 +1069,7 @@ export default function LandingViewer() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'publish', reference: page.id }),
+        body: JSON.stringify({ purpose: 'publish', reference: page.id, couponCode: publishCoupon?.code }),
       });
       if (!r.ok) {
         const b = await r.json().catch(() => ({})) as { error?: string };
@@ -1076,6 +1082,10 @@ export default function LandingViewer() {
       setCheckoutStatus('modal');
     }
   }
+
+  /** The previewed price for THIS page under the applied coupon, if any.
+   *  Keyed by page id because CouponField quotes one price per reference. */
+  const publishQuote = (page && publishCoupon) ? (publishCoupon.quotes[page.id] ?? null) : null;
 
   function openImageModal(slot: string) {
     let prompt = '';
@@ -3234,7 +3244,14 @@ export default function LandingViewer() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-slate-700">שחרור דף נחיתה לשנה</span>
-                  <span className="text-xl font-extrabold text-slate-900">249 ש״ח</span>
+                  {publishQuote ? (
+                    <span className="text-left">
+                      <span className="text-sm text-slate-400 line-through">249 ש״ח</span>{' '}
+                      <span className="text-xl font-extrabold text-emerald-600">{publishQuote.finalAmount} ש״ח</span>
+                    </span>
+                  ) : (
+                    <span className="text-xl font-extrabold text-slate-900">249 ש״ח</span>
+                  )}
                 </div>
                 <div className="border-t border-slate-200 pt-2.5 flex flex-col gap-1.5 text-sm text-slate-600">
                   {[
@@ -3268,6 +3285,10 @@ export default function LandingViewer() {
                 </p>
               </div>
 
+              {/* Coupon — optional, and purely a price preview until startPayment
+                  re-validates it server-side. */}
+              <CouponField purpose="publish" references={[page.id]} onChange={setPublishCoupon} />
+
               {/* Error message — surfaces a failed publish instead of silently closing */}
               {checkoutError && (
                 <div className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 text-center">
@@ -3289,7 +3310,7 @@ export default function LandingViewer() {
                     </svg>
                     מעביר לתשלום מאובטח...
                   </>
-                ) : 'המשך לתשלום מאובטח — 249 ש״ח'}
+                ) : `המשך לתשלום מאובטח — ${publishQuote ? publishQuote.finalAmount : 249} ש״ח`}
               </button>
 
               <div className="flex items-center justify-center gap-1.5 text-xs text-slate-400">

@@ -14,6 +14,7 @@ import LeadsTable, { type LeadRow } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
+import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -415,6 +416,12 @@ export default function Dashboard() {
   const [upgrading, setUpgrading] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
+  // An applied coupon is only a PREVIEW of the price (see CouponField). What
+  // makes it real is passing `code` through to /api/payments/start, which
+  // re-validates it server-side and prices the charge itself.
+  type AppliedCoupon = { code: string; quotes: Record<string, CouponQuote> };
+  const [bundleCoupon, setBundleCoupon] = useState<AppliedCoupon | null>(null);
+  const [creditsCoupon, setCreditsCoupon] = useState<AppliedCoupon | null>(null);
 
   // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
   useEffect(() => {
@@ -547,7 +554,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey }),
+        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey, couponCode: bundleCoupon?.code }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -592,7 +599,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'credits', reference: pack }),
+        body: JSON.stringify({ purpose: 'credits', reference: pack, couponCode: creditsCoupon?.code }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -757,14 +764,25 @@ export default function Dashboard() {
                 <button disabled={buying} onClick={() => handleBuyCredits('small')}
                   className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50">
                   <span className="font-bold text-slate-800">10 קרדיטים</span>
-                  <span className="font-extrabold text-indigo-600">₪49</span>
+                  <span className="font-extrabold text-indigo-600">
+                    {creditsCoupon?.quotes.small ? (
+                      <><span className="text-sm text-slate-400 line-through font-semibold">₪49</span>{' '}
+                        <span className="text-emerald-600">₪{creditsCoupon.quotes.small.finalAmount}</span></>
+                    ) : '₪49'}
+                  </span>
                 </button>
                 <button disabled={buying} onClick={() => handleBuyCredits('large')}
                   className="flex items-center justify-between p-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50/50 hover:border-indigo-500 transition disabled:opacity-50">
                   <span className="font-bold text-slate-800">100 קרדיטים <span className="text-xs font-semibold text-emerald-600">(הכי משתלם)</span></span>
-                  <span className="font-extrabold text-indigo-600">₪399</span>
+                  <span className="font-extrabold text-indigo-600">
+                    {creditsCoupon?.quotes.large ? (
+                      <><span className="text-sm text-slate-400 line-through font-semibold">₪399</span>{' '}
+                        <span className="text-emerald-600">₪{creditsCoupon.quotes.large.finalAmount}</span></>
+                    ) : '₪399'}
+                  </span>
                 </button>
               </div>
+              <CouponField purpose="credits" references={['small', 'large']} onChange={setCreditsCoupon} />
               {buying && <p className="text-sm text-center text-slate-500">מעבד תשלום...</p>}
               {buyMsg && (
                 <p className={`text-sm text-center font-semibold rounded-xl px-3 py-2 ${buyMsg.ok ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
@@ -803,7 +821,17 @@ export default function Dashboard() {
                     <div key={key} className={`flex flex-col gap-3 p-5 rounded-2xl border-2 ${highlight ? 'border-[#2E63F6] bg-[#EEF1FB]/50' : 'border-slate-200'}`}>
                       <div className="flex items-baseline justify-between">
                         <span className="font-black text-slate-800">{b.label}</span>
-                        <span className="text-left"><span className="text-xl font-extrabold text-[#2E63F6]">₪{b.price.toLocaleString()}</span><span className="text-xs text-slate-400"> חד־פעמי</span></span>
+                        <span className="text-left">
+                          {bundleCoupon?.quotes[key] ? (
+                            <>
+                              <span className="text-sm text-slate-400 line-through">₪{b.price.toLocaleString()}</span>{' '}
+                              <span className="text-xl font-extrabold text-emerald-600">₪{bundleCoupon.quotes[key].finalAmount.toLocaleString()}</span>
+                            </>
+                          ) : (
+                            <span className="text-xl font-extrabold text-[#2E63F6]">₪{b.price.toLocaleString()}</span>
+                          )}
+                          <span className="text-xs text-slate-400"> חד־פעמי</span>
+                        </span>
                       </div>
                       <p className="text-xs font-bold text-emerald-600">₪{perPage} לדף — חיסכון של {savePct}%</p>
                       <ul className="text-sm text-slate-600 flex flex-col gap-1.5">
@@ -833,10 +861,21 @@ export default function Dashboard() {
                     onClick={() => handleBuyBundle('whitelabel_addon')}
                     className="flex-shrink-0 rounded-xl py-2 px-4 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white transition disabled:opacity-50"
                   >
-                    {upgrading ? 'מעבד…' : `רכישה — ₪${bundlesCatalog.whitelabel_addon.price}`}
+                    {upgrading
+                      ? 'מעבד…'
+                      : `רכישה — ₪${(bundleCoupon?.quotes.whitelabel_addon?.finalAmount ?? bundlesCatalog.whitelabel_addon.price).toLocaleString()}`}
                   </button>
                 </div>
               )}
+              {/* One coupon box for the whole modal: all three products share the
+                  'bundle' purpose, so a coupon either applies to all of them or
+                  to none — only the resulting price differs per product. */}
+              <CouponField
+                purpose="bundle"
+                references={['bundle5', 'bundle10', 'whitelabel_addon']}
+                onChange={setBundleCoupon}
+              />
+
               {buyMsg && !buyMsg.ok && (
                 <p className="text-sm text-center font-semibold rounded-xl px-3 py-2 text-red-600 bg-red-50">{buyMsg.text}</p>
               )}
