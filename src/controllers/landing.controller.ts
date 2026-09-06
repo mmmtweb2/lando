@@ -310,6 +310,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       secondary_color,
       auto_extract_colors,
       include_testimonials,
+      testimonial_quote,
+      testimonial_author,
     } = req.body as {
       business_name?: string;
       phone_number?: string;
@@ -331,6 +333,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       secondary_color?: string;
       auto_extract_colors?: string;
       include_testimonials?: string;
+      testimonial_quote?: string;
+      testimonial_author?: string;
     };
 
     if (!business_name || !phone_number || !vibe) {
@@ -385,6 +389,10 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     const safeCtaType        = ['whatsapp', 'email', 'phone', 'link'].includes(cta_type ?? '') ? cta_type! : 'whatsapp';
     const safeAutoExtract         = auto_extract_colors === 'true';
     const safeIncludeTestimonials = include_testimonials === 'true';
+    // Optional real testimonial the owner typed in the wizard — only meaningful
+    // when the testimonials section is actually being included.
+    const safeTestimonialQuote  = safeIncludeTestimonials ? (testimonial_quote?.trim() || undefined) : undefined;
+    const safeTestimonialAuthor = safeIncludeTestimonials ? (testimonial_author?.trim() || undefined) : undefined;
     const safePrimaryColor   = /^#[0-9a-fA-F]{6}$/.test(primary_color ?? '') ? primary_color : undefined;
     const safeSecondaryColor = /^#[0-9a-fA-F]{6}$/.test(secondary_color ?? '') ? secondary_color : undefined;
 
@@ -460,6 +468,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         secondary_color: safeSecondaryColor,
         auto_extract_colors: safeAutoExtract,
         include_testimonials: safeIncludeTestimonials,
+        testimonial_quote: safeTestimonialQuote,
+        testimonial_author: safeTestimonialAuthor,
       };
       // Pass raw logo buffer for vision-based color extraction when requested
       if (safeAutoExtract && files?.logo?.[0]) {

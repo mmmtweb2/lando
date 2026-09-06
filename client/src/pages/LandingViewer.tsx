@@ -1845,8 +1845,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('היתרונות שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
+            {sectionKicker(ai_content.benefits_kicker || 'היתרונות שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.benefits_heading || 'למה לבחור בנו'}</h2>
             {divider}
           </motion.div>
 
@@ -1900,8 +1900,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('התהליך שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
+            {sectionKicker(ai_content.process_kicker || 'התהליך שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.process_heading || 'איך זה עובד'}</h2>
             {divider}
           </motion.div>
 
@@ -1961,8 +1961,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('לקוחות מספרים')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה לקוחות אומרים</h2>
+            {sectionKicker(ai_content.testimonials_kicker || 'לקוחות מספרים')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.testimonials_heading || 'מה לקוחות אומרים'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -2022,8 +2022,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-2xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-12">
-            {sectionKicker('עזרה ותשובות')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>שאלות נפוצות</h2>
+            {sectionKicker(ai_content.faq_kicker || 'עזרה ותשובות')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.faq_heading || 'שאלות נפוצות'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col gap-2">
@@ -2331,7 +2331,7 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>השירותים שלנו</h2>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'השירותים שלנו'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -2350,7 +2350,7 @@ export default function LandingViewer() {
         variants={V.editorial.body} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto">
           <p className="text-xs font-black tracking-[0.3em] uppercase text-center mb-12" style={{ color: primary }}>
-            השירותים שלנו
+            {ai_content.services_kicker || 'השירותים שלנו'}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 items-end">
             {services.map((s, i) => {
@@ -2401,8 +2401,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-4xl mx-auto flex flex-col gap-3">
           <motion.div variants={V.classic.item} className="text-center mb-6">
-            {sectionKicker('השירותים שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {sectionKicker(ai_content.services_kicker || 'השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'מה אנחנו מציעים'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col gap-14 sm:gap-20 mt-8">
@@ -2453,8 +2453,8 @@ export default function LandingViewer() {
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
         <div className="max-w-3xl mx-auto">
           <motion.div variants={V.classic.item} className="text-center mb-14">
-            {sectionKicker('השירותים שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>מה אנחנו מציעים</h2>
+            {sectionKicker(ai_content.services_kicker || 'השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'מה אנחנו מציעים'}</h2>
             {divider}
           </motion.div>
           <div className="flex flex-col divide-y" style={{ borderColor: `${primary}1a` }}>
@@ -2495,8 +2495,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-14"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('היתרונות שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>למה לבחור בנו</h2>
+            {sectionKicker(ai_content.benefits_kicker || 'היתרונות שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.benefits_heading || 'למה לבחור בנו'}</h2>
             {divider}
           </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
@@ -2539,8 +2539,8 @@ export default function LandingViewer() {
           <motion.div className="text-center mb-16"
             initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
-            {sectionKicker('התהליך שלנו')}
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>איך זה עובד</h2>
+            {sectionKicker(ai_content.process_kicker || 'התהליך שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.process_heading || 'איך זה עובד'}</h2>
             {divider}
           </motion.div>
           <div className="relative flex flex-col gap-0">
@@ -2654,6 +2654,13 @@ export default function LandingViewer() {
     );
   }
 
+  // Disabled from AI selection (page-quality fix, 2026-09): this block's rows
+  // ("מענה אישי ומהיר", "מחיר שקוף ללא הפתעות", "ניסיון מוכח בתחום") and its
+  // unnamed "אחרים" (competitors) column are hardcoded, unverifiable claims —
+  // a NO_FABRICATION_RULE violation. ai.service.ts no longer offers
+  // "comparison_table" as a selectable block, so this renderer is currently
+  // unreachable for newly-generated pages. Left in place (not deleted) in case
+  // it's revisited with real, AI-personalized content later.
   function renderComparisonTableBlock(isAlt: boolean) {
     const bg = isAlt ? sectionBgAlt : sectionBg;
     const rows: Array<{ feature: string; us: boolean; them: boolean }> = [
