@@ -880,6 +880,32 @@ export default function Wizard() {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
 
+  // Tracks whether the user has EXPLICITLY picked a primary-CTA target
+  // (step 4's four buttons). Needed so goal selection (step 0) can safely
+  // default the CTA to the goal's own external link (donation/direct_sale)
+  // without ever overriding a choice the user actually made.
+  const ctaTypeTouchedRef = useRef(false);
+
+  // A donation/direct_sale page collects an external link (donation/payment
+  // page) but cta_type's hardcoded initial value is always 'whatsapp' — so
+  // unless the user separately noticed and clicked "קישור חיצוני" on step 4,
+  // the page's one real action button silently opened WhatsApp instead of
+  // the link they filled in. Real bug reported by Moshe on a donation page.
+  // Fix: whenever the goal changes and the user hasn't manually touched the
+  // CTA-type selector, default it to whatever target that goal implies.
+  function handleGoalChange(goal: PageGoal) {
+    update('page_goal', goal);
+    if (!ctaTypeTouchedRef.current) {
+      const impliesExternalLink = goal === 'donation' || goal === 'direct_sale';
+      update('cta_type', impliesExternalLink ? 'link' : 'whatsapp');
+    }
+  }
+
+  function handleCtaTypeChange(v: FormState['cta_type']) {
+    ctaTypeTouchedRef.current = true;
+    update('cta_type', v);
+  }
+
   function go(next: number) {
     setError(null);
     setDir(next > step ? 1 : -1);
@@ -977,7 +1003,7 @@ export default function Wizard() {
   const steps = [
     // ── Step 0: Page Goal ─────────────────────────────────────────────────────
     <Step key="step-goal" title="מה מטרת הדף?" subtitle="ה-AI ישתמש בזה כדי להתאים את הכותרות, הכפתורים וסגנון הכתיבה">
-      <PageGoalCards value={form.page_goal} onChange={(v) => update('page_goal', v)} />
+      <PageGoalCards value={form.page_goal} onChange={handleGoalChange} />
     </Step>,
 
     // ── Step 1: Core ──────────────────────────────────────────────────────────
@@ -1105,7 +1131,7 @@ export default function Wizard() {
             { v: 'email', label: 'אימייל' },
             { v: 'link', label: 'קישור חיצוני' },
           ] as { v: FormState['cta_type']; label: string }[]).map((o) => (
-            <button key={o.v} type="button" onClick={() => update('cta_type', o.v)}
+            <button key={o.v} type="button" onClick={() => handleCtaTypeChange(o.v)}
               className={`px-3 py-2 rounded-xl border text-sm font-medium transition ${form.cta_type === o.v ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
               {o.label}
             </button>
