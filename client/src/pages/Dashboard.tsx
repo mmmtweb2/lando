@@ -476,6 +476,15 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, []);
 
+  // Deep link from the publish-success modal's "see your leads" nudge
+  // (?leads=1) — just switches to the leads tab, nothing to acknowledge.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('leads') !== '1') return;
+    setActiveTab('leads');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   async function handleDeletePage(id: string, name: string) {
     if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
     const r = await authFetch(`/api/landing/${id}`, { method: 'DELETE' });
@@ -701,9 +710,9 @@ export default function Dashboard() {
                 <button
                   onClick={() => setMobileNavOpen(false)}
                   aria-label="סגור תפריט"
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               </div>
 
@@ -764,10 +773,10 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              className="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
               aria-label="פתח תפריט"
             >
-              <Menu size={18} />
+              <Menu size={20} />
             </button>
           </div>
         </header>
@@ -779,8 +788,8 @@ export default function Dashboard() {
                 <h3 className="text-base font-semibold tracking-tight text-slate-900">טעינת קרדיטים</h3>
                 {!buying && (
                   <button onClick={() => setShowBuyCredits(false)} aria-label="סגור"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
-                    <X size={16} />
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={18} />
                   </button>
                 )}
               </div>
@@ -830,8 +839,8 @@ export default function Dashboard() {
                 <h3 className="text-base font-semibold tracking-tight text-slate-900">רכישת חבילת דפים</h3>
                 {!upgrading && (
                   <button onClick={() => setShowPlans(false)} aria-label="סגור"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
-                    <X size={16} />
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={18} />
                   </button>
                 )}
               </div>

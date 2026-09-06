@@ -50,7 +50,7 @@ export default function LegalLayout({
       </header>
 
       <main className="max-w-3xl mx-auto px-6 py-10 sm:py-14">
-        <article className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-6 sm:p-10">
+        <article className="rounded-xl bg-white border border-[#DCE4F7] shadow-sm p-6 sm:p-10">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0E2148]">{title}</h1>
           <p className="mt-2 text-sm text-slate-400">עודכן לאחרונה: {updated}</p>
           {intro && <div className="mt-5 text-[15px] leading-[1.9] text-slate-700 flex flex-col gap-3">{intro}</div>}

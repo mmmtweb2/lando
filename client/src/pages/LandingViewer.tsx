@@ -616,8 +616,8 @@ function ImageSelectorModal({
                   <button
                     onClick={handleAiRegenerate}
                     disabled={!promptText.trim()}
-                    className="w-full py-3 rounded-xl text-sm font-bold text-white transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                    style={{ backgroundColor: primaryColor }}
+                    className="w-full py-3 rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{ backgroundColor: primaryColor, color: textOnColor(primaryColor) }}
                   >
                     <Sparkles size={16} />
                     צור תמונה
@@ -869,6 +869,8 @@ export default function LandingViewer() {
   const [checkoutStatus, setCheckoutStatus] =
     useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // Copy-link feedback for the publish-success modal's share nudge.
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Required pre-payment acknowledgment that the transaction is not
   // cancellable (חוק הגנת הצרכן s.14ג(ד)(3) — see legal/refundPolicy.ts).
@@ -3096,8 +3098,8 @@ export default function LandingViewer() {
       <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
           <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold px-4 py-2 text-white transition hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: primary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
+            className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
+            style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
           </a>
           {canEdit && user?.email && (
@@ -3252,7 +3254,7 @@ export default function LandingViewer() {
               {checkoutStatus !== 'paying' && (
                 <button
                   onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
+                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
                   aria-label="סגור">×</button>
               )}
 
@@ -3377,7 +3379,7 @@ export default function LandingViewer() {
               {checkoutStatus !== 'confirmPaying' && (
                 <button
                   onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
+                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
                   aria-label="סגור">×</button>
               )}
 
@@ -3459,12 +3461,30 @@ export default function LandingViewer() {
                   ? `נוכה דף אחד מיתרת הדפים שלך — נשארו ${planStatus.pageCredits - 1}. הדף כעת גלוי לציבור.`
                   : 'הדף כעת גלוי לציבור.'}
               </p>
-              <button
-                onClick={() => setCheckoutStatus('idle')}
-                className="w-full py-3 rounded-xl text-sm font-extrabold text-white transition active:scale-95 shadow-lg"
-                style={{ backgroundColor: primary }}>
-                מעולה
-              </button>
+              <div className="w-full flex flex-col gap-2.5">
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`https://pagey.co.il/p/${page.slug}`);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    } catch { /* clipboard unavailable — ignore, link is shown in the address bar too */ }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95">
+                  {linkCopied ? 'הקישור הועתק! ✓' : 'העתקת קישור לדף'}
+                </button>
+                <Link
+                  to="/dashboard?leads=1"
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95 text-center">
+                  צפייה בלידים
+                </Link>
+                <button
+                  onClick={() => setCheckoutStatus('idle')}
+                  className="w-full py-3 rounded-xl text-sm font-extrabold transition active:scale-95 shadow-lg"
+                  style={{ backgroundColor: primary, color: onPrimary }}>
+                  מעולה
+                </button>
+              </div>
             </div>
           </div>
         </div>
