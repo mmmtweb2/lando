@@ -2,6 +2,7 @@ import { type ReactNode, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
+import { useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProvider, useUser } from './context/UserContext';
 import type { UserProfile } from './context/UserContext';
@@ -30,7 +31,38 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// ─── Auth bridge ──────────────────────────────────────────────────────────────
+// ─── Failed magic-link / OTP callback ────────────────────────────────────────
+// A Supabase auth email (magic link, invite, password reset) that has expired
+// or was already used redirects back here with the FAILURE encoded in the URL
+// hash instead of a session — e.g.
+//   https://pagey.co.il/#error=access_denied&error_code=otp_expired&...
+// `detectSessionInUrl` (lib/supabase.ts) only knows how to consume a SUCCESSFUL
+// callback; on an error hash it silently does nothing, and since the path here
+// is almost always just "/", the app was rendering the marketing homepage with
+// no indication anything went wrong (bug report, 2026-09-06 — a real admin
+// login link expired and looked like a dead end, not an error). This runs once
+// on load, and if the hash carries an auth error, replaces the URL with
+// /login and a readable Hebrew message instead of leaving the failure silent.
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  otp_expired: 'קישור ההתחברות פג תוקף או שכבר נעשה בו שימוש. יש לבקש קישור חדש.',
+  access_denied: 'הקישור אינו תקף. יש לבקש קישור התחברות חדש.',
+};
+
+function AuthErrorRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes('error=')) return;
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const errorCode = params.get('error_code') ?? params.get('error') ?? '';
+    if (!errorCode) return;
+    const message = AUTH_ERROR_MESSAGES[errorCode] ?? 'ההתחברות נכשלה. יש לבקש קישור התחברות חדש.';
+    navigate('/login', { replace: true, state: { authError: message } });
+  }, [navigate]);
+  return null;
+}
+
+// ─── Auth bridge ──────────────────────────────────────────────────────────────────
 // When a user authenticates via Supabase Magic Link, we also call the legacy
 // REST API to create/fetch their UserProfile and store it in UserContext.
 // This keeps the Wizard and LandingViewer edit mode working
@@ -99,6 +131,7 @@ export default function App() {
     <AuthProvider>
       <UserProvider>
         <BrowserRouter>
+          <AuthErrorRedirect />
           <SyncAuth />
           <Routes>
             <Route path="/"          element={<MarketingLanding />} />

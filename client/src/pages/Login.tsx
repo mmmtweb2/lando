@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, type FormEvent } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -9,6 +9,7 @@ type InfoScreen = null | 'magic' | 'confirm' | 'reset';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +18,18 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [info, setInfo] = useState<InfoScreen>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Arrives from AuthErrorRedirect (App.tsx) when a magic-link/reset/invite
+  // email link has expired or was already used — surfaced in the same error
+  // banner as any other auth failure, instead of the link silently landing
+  // on the marketing homepage with no explanation.
+  useEffect(() => {
+    const state = location.state as { authError?: string } | null;
+    if (state?.authError) {
+      setError(state.authError);
+      window.history.replaceState({}, '', location.pathname);
+    }
+  }, [location]);
 
   function validEmail(v: string) {
     return v.includes('@');
