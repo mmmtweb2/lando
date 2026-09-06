@@ -1,5 +1,5 @@
-import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { Coins } from 'lucide-react';
 import { authFetch } from '../lib/api';
 
 interface WalletBadgeProps {
@@ -31,26 +31,17 @@ export default function WalletBadge({ email, refreshKey = 0, className = '', onL
   const low = credits <= 2;
 
   return (
-    <motion.span
-      whileHover={{ scale: 1.12, rotate: [0, -5, 5, -3, 0] }}
-      whileTap={{ scale: 0.95 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold select-none cursor-default border-2 ${className}`}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium select-none cursor-default ${
+        low
+          ? 'border-amber-200 bg-amber-50 text-amber-700'
+          : 'border-slate-200 bg-white text-slate-900'
+      } ${className}`}
       title={`${credits} קרדיטים זמינים`}
-      style={{
-        background: low
-          ? '#FF7A6B'
-          : '#2E63F6',
-        borderColor: low ? 'rgba(255,122,107,0.45)' : 'rgba(111,231,255,0.7)',
-        color: '#fff',
-        boxShadow: low
-          ? '0 0 16px rgba(255,122,107,0.4), inset 0 1px 0 rgba(255,255,255,0.25)'
-          : '0 0 16px rgba(46,99,246,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
-      }}
     >
-      <span className="text-yellow-300">✦</span>
-      {credits}
-      <span className="opacity-80 font-medium">קרדיטים</span>
-    </motion.span>
+      <Coins size={13} className={low ? 'text-amber-500' : 'text-slate-400'} />
+      <span className="font-semibold tabular-nums">{credits}</span>
+      <span className="opacity-60">קרדיטים</span>
+    </span>
   );
 }

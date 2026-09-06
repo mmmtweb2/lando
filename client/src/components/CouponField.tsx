@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { authFetch } from '../lib/api';
 
 /**
@@ -98,12 +99,13 @@ export default function CouponField({ purpose, references, onChange, className =
 
   if (appliedCode) {
     return (
-      <div className={`flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 ${className}`} dir="rtl">
-        <span className="text-sm font-semibold text-emerald-800">
-          ✓ הקופון <span className="font-mono" dir="ltr">{appliedCode}</span> הופעל
+      <div className={`flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 ${className}`} dir="rtl">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-800">
+          <Check size={14} className="text-emerald-600 flex-shrink-0" />
+          הקופון <span className="font-mono" dir="ltr">{appliedCode}</span> הופעל
         </span>
         <button type="button" onClick={clear}
-          className="text-xs font-semibold text-emerald-700 hover:underline flex-shrink-0">
+          className="text-xs font-medium text-emerald-700 hover:underline flex-shrink-0">
           הסרה
         </button>
       </div>
@@ -119,14 +121,14 @@ export default function CouponField({ purpose, references, onChange, className =
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void apply(); } }}
           placeholder="קוד קופון (אופציונלי)"
           dir="ltr"
-          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition text-center"
+          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none focus:border-[#2E63F6] focus:ring-2 focus:ring-[#2E63F6]/15 transition text-center placeholder:font-sans placeholder:text-slate-400"
         />
         <button type="button" onClick={() => void apply()} disabled={busy || !code.trim()}
-          className="flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold text-slate-700 border border-slate-200 bg-slate-50 hover:bg-slate-100 transition disabled:opacity-40">
+          className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 bg-white hover:bg-slate-50 transition disabled:opacity-40">
           {busy ? '…' : 'החל קופון'}
         </button>
       </div>
-      {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
     </div>
   );
 }

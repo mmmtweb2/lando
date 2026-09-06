@@ -139,6 +139,13 @@ export default function App() {
             <Route path="/login"     element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />
+
+            {/* Public legal pages — linked from every footer, and referenced
+                from the checkout disclosures. Deliberately unauthenticated. */}
+            <Route path="/privacy"       element={<Privacy />} />
+            <Route path="/terms"         element={<Terms />} />
+            <Route path="/accessibility" element={<Accessibility />} />
+
             <Route path="/admin"     element={<AdminDashboard />} />
             <Route
               path="/dashboard"

@@ -583,9 +583,12 @@ export default function MarketingLanding() {
             <span className="font-bold">{BRAND}</span>
           </div>
           <p className="text-xs text-slate-400">© {new Date().getFullYear()} {BRAND} · דפי נחיתה מבוססי AI לעסקים בישראל</p>
-          <div className="flex items-center gap-5 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-500">
             <Link to="/create" className="hover:text-[#2E63F6] transition">צור דף</Link>
             <Link to="/login" className="hover:text-[#2E63F6] transition">התחברות</Link>
+            <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+            <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+            <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
           </div>
         </div>
       </footer>
