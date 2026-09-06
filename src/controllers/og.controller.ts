@@ -146,6 +146,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     <meta property="og:title" content="${escapeHtml(page.business_name as string)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="${escapeHtml(pageUrl)}" />
     ${firstImage ? `<meta property="og:image" content="${escapeHtml(firstImage)}" />` : ''}
     <meta property="og:locale" content="he_IL" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -156,8 +157,27 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const shell = await loadHtmlShell();
 
-  // Replace the generic <title> and inject OG tags before </head>
-  const html = shell
+  // The built shell (client/index.html) already carries Pagey's OWN generic
+  // marketing OG/twitter tags + <meta name="description">, for when the
+  // homepage itself is shared. Simply appending this page's tags before
+  // </head> — the previous approach — left BOTH sets of tags in the HTML.
+  // Most link-preview crawlers (WhatsApp's included) use the FIRST matching
+  // tag when a property repeats, so the generic Pagey marketing caption won
+  // every time a real page was shared, silently. Strip the generic ones
+  // before injecting this page's real title/description/image so there is
+  // exactly one of each and the page's own content always wins.
+  const shellWithoutGenericTags = shell
+    .replace(/<meta name="description"[^>]*>\s*/i, '')
+    .replace(/<meta property="og:title"[^>]*>\s*/gi, '')
+    .replace(/<meta property="og:description"[^>]*>\s*/gi, '')
+    .replace(/<meta property="og:image"[^>]*>\s*/gi, '')
+    .replace(/<meta property="og:url"[^>]*>\s*/gi, '')
+    .replace(/<meta name="twitter:title"[^>]*>\s*/gi, '')
+    .replace(/<meta name="twitter:description"[^>]*>\s*/gi, '')
+    .replace(/<meta name="twitter:image"[^>]*>\s*/gi, '');
+
+  // Replace the generic <title> and inject this page's own OG tags before </head>
+  const html = shellWithoutGenericTags
     .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
     .replace('</head>', `${ogTags}\n  </head>`);
 
