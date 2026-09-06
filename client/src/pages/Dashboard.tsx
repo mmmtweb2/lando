@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
-  LayoutDashboard, FileText, Users, LogOut,
-  CheckCircle, Clock, Trash2, Menu, X,
+  LayoutDashboard, Settings, Users, LogOut,
+  CheckCircle, Check, Clock, Trash2, Menu, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -84,11 +84,27 @@ interface BundleDef {
 
 type ActiveTab = 'pages' | 'leads' | 'settings';
 
-// ─── Motion variants ──────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
+//
+// One accent (the brand blue) used only on primary actions and live state;
+// everything else is neutral slate. Radii top out at 12px (rounded-xl) for
+// surfaces and 8px (rounded-lg) for controls. Motion is a single short fade —
+// no spring physics, no staggered entrance choreography.
 
-const cardItem = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
-const cardContainer = { hidden: {}, visible: { transition: { staggerChildren: 0.07 } } };
-const springTap = { type: 'spring', stiffness: 400, damping: 10 } as const;
+const ACCENT = '#2E63F6';
+
+/** The one entrance animation used across the page. */
+const fadeIn = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.2, ease: 'easeOut' },
+} as const;
+
+const btnPrimary =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2E63F6] hover:bg-[#1E4FD6] px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50';
+const btnSecondary =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors disabled:opacity-50';
+const surface = 'rounded-xl border border-slate-200 bg-white';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,29 +116,27 @@ function formatDate(iso: string) {
 
 function NavItem({ icon, label, active = false, onClick }: { icon: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
-    <button onClick={onClick} className={`flex items-center gap-2.5 w-full rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+    <button onClick={onClick} className={`flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm transition-colors ${
       active
-        ? 'bg-[#E4EAFB] text-[#1E4FD6]'
-        : 'text-slate-500 hover:bg-[#EEF1FB] hover:text-[#1E4FD6]'
+        ? 'bg-slate-100 text-slate-900 font-medium'
+        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
     }`}>
-      <span className={active ? 'text-[#2E63F6]' : ''}>{icon}</span>
+      <span className={active ? 'text-[#2E63F6]' : 'text-slate-400'}>{icon}</span>
       {label}
     </button>
   );
 }
 
-function StatCard({ label, value, icon, color = 'text-slate-700', bg = 'bg-white' }: {
-  label: string; value: string; icon: ReactNode; color?: string; bg?: string;
-}) {
+/** One figure in the stat strip. Reads as data: quiet label, loud number. */
+function StatCard({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <motion.div
-      variants={cardItem}
-      className={`rounded-3xl ${bg} border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-2`}
-    >
-      <div className={color}>{icon}</div>
-      <p className={`text-2xl font-black ${color}`}>{value}</p>
-      <p className="text-xs text-slate-500">{label}</p>
-    </motion.div>
+    <div className="flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-4">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <span className="text-slate-400">{icon}</span>
+        <p className="text-xs font-medium">{label}</p>
+      </div>
+      <p className="text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{value}</p>
+    </div>
   );
 }
 
@@ -130,10 +144,10 @@ function UsageBar({ used, total }: { used: number; total: number }) {
   const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
   const full = total > 0 && used >= total;
   return (
-    <div className="h-2 rounded-full bg-[#E4EAFB] overflow-hidden">
+    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
       <div
         className="h-full rounded-full transition-all"
-        style={{ width: `${pct}%`, backgroundColor: full ? '#FF7A6B' : '#2E63F6' }}
+        style={{ width: `${pct}%`, backgroundColor: full ? '#DC6803' : ACCENT }}
       />
     </div>
   );
@@ -142,86 +156,74 @@ function UsageBar({ used, total }: { used: number; total: number }) {
 function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: () => void }) {
   const hasBalance = plan.pageCredits > 0;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-      className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-4"
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-black text-slate-800">יתרת הדפים שלי</span>
-          {plan.whiteLabel && (
-            <span className="text-xs font-bold rounded-full px-2.5 py-0.5 bg-[#E4EAFB] text-[#1E4FD6]">
-              ללא מיתוג Pagey
-            </span>
-          )}
+    <section className={surface}>
+      <div className="flex items-start justify-between gap-4 p-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-slate-500">יתרת הדפים שלי</h3>
+            {plan.whiteLabel && (
+              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                ללא מיתוג Pagey
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-semibold tracking-tight text-slate-900 tabular-nums">{plan.pageCredits}</span>
+            <span className="text-sm text-slate-500">דפים זמינים לפרסום</span>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500 max-w-xl">
+            {hasBalance
+              ? 'כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.'
+              : 'פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).'}
+          </p>
         </div>
-        <button
-          onClick={onBuyBundle}
-          className="inline-flex items-center gap-1 rounded-full bg-[#2E63F6] hover:bg-[#1E4FD6] text-white text-xs font-bold px-3 py-1.5 transition"
-        >
+        <button onClick={onBuyBundle} className={`${btnSecondary} flex-shrink-0`}>
           {hasBalance ? 'רכישת דפים נוספים' : 'רכישת חבילת דפים'}
         </button>
       </div>
 
-      <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-black text-slate-800">{plan.pageCredits}</span>
-        <span className="text-sm text-slate-500">דפים זמינים לפרסום</span>
-      </div>
-
-      {hasBalance ? (
-        <p className="text-sm text-slate-500">
-          כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.
-        </p>
-      ) : (
-        <p className="text-sm text-slate-500">
-          פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).
-        </p>
-      )}
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-500">דפים באוויר</span>
-            <span className="font-bold text-slate-700">{plan.activePages}</span>
-          </div>
+      <div className="grid sm:grid-cols-2 border-t border-slate-100">
+        <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+          <span className="text-sm text-slate-500">דפים באוויר</span>
+          <span className="text-sm font-medium text-slate-900 tabular-nums">{plan.activePages}</span>
         </div>
         {plan.monthlyCreate > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500">דפים שנוצרו החודש</span>
-              <span className="font-bold text-slate-700">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
+          <div className="flex flex-col gap-2 px-5 py-3.5 border-t border-slate-100 sm:border-t-0 sm:border-s sm:border-slate-100">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-slate-500">דפים שנוצרו החודש</span>
+              <span className="text-sm font-medium text-slate-900 tabular-nums">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
             </div>
             <UsageBar used={plan.createdThisPeriod} total={plan.monthlyCreate} />
           </div>
         )}
       </div>
-    </motion.div>
+    </section>
   );
 }
 
 function StatusBadge({ status }: { status: PageRow['status'] }) {
   if (status === 'frozen') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 text-sky-700 text-xs font-bold px-2.5 py-1 flex-shrink-0">
-        <Clock size={10} /> לא פעיל
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-600 flex-shrink-0">
+        <Clock size={11} className="text-slate-400" /> לא פעיל
       </span>
     );
   }
   if (status === 'published') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 flex-shrink-0">
-        <CheckCircle size={10} /> פורסם
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 flex-shrink-0">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> פורסם
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-600 text-xs font-bold px-2.5 py-1 flex-shrink-0">
-      <Clock size={10} /> טיוטה
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 flex-shrink-0">
+      <Clock size={11} className="text-amber-500" /> טיוטה
     </span>
   );
 }
 
-// ─── Tab bar (pill toggles) ───────────────────────────────────────────────────
+// ─── Tab bar (segmented control) ──────────────────────────────────────────────
 
 interface TabBarProps {
   active: ActiveTab;
@@ -232,27 +234,23 @@ interface TabBarProps {
 
 function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
   const tabs: { id: ActiveTab; label: string; count: number }[] = [
-    { id: 'pages', label: '🗂️ הדפים שלי', count: pageCount },
-    { id: 'leads', label: '📥 לידים', count: leadCount },
+    { id: 'pages', label: 'הדפים שלי', count: pageCount },
+    { id: 'leads', label: 'לידים', count: leadCount },
   ];
   return (
-    <div className="flex gap-1.5 bg-[#E4EAFB]/60 rounded-full p-1.5">
+    <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-full transition-all ${
+          className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors ${
             active === tab.id
-              ? 'bg-white text-[#1E4FD6] shadow-sm shadow-blue-200'
-              : 'text-[#8CA0D6] hover:text-[#2E63F6]'
+              ? 'bg-white text-slate-900 font-medium shadow-sm'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           {tab.label}
-          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-black ${
-            active === tab.id
-              ? 'bg-[#E4EAFB] text-[#1E4FD6]'
-              : 'bg-white/60 text-[#8CA0D6]'
-          }`}>
+          <span className={`text-xs tabular-nums ${active === tab.id ? 'text-slate-500' : 'text-slate-400'}`}>
             {tab.count}
           </span>
         </button>
@@ -284,12 +282,12 @@ function RenewalNotice({
       : `הדף יפוג בעוד ${days} ימים.`;
 
   return (
-    <div className={`rounded-2xl px-3 py-2.5 text-xs ${frozen ? 'bg-sky-50 text-sky-800' : 'bg-amber-50 text-amber-800'}`}>
-      <p className="font-semibold leading-relaxed">{text}</p>
+    <div className={`rounded-lg border px-3 py-2.5 ${frozen ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
+      <p className={`text-xs leading-relaxed ${frozen ? 'text-slate-600' : 'text-amber-800'}`}>{text}</p>
       <button
         onClick={() => onRenew(page.id)}
         disabled={busy}
-        className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold text-white transition disabled:opacity-60 ${frozen ? 'bg-sky-600 hover:bg-sky-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+        className={`mt-2.5 w-full rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors disabled:opacity-50 ${frozen ? 'bg-slate-800 hover:bg-slate-900' : 'bg-amber-600 hover:bg-amber-700'}`}
       >
         {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${RENEWAL_PRICE} ₪`}
       </button>
@@ -307,57 +305,53 @@ function PageGrid({
 }) {
   if (pages.length === 0) {
     return (
-      <div className="rounded-3xl border-2 border-dashed border-[#C6D2F2] bg-[#EEF1FB]/40 p-12 flex flex-col items-center gap-3 text-center">
-        <div className="lando-hover"><LandoBot mood="default" size={96} /></div>
-        <p className="text-sm font-bold text-[#1E4FD6]">
-          לבנות דף נחיתה? זה משחק ילדים (שמביא כסף אמיתי).
-        </p>
-        <Link to="/create" className="text-sm font-bold text-[#2E63F6] hover:text-[#0E2148] underline underline-offset-2 transition">
-          בוא נתחיל! 🚀
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 flex flex-col items-center gap-3 text-center">
+        <LandoBot mood="default" size={64} />
+        <div>
+          <p className="text-sm font-semibold text-slate-900">עדיין אין דפים בחשבון</p>
+          <p className="mt-1 text-sm text-slate-500">צרו את דף הנחיתה הראשון שלכם — זה לוקח כמה דקות.</p>
+        </div>
+        <Link to="/create" className={`${btnPrimary} mt-1`}>
+          <Plus size={15} /> דף חדש
         </Link>
       </div>
     );
   }
   return (
-    <motion.div
-      variants={cardContainer} initial="hidden" animate="visible"
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-    >
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {pages.map((p) => (
-        <motion.div
-          key={p.id} variants={cardItem}
-          whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(168,85,247,0.15)' }}
-          transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-          className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex flex-col gap-3"
+        <div
+          key={p.id}
+          className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3 transition-colors hover:border-slate-300"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {p.logo_url ? (
                 <img
                   src={p.logo_url} alt={p.business_name}
-                  className="w-10 h-10 rounded-2xl object-contain bg-[#EEF1FB] flex-shrink-0"
+                  className="w-9 h-9 rounded-lg object-contain bg-slate-50 border border-slate-200 flex-shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-[#E4EAFB] flex items-center justify-center text-[#2E63F6] font-black text-sm flex-shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-semibold text-sm flex-shrink-0">
                   {p.business_name.charAt(0)}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="font-bold text-slate-800 text-sm truncate">{p.business_name}</p>
-                <p className="text-xs text-slate-400 font-mono">/p/{p.slug}</p>
+                <p className="font-medium text-slate-900 text-sm truncate">{p.business_name}</p>
+                <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">/p/{p.slug}</p>
               </div>
             </div>
             <StatusBadge status={p.status} />
           </div>
-          <p className="text-xs text-slate-400">{formatDate(p.created_at)}</p>
+          <p className="text-xs text-slate-400 tabular-nums">{formatDate(p.created_at)}</p>
           {needsRenewal(p) && (
             <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} />
           )}
-          <div className="mt-auto pt-2 border-t border-[#E9EEFB] flex items-center justify-between">
+          <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between">
             <Link
               to={`/p/${p.slug}`}
               target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs font-bold text-[#2E63F6] hover:text-[#0E2148] transition"
+              className="flex items-center gap-1.5 text-xs font-medium text-[#2E63F6] hover:text-[#1E4FD6] transition-colors"
             >
               <ExternalLink size={12} />
               צפייה בדף
@@ -365,15 +359,15 @@ function PageGrid({
             <button
               onClick={() => onDelete(p.id, p.business_name)}
               title="מחק דף"
-              className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-red-500 transition"
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-600 transition-colors"
             >
               <Trash2 size={12} />
               מחק
             </button>
           </div>
-        </motion.div>
+        </div>
       ))}
-    </motion.div>
+    </div>
   );
 }
 
@@ -383,10 +377,10 @@ function PageGridSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="rounded-3xl bg-white border border-[#DCE4F7] p-5 flex flex-col gap-3 animate-pulse">
-          <div className="w-10 h-10 rounded-2xl bg-[#E4EAFB]" />
-          <div className="h-3.5 rounded-full bg-[#E4EAFB] w-3/4" />
-          <div className="h-2.5 rounded-full bg-[#EEF1FB] w-1/2" />
+        <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3 animate-pulse">
+          <div className="w-9 h-9 rounded-lg bg-slate-100" />
+          <div className="h-3.5 rounded bg-slate-100 w-3/4" />
+          <div className="h-2.5 rounded bg-slate-100 w-1/2" />
         </div>
       ))}
     </div>
@@ -532,8 +526,8 @@ export default function Dashboard() {
   // Auth resolving — full-screen spinner
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#EEF1FB]">
-        <Loader2 size={32} className="animate-spin text-[#8CA0D6]" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 size={26} className="animate-spin text-slate-300" />
       </div>
     );
   }
@@ -616,44 +610,45 @@ export default function Dashboard() {
     { icon: <LayoutDashboard size={17} />, label: 'סקירה כללית', tab: 'pages' },
     { icon: <Globe size={17} />, label: 'הדפים שלי', tab: 'pages' },
     { icon: <Users size={17} />, label: 'לידים', tab: 'leads' },
-    { icon: <FileText size={17} />, label: 'הגדרות', tab: 'settings' },
+    { icon: <Settings size={17} />, label: 'הגדרות', tab: 'settings' },
   ];
 
   return (
-    <div className="min-h-screen bg-[#EEF1FB] flex" dir="rtl">
+    <div className="min-h-screen bg-slate-50 flex" dir="rtl">
 
       {/* Payment return toast */}
       {paymentNotice && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[70] rounded-xl px-5 py-3 text-sm font-semibold shadow-lg ${paymentNotice.ok ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-white'}`}>
-          {paymentNotice.ok ? '✓ ' : ''}{paymentNotice.text}
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
+          {paymentNotice.ok && <Check size={15} className="text-emerald-400 flex-shrink-0" />}
+          {paymentNotice.text}
         </div>
       )}
 
       {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-60 bg-white border-l border-[#DCE4F7] sticky top-0 h-screen flex-shrink-0">
-        <div className="px-5 py-5 border-b border-[#DCE4F7]">
+      <aside className="hidden lg:flex flex-col w-60 bg-white border-l border-slate-200 sticky top-0 h-screen flex-shrink-0">
+        <div className="px-5 h-14 flex items-center border-b border-slate-200">
           <Link to="/" className="flex items-center gap-2">
-            <LandoMark size={30} />
-            <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Pagey</span>
+            <LandoMark size={26} />
+            <span className="text-sm font-semibold tracking-tight text-slate-900">Pagey</span>
           </Link>
         </div>
 
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
+        <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
           {/* "סקירה כללית" has no separate view of its own — the pages tab already
               doubles as the dashboard's overview (stats + plan + pages grid), so this
               item is just another way in to the same 'pages' tab. */}
           <NavItem icon={<LayoutDashboard size={17} />} label="סקירה כללית" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
           <NavItem icon={<Globe size={17} />} label="הדפים שלי" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
           <NavItem icon={<Users size={17} />} label="לידים" active={activeTab === 'leads'} onClick={() => setActiveTab('leads')} />
-          <NavItem icon={<FileText size={17} />} label="הגדרות" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          <NavItem icon={<Settings size={17} />} label="הגדרות" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
 
-        <div className="px-3 py-4 border-t border-[#DCE4F7]">
+        <div className="px-3 py-4 border-t border-slate-200">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full rounded-2xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
+            className="flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
           >
-            <LogOut size={16} /> יציאה
+            <LogOut size={16} className="text-slate-400" /> יציאה
           </button>
         </div>
       </aside>
@@ -668,7 +663,7 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="fixed inset-0 z-[90] bg-black/50 lg:hidden"
+              className="fixed inset-0 z-[90] bg-slate-900/40 lg:hidden"
               onClick={() => setMobileNavOpen(false)}
             />
             <motion.aside
@@ -676,25 +671,25 @@ export default function Dashboard() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 340, damping: 34 }}
-              className="fixed inset-y-0 right-0 z-[95] w-72 max-w-[80vw] bg-white border-l border-[#DCE4F7] flex flex-col shadow-2xl lg:hidden"
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              className="fixed inset-y-0 right-0 z-[95] w-72 max-w-[80vw] bg-white border-l border-slate-200 flex flex-col shadow-xl lg:hidden"
               dir="rtl"
             >
-              <div className="px-5 py-5 border-b border-[#DCE4F7] flex items-center justify-between">
+              <div className="px-5 h-14 border-b border-slate-200 flex items-center justify-between">
                 <Link to="/" className="flex items-center gap-2" onClick={() => setMobileNavOpen(false)}>
-                  <LandoMark size={30} />
-                  <span className="text-base font-black" style={{ color: 'var(--navy)' }}>Pagey</span>
+                  <LandoMark size={26} />
+                  <span className="text-sm font-semibold tracking-tight text-slate-900">Pagey</span>
                 </Link>
                 <button
                   onClick={() => setMobileNavOpen(false)}
                   aria-label="סגור תפריט"
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
+              <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
                 {navItems.map((item, i) => (
                   <NavItem
                     key={i}
@@ -706,12 +701,12 @@ export default function Dashboard() {
                 ))}
               </nav>
 
-              <div className="px-3 py-4 border-t border-[#DCE4F7]">
+              <div className="px-3 py-4 border-t border-slate-200">
                 <button
                   onClick={() => { setMobileNavOpen(false); handleLogout(); }}
-                  className="flex items-center gap-2 w-full rounded-2xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-[#EEF1FB] hover:text-[#1E4FD6] transition-colors"
+                  className="flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                 >
-                  <LogOut size={16} /> יציאה
+                  <LogOut size={16} className="text-slate-400" /> יציאה
                 </button>
               </div>
             </motion.aside>
@@ -723,28 +718,35 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Header */}
-        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-[#DCE4F7]/80 shadow-sm shadow-blue-100/40 px-5 h-14 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-sm font-black text-[#1E4FD6]">Pagey ✦</h1>
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 sm:px-6 h-14 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="lg:hidden flex items-center gap-2">
+              <LandoMark size={24} />
+            </span>
+            <h1 className="text-sm font-semibold tracking-tight text-slate-900 truncate">
+              {activeTab === 'settings' ? 'הגדרות וחיוב' : 'סקירה כללית'}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
             <WalletBadge email={user.email} refreshKey={walletKey} />
             <button
               onClick={() => setShowBuyCredits(true)}
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
-              + טען קרדיטים
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium px-2.5 py-1.5 transition-colors">
+              <Plus size={13} className="text-slate-400" /> טען קרדיטים
             </button>
-            <span className="hidden sm:block text-xs text-slate-400 font-mono truncate max-w-48">
+            <span className="hidden md:block text-xs text-slate-400 font-mono truncate max-w-48" dir="ltr">
               {user.email}
             </span>
             <button
               onClick={handleLogout}
-              className="lg:hidden flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#2E63F6] transition"
+              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
               aria-label="יציאה"
             >
               <LogOut size={15} />
             </button>
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#2E63F6] transition"
+              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
               aria-label="פתח תפריט"
             >
               <Menu size={18} />
@@ -753,148 +755,165 @@ export default function Dashboard() {
         </header>
 
         {showBuyCredits && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50" onClick={() => !buying && setShowBuyCredits(false)}>
-            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 flex flex-col gap-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-extrabold text-slate-900">טעינת קרדיטים</h3>
-                {!buying && <button onClick={() => setShowBuyCredits(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !buying && setShowBuyCredits(false)}>
+            <div className="w-full max-w-md rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <h3 className="text-base font-semibold tracking-tight text-slate-900">טעינת קרדיטים</h3>
+                {!buying && (
+                  <button onClick={() => setShowBuyCredits(false)} aria-label="סגור"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={16} />
+                  </button>
+                )}
               </div>
-              <p className="text-sm text-slate-500">קרדיטים משמשים ליצירת תמונות וכתיבה מחדש ב-AI.</p>
-              <div className="grid grid-cols-1 gap-3">
-                <button disabled={buying} onClick={() => handleBuyCredits('small')}
-                  className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50">
-                  <span className="font-bold text-slate-800">10 קרדיטים</span>
-                  <span className="font-extrabold text-indigo-600">
-                    {creditsCoupon?.quotes.small ? (
-                      <><span className="text-sm text-slate-400 line-through font-semibold">₪49</span>{' '}
-                        <span className="text-emerald-600">₪{creditsCoupon.quotes.small.finalAmount}</span></>
-                    ) : '₪49'}
-                  </span>
-                </button>
-                <button disabled={buying} onClick={() => handleBuyCredits('large')}
-                  className="flex items-center justify-between p-4 rounded-2xl border-2 border-indigo-300 bg-indigo-50/50 hover:border-indigo-500 transition disabled:opacity-50">
-                  <span className="font-bold text-slate-800">100 קרדיטים <span className="text-xs font-semibold text-emerald-600">(הכי משתלם)</span></span>
-                  <span className="font-extrabold text-indigo-600">
-                    {creditsCoupon?.quotes.large ? (
-                      <><span className="text-sm text-slate-400 line-through font-semibold">₪399</span>{' '}
-                        <span className="text-emerald-600">₪{creditsCoupon.quotes.large.finalAmount}</span></>
-                    ) : '₪399'}
-                  </span>
-                </button>
+              <div className="p-6 flex flex-col gap-4">
+                <p className="text-sm text-slate-500">קרדיטים משמשים ליצירת תמונות וכתיבה מחדש ב-AI.</p>
+                <div className="grid grid-cols-1 gap-2.5">
+                  <button disabled={buying} onClick={() => handleBuyCredits('small')}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-right hover:border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50">
+                    <span className="text-sm font-medium text-slate-900">10 קרדיטים</span>
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                      {creditsCoupon?.quotes.small ? (
+                        <><span className="text-sm text-slate-400 line-through font-normal">₪49</span>{' '}
+                          <span className="text-emerald-600">₪{creditsCoupon.quotes.small.finalAmount}</span></>
+                      ) : '₪49'}
+                    </span>
+                  </button>
+                  <button disabled={buying} onClick={() => handleBuyCredits('large')}
+                    className="flex items-center justify-between rounded-lg border border-[#2E63F6] bg-[#2E63F6]/[0.04] p-4 text-right hover:bg-[#2E63F6]/[0.08] transition-colors disabled:opacity-50">
+                    <span className="text-sm font-medium text-slate-900">
+                      100 קרדיטים <span className="mr-1 rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">הכי משתלם</span>
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                      {creditsCoupon?.quotes.large ? (
+                        <><span className="text-sm text-slate-400 line-through font-normal">₪399</span>{' '}
+                          <span className="text-emerald-600">₪{creditsCoupon.quotes.large.finalAmount}</span></>
+                      ) : '₪399'}
+                    </span>
+                  </button>
+                </div>
+                <CouponField purpose="credits" references={['small', 'large']} onChange={setCreditsCoupon} />
+                {buying && <p className="text-sm text-center text-slate-500">מעבד תשלום...</p>}
+                {buyMsg && (
+                  <p className={`text-sm text-center font-medium rounded-lg px-3 py-2 ${buyMsg.ok ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-red-600 bg-red-50 border border-red-200'}`}>
+                    {buyMsg.text}
+                  </p>
+                )}
+                <p className="text-[11px] text-slate-400 text-center">תשלום מדומה לצורכי בדיקה</p>
               </div>
-              <CouponField purpose="credits" references={['small', 'large']} onChange={setCreditsCoupon} />
-              {buying && <p className="text-sm text-center text-slate-500">מעבד תשלום...</p>}
-              {buyMsg && (
-                <p className={`text-sm text-center font-semibold rounded-xl px-3 py-2 ${buyMsg.ok ? 'text-emerald-700 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
-                  {buyMsg.ok ? '✓ ' : ''}{buyMsg.text}
-                </p>
-              )}
-              <p className="text-[11px] text-slate-400 text-center">תשלום מדומה לצורכי בדיקה</p>
             </div>
           </div>
         )}
 
         {showPlans && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50" onClick={() => !upgrading && setShowPlans(false)}>
-            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl p-6 flex flex-col gap-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-extrabold text-slate-900">רכישת חבילת דפים</h3>
-                {!upgrading && <button onClick={() => setShowPlans(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-lg leading-none">×</button>}
-              </div>
-              <p className="text-sm text-slate-500">
-                דף בודד עולה {singlePagePrice} ₪, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
-                בלי מנוי, בלי חידוש, בלי תאריך תפוגה. היתרה נשארת בחשבון עד שתשתמשו בה.
-              </p>
-              {plan && plan.pageCredits > 0 && (
-                <p className="text-sm rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2">
-                  יש לך כרגע {plan.pageCredits} דפים זמינים לפרסום. רכישת חבילה נוספת מתווספת ליתרה הקיימת — שום דבר לא הולך לאיבוד.
-                </p>
-              )}
-              <div className="grid sm:grid-cols-2 gap-3">
-                {(['bundle5', 'bundle10'] as const).map((key) => {
-                  const b = bundlesCatalog[key];
-                  if (!b) return null;
-                  const perPage = Math.round(b.price / b.pages);
-                  const savePct = Math.round((1 - b.price / (b.pages * singlePagePrice)) * 100);
-                  const highlight = key === 'bundle10';
-                  return (
-                    <div key={key} className={`flex flex-col gap-3 p-5 rounded-2xl border-2 ${highlight ? 'border-[#2E63F6] bg-[#EEF1FB]/50' : 'border-slate-200'}`}>
-                      <div className="flex items-baseline justify-between">
-                        <span className="font-black text-slate-800">{b.label}</span>
-                        <span className="text-left">
-                          {bundleCoupon?.quotes[key] ? (
-                            <>
-                              <span className="text-sm text-slate-400 line-through">₪{b.price.toLocaleString()}</span>{' '}
-                              <span className="text-xl font-extrabold text-emerald-600">₪{bundleCoupon.quotes[key].finalAmount.toLocaleString()}</span>
-                            </>
-                          ) : (
-                            <span className="text-xl font-extrabold text-[#2E63F6]">₪{b.price.toLocaleString()}</span>
-                          )}
-                          <span className="text-xs text-slate-400"> חד־פעמי</span>
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-emerald-600">₪{perPage} לדף — חיסכון של {savePct}%</p>
-                      <ul className="text-sm text-slate-600 flex flex-col gap-1.5">
-                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.pages} דפים לפרסום, ללא תאריך תפוגה</li>
-                        <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.aiCredits} קרדיטי AI במתנה</li>
-                        {b.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> בונוס: הסרת מיתוג Pagey מהדפים, לתמיד</li>}
-                      </ul>
-                      <button
-                        disabled={upgrading}
-                        onClick={() => handleBuyBundle(key)}
-                        className={`mt-auto rounded-xl py-2.5 text-sm font-bold transition disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
-                      >
-                        {upgrading ? 'מעבד…' : 'רכישת החבילה'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
-                <div className="flex items-center justify-between gap-3 p-4 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-bold text-slate-800 text-sm">{bundlesCatalog.whitelabel_addon.label}</span>
-                    <span className="text-xs text-slate-500">תוסף עצמאי, לא תלוי בחבילת דפים — לתמיד, ללא תלות במה שכבר רכשת.</span>
-                  </div>
-                  <button
-                    disabled={upgrading}
-                    onClick={() => handleBuyBundle('whitelabel_addon')}
-                    className="flex-shrink-0 rounded-xl py-2 px-4 text-sm font-bold bg-slate-800 hover:bg-slate-900 text-white transition disabled:opacity-50"
-                  >
-                    {upgrading
-                      ? 'מעבד…'
-                      : `רכישה — ₪${(bundleCoupon?.quotes.whitelabel_addon?.finalAmount ?? bundlesCatalog.whitelabel_addon.price).toLocaleString()}`}
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50 overflow-y-auto" onClick={() => !upgrading && setShowPlans(false)}>
+            <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl flex flex-col my-auto" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <h3 className="text-base font-semibold tracking-tight text-slate-900">רכישת חבילת דפים</h3>
+                {!upgrading && (
+                  <button onClick={() => setShowPlans(false)} aria-label="סגור"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={16} />
                   </button>
+                )}
+              </div>
+              <div className="p-6 flex flex-col gap-4">
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  דף בודד עולה {singlePagePrice} ₪, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
+                  בלי מנוי, בלי חידוש, בלי תאריך תפוגה. היתרה נשארת בחשבון עד שתשתמשו בה.
+                </p>
+                {plan && plan.pageCredits > 0 && (
+                  <p className="text-sm rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2.5 leading-relaxed">
+                    יש לך כרגע {plan.pageCredits} דפים זמינים לפרסום. רכישת חבילה נוספת מתווספת ליתרה הקיימת — שום דבר לא הולך לאיבוד.
+                  </p>
+                )}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {(['bundle5', 'bundle10'] as const).map((key) => {
+                    const b = bundlesCatalog[key];
+                    if (!b) return null;
+                    const perPage = Math.round(b.price / b.pages);
+                    const savePct = Math.round((1 - b.price / (b.pages * singlePagePrice)) * 100);
+                    const highlight = key === 'bundle10';
+                    return (
+                      <div key={key} className={`flex flex-col gap-3 p-5 rounded-xl border ${highlight ? 'border-[#2E63F6] bg-[#2E63F6]/[0.03]' : 'border-slate-200'}`}>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium text-slate-900">{b.label}</span>
+                          <span className="text-left tabular-nums">
+                            {bundleCoupon?.quotes[key] ? (
+                              <>
+                                <span className="text-sm text-slate-400 line-through">₪{b.price.toLocaleString()}</span>{' '}
+                                <span className="text-xl font-semibold tracking-tight text-emerald-600">₪{bundleCoupon.quotes[key].finalAmount.toLocaleString()}</span>
+                              </>
+                            ) : (
+                              <span className="text-xl font-semibold tracking-tight text-slate-900">₪{b.price.toLocaleString()}</span>
+                            )}
+                            <span className="text-xs text-slate-400"> חד־פעמי</span>
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-emerald-700 tabular-nums">₪{perPage} לדף — חיסכון של {savePct}%</p>
+                        <ul className="text-sm text-slate-600 flex flex-col gap-1.5">
+                          <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.pages} דפים לפרסום, ללא תאריך תפוגה</li>
+                          <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> {b.aiCredits} קרדיטי AI במתנה</li>
+                          {b.whiteLabel && <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-500 flex-shrink-0" /> בונוס: הסרת מיתוג Pagey מהדפים, לתמיד</li>}
+                        </ul>
+                        <button
+                          disabled={upgrading}
+                          onClick={() => handleBuyBundle(key)}
+                          className={`mt-auto rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${highlight ? 'bg-[#2E63F6] hover:bg-[#1E4FD6] text-white' : 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}
+                        >
+                          {upgrading ? 'מעבד…' : 'רכישת החבילה'}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-              {/* One coupon box for the whole modal: all three products share the
-                  'bundle' purpose, so a coupon either applies to all of them or
-                  to none — only the resulting price differs per product. */}
-              <CouponField
-                purpose="bundle"
-                references={['bundle5', 'bundle10', 'whitelabel_addon']}
-                onChange={setBundleCoupon}
-              />
+                {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
+                  <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900">{bundlesCatalog.whitelabel_addon.label}</span>
+                      <span className="text-xs text-slate-500 leading-relaxed">תוסף עצמאי, לא תלוי בחבילת דפים — לתמיד, ללא תלות במה שכבר רכשת.</span>
+                    </div>
+                    <button
+                      disabled={upgrading}
+                      onClick={() => handleBuyBundle('whitelabel_addon')}
+                      className="flex-shrink-0 rounded-lg py-2 px-4 text-sm font-medium border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 transition-colors disabled:opacity-50 tabular-nums"
+                    >
+                      {upgrading
+                        ? 'מעבד…'
+                        : `רכישה — ₪${(bundleCoupon?.quotes.whitelabel_addon?.finalAmount ?? bundlesCatalog.whitelabel_addon.price).toLocaleString()}`}
+                    </button>
+                  </div>
+                )}
+                {/* One coupon box for the whole modal: all three products share the
+                    'bundle' purpose, so a coupon either applies to all of them or
+                    to none — only the resulting price differs per product. */}
+                <CouponField
+                  purpose="bundle"
+                  references={['bundle5', 'bundle10', 'whitelabel_addon']}
+                  onChange={setBundleCoupon}
+                />
 
-              {buyMsg && !buyMsg.ok && (
-                <p className="text-sm text-center font-semibold rounded-xl px-3 py-2 text-red-600 bg-red-50">{buyMsg.text}</p>
-              )}
+                {buyMsg && !buyMsg.ok && (
+                  <p className="text-sm text-center font-medium rounded-lg px-3 py-2 text-red-600 bg-red-50 border border-red-200">{buyMsg.text}</p>
+                )}
+              </div>
             </div>
           </div>
         )}
 
         {/* Content */}
-        <main className="flex-1 px-5 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
+        <main className="flex-1 px-5 sm:px-6 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
 
-          {/* Welcome */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <h2 className="text-2xl font-black text-slate-800">
-              שלום 👋{' '}
-              <span className="text-[#2E63F6] font-mono text-base">{user.email}</span>
+          {/* Page title */}
+          <motion.div {...fadeIn}>
+            <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">{user.email}</p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+              {activeTab === 'settings' ? 'הגדרות וחיוב' : 'סקירה כללית'}
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              שכח מכל מה שידעת על בניית אתרים. בוא נשחק.{' '}
-              <span className="select-none">🎮</span>
+            <p className="mt-1 text-sm text-slate-500">
+              {activeTab === 'settings'
+                ? 'היתרה, החבילות והקרדיטים שלך — במקום אחד.'
+                : 'הדפים, היתרה והלידים שלך — במבט אחד.'}
             </p>
           </motion.div>
 
@@ -902,33 +921,28 @@ export default function Dashboard() {
             /* ── Settings (billing/plan/credits) ─────────────────────────── */
             <motion.div
               key="settings"
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.18 }}
-              className="flex flex-col gap-5"
+              className="flex flex-col gap-4"
             >
-              <div>
-                <h3 className="text-lg font-black text-slate-800">הגדרות חשבון וחיוב</h3>
-                <p className="text-sm text-slate-500 mt-1">המסלול והקרדיטים שלך, במקום אחד.</p>
-              </div>
-
               {plan ? (
                 <BalanceCard plan={plan} onBuyBundle={() => setShowPlans(true)} />
               ) : (
-                <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 text-sm text-slate-400">
+                <div className={`${surface} p-5 text-sm text-slate-400`}>
                   טוען נתוני מסלול…
                 </div>
               )}
 
-              <div className="rounded-3xl bg-white border border-[#DCE4F7] shadow-sm shadow-blue-100 p-5 flex items-center justify-between gap-4 flex-wrap">
+              <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-black text-slate-800">יתרת קרדיטים</span>
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">יתרת קרדיטים</span>
                   <WalletBadge email={user.email} refreshKey={walletKey} />
                 </div>
                 <button
                   onClick={() => setShowBuyCredits(true)}
-                  className="inline-flex items-center gap-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 transition">
-                  + טען קרדיטים
+                  className={btnSecondary}>
+                  <Plus size={14} className="text-slate-400" /> טען קרדיטים
                 </button>
               </div>
             </motion.div>
@@ -936,29 +950,23 @@ export default function Dashboard() {
             <>
               {/* Stats */}
               <motion.div
-                variants={cardContainer} initial="hidden" animate="visible"
-                className="grid grid-cols-2 sm:grid-cols-3 gap-4"
+                {...fadeIn}
+                className="grid grid-cols-1 sm:grid-cols-3 gap-4"
               >
                 <StatCard
                   label="סה״כ דפים"
                   value={dataLoading ? '—' : String(pages.length)}
-                  icon={<Globe size={20} />}
-                  color="text-[#2E63F6]"
-                  bg="bg-[#EEF1FB]/60"
+                  icon={<Globe size={14} />}
                 />
                 <StatCard
                   label="דפים פעילים"
                   value={dataLoading ? '—' : String(publishedPages.length)}
-                  icon={<CheckCircle size={20} />}
-                  color="text-emerald-600"
-                  bg="bg-emerald-50/60"
+                  icon={<CheckCircle size={14} />}
                 />
                 <StatCard
                   label="לידים שהתקבלו"
                   value={dataLoading ? '—' : String(leads.length)}
-                  icon={<Users size={20} />}
-                  color="text-orange-500"
-                  bg="bg-orange-50/60"
+                  icon={<Users size={14} />}
                 />
               </motion.div>
 
@@ -972,7 +980,7 @@ export default function Dashboard() {
               <SetPasswordCard />
 
               {/* Tab bar + tab content */}
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <TabBar
                     active={activeTab}
@@ -981,28 +989,18 @@ export default function Dashboard() {
                     leadCount={leads.length}
                   />
                   {activeTab === 'pages' && (
-                    <motion.div
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      transition={springTap}
-                      className="flex-shrink-0"
-                    >
-                      <Link
-                        to="/create"
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#2E63F6] px-5 py-2.5 text-sm font-black text-white shadow-md hover:bg-[#1E4FD6] transition"
-                      >
-                        <Plus size={15} /> דף חדש ✨
-                      </Link>
-                    </motion.div>
+                    <Link to="/create" className={btnPrimary}>
+                      <Plus size={15} /> דף חדש
+                    </Link>
                   )}
                 </div>
 
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeTab}
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
+                    exit={{ opacity: 0 }}
                     transition={{ duration: 0.18 }}
                   >
                     {activeTab === 'pages' ? (
@@ -1017,7 +1015,7 @@ export default function Dashboard() {
                     ) : (
                       dataLoading ? (
                         <div className="flex items-center justify-center py-16">
-                          <Loader2 size={24} className="animate-spin text-[#8CA0D6]" />
+                          <Loader2 size={22} className="animate-spin text-slate-300" />
                         </div>
                       ) : (
                         <LeadsTable leads={leads} />
