@@ -79,7 +79,18 @@ export async function processAndSave(buffer: Buffer, maxWidth: number, prefix = 
 
   // Re-encode in memory rather than via .toFile() — there is no longer a local
   // path to write to, and the buffer goes straight to object storage.
+  //
+  // .rotate() with no arguments auto-orients the pixels using the source
+  // file's EXIF Orientation tag, then clears that tag. Without this, sharp
+  // leaves the raw sensor-orientation pixels untouched AND strips EXIF on
+  // WebP output (the default) — so a portrait phone photo (sensor data
+  // landscape + an EXIF tag saying "rotate 90°") went in looking correct
+  // and came out sideways, with no metadata left for the browser to correct
+  // it with. This was a real reported bug (photos uploaded to a landing
+  // page rendering sideways). Must run BEFORE resize — rotating after
+  // resizing a non-square image swaps width/height and can crop wrong.
   const webp = await sharp(buffer)
+    .rotate()
     .resize({ width: maxWidth, withoutEnlargement: true })
     .webp({ quality: 80 })
     .toBuffer();
