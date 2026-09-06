@@ -566,7 +566,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey, couponCode: bundleCoupon?.code }),
+        body: JSON.stringify({ purpose: 'bundle', reference: bundleKey, couponCode: bundleCoupon?.code, refundAck: bundleAck }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -611,7 +611,7 @@ export default function Dashboard() {
       const r = await authFetch('/api/payments/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose: 'credits', reference: pack, couponCode: creditsCoupon?.code }),
+        body: JSON.stringify({ purpose: 'credits', reference: pack, couponCode: creditsCoupon?.code, refundAck: creditsAck }),
       });
       const data = await r.json().catch(() => ({})) as { redirectUrl?: string; error?: string };
       if (!r.ok || !data.redirectUrl) throw new Error(data.error ?? 'פתיחת התשלום נכשלה');
@@ -818,7 +818,6 @@ export default function Dashboard() {
                     {buyMsg.text}
                   </p>
                 )}
-                <p className="text-[11px] text-slate-400 text-center">תשלום מדומה לצורכי בדיקה</p>
               </div>
             </div>
           </div>

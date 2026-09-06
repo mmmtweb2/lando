@@ -5,6 +5,7 @@ import path from 'path';
 import { supabaseSession } from './utils/supabase/middleware';
 import router from './routes';
 import { servePageWithOgTags } from './controllers/og.controller';
+import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
 
 const app = express();
@@ -16,19 +17,32 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // In production, CORS_ORIGIN MUST be set to the real front-end origin. Falling
-// back to "allow all" is only acceptable for local development.
+// back to "allow all" is only acceptable for local development — in
+// production, an unset CORS_ORIGIN must fail CLOSED (reject cross-origin
+// requests), not open (reflect any origin with credentials enabled), since
+// `origin: true` + `credentials: true` would otherwise silently accept
+// credentialed requests from any site if this env var is ever missing.
 const corsOrigin = process.env.CORS_ORIGIN;
-if (!corsOrigin && process.env.NODE_ENV === 'production') {
+const isProd = process.env.NODE_ENV === 'production';
+if (!corsOrigin && isProd) {
   console.warn('[cors] CORS_ORIGIN is not set in production — refusing to allow all origins. Set CORS_ORIGIN to your front-end URL.');
 }
-app.use(cors({ credentials: true, origin: corsOrigin ?? true }));
+app.use(cors({ credentials: true, origin: corsOrigin ?? (isProd ? false : true) }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(supabaseSession);
 
 // OG tag injection for public landing pages — must be before static middleware
-// so crawlers (WhatsApp, Facebook) that hit /p/:slug get server-rendered meta tags
-app.get('/p/:slug', servePageWithOgTags);
+// so crawlers (WhatsApp, Facebook) that hit /p/:slug get server-rendered meta tags.
+// Rate-limited like the other public read endpoints (landing.routes.ts's
+// pageViewLimiter) — generous, since real page views (and crawler hits) can be
+// bursty, but not unlimited: this does real DB work on every hit.
+const ogPageLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,
+  message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
+});
+app.get('/p/:slug', ogPageLimiter, servePageWithOgTags);
 
 // Generated sitemap — real published pages, not the old static homepage-only
 // file. Must be registered before static middleware so it isn't shadowed by
