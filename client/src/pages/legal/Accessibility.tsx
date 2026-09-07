@@ -7,8 +7,8 @@ import LegalLayout, { LegalSection, LegalList } from './LegalLayout';
 // or documented keyboard-trap testing, and parts of the editor are drag-and-
 // drop. Claiming compliance we cannot demonstrate is itself an exposure, so the
 // honest "פועלים לשיפור" framing is used, with the concrete measures listed.
-const ACCESSIBILITY_EMAIL = 'support@pagey.co.il';
-const COORDINATOR = 'רכז הנגישות של Pagey';
+const ACCESSIBILITY_EMAIL = 'tirnoer.digital@gmail.com';
+const COORDINATOR = 'משה';
 
 export default function Accessibility() {
   return (
