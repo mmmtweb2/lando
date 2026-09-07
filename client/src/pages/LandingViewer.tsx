@@ -1966,7 +1966,7 @@ export default function LandingViewer() {
 
   function renderTestimonialsGridBlock(testimonials: NonNullable<typeof ai_content.testimonials>) {
     const isPlaceholder = (quote: string) => quote.includes('הכנס כאן') || quote.includes('ציטוט אמיתי');
-        return (
+    return (
       <section className="relative overflow-hidden px-6 py-20"
         style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}>
         {/* Ambient glow */}
