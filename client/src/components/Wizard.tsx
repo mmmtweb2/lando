@@ -22,6 +22,8 @@ import {
   Loader2,
   Quote,
   User,
+  MapPin,
+  Clock,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -38,6 +40,8 @@ interface FormState {
   design_style: DesignStyle;
   user_provided_text: string;
   email: string;
+  address: string;
+  business_hours: string;
   facebook_url: string;
   instagram_url: string;
   external_link: string;
@@ -796,6 +800,8 @@ export default function Wizard() {
     design_style: '',
     user_provided_text: '',
     email: '',
+    address: '',
+    business_hours: '',
     facebook_url: '',
     instagram_url: '',
     external_link: '',
@@ -970,6 +976,8 @@ export default function Wizard() {
       ].filter(Boolean).join('\n\n');
       if (enrichedText) fd.append('user_provided_text', enrichedText);
       if (form.email.trim())          fd.append('email', form.email.trim());
+      if (form.address.trim())        fd.append('address', form.address.trim());
+      if (form.business_hours.trim()) fd.append('business_hours', form.business_hours.trim());
       if (form.facebook_url.trim())   fd.append('facebook_url', form.facebook_url.trim());
       if (form.instagram_url.trim())  fd.append('instagram_url', form.instagram_url.trim());
       if (form.external_link.trim())  fd.append('external_link', form.external_link.trim());
@@ -1168,6 +1176,14 @@ export default function Wizard() {
       <Field label="כתובת אימייל" icon={<Mail size={15} />}>
         <input className={inputCls} placeholder="info@mybusiness.com" type="email" dir="ltr"
           value={form.email} onChange={(e) => update('email', e.target.value)} />
+      </Field>
+      <Field label="כתובת (אופציונלי)" icon={<MapPin size={15} />}>
+        <input className={inputCls} placeholder="רחוב הרצל 12, תל אביב"
+          value={form.address} onChange={(e) => update('address', e.target.value)} />
+      </Field>
+      <Field label="שעות פעילות (אופציונלי)" icon={<Clock size={15} />}>
+        <input className={inputCls} placeholder="א'-ה' 9:00-19:00, ו' 9:00-14:00"
+          value={form.business_hours} onChange={(e) => update('business_hours', e.target.value)} />
       </Field>
       <Field label="קישור לעמוד Facebook" icon={<Link2 size={15} />}>
         <input className={inputCls} placeholder="https://facebook.com/mybusiness" type="url" dir="ltr"

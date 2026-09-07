@@ -297,6 +297,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       image_source = 'none',
       email,
       address,
+      business_hours,
       about_business,
       user_provided_text,
       design_style,
@@ -320,6 +321,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       image_source?: ImageSource;
       email?: string;
       address?: string;
+      business_hours?: string;
       about_business?: string;
       user_provided_text?: string;
       design_style?: string;
@@ -377,6 +379,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     // Safe null coercion — undefined is rejected by pg; explicit null is required
     const safeEmail = email || null;
     const safeAddress = address || null;
+    const safeBusinessHours = business_hours || null;
     const safeAbout = about_business || null;
     const safeUserText = user_provided_text || null;
     const safeDesignStyle   = design_style   || null;
@@ -459,6 +462,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         phone_number,
         email: safeEmail ?? undefined,
         address: safeAddress ?? undefined,
+        business_hours: safeBusinessHours ?? undefined,
         vibe,
         design_style: safeDesignStyle ?? undefined,
         image_source,
@@ -610,6 +614,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
           phone_number,
           email: safeEmail,
           address: safeAddress,
+          business_hours: safeBusinessHours,
           about_business: safeAbout,
           image_source,
           ai_content,
