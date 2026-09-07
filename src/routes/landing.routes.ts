@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -38,11 +38,35 @@ const pageViewLimiter = rateLimit({
   message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
 });
 
+
+// Public analytics counters (view/CTA-click) — real, unauthenticated visitor
+// traffic, so no requireAuth, but these are WRITES (unlike the page-read GET
+// above), and a write endpoint is a much cheaper target for someone trying to
+// inflate a page's numbers than a read is. Tighter than pageViewLimiter's
+// 120/min for that reason, but still generous enough that a real page with a
+// legitimate traffic spike (a WhatsApp broadcast, a Facebook ad) never gets
+// throttled — a genuine visitor only ever fires one view + at most a handful
+// of CTA clicks per session.
+const trackLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 40,
+  message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
+});
+
 router.post('/', requireAuth, aiLimiter, handleUpload, createLandingPage);
 router.post('/suggest-questions', requireAuth, suggestLimiter, suggestQuestions); // must be before /:slug-style params
 router.get('/my-pages', requireAuth, getMyPages);   // must be before /:slug
 router.get('/my-leads', requireAuth, getMyLeads);   // must be before /:slug
 router.get('/:slug', pageViewLimiter, optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner
+
+// Public, unauthenticated, fire-and-forget analytics (v1 — see
+// migrations/019_page_analytics.sql). Must come before /:id-style routes
+// below only matters for path-shape collisions, which these don't have
+// (POST /:slug/track-view vs POST /:id/publish etc. — different literal
+// suffixes so ordering here is not load-bearing, but kept next to the other
+// public :slug route for readability).
+router.post('/:slug/track-view', trackLimiter, trackView);
+router.post('/:slug/track-cta-click', trackLimiter, trackCtaClick);
 
 // ── Destructive / owner-only actions ──────────────────────────────────────────
 // requireAuth verifies the caller's identity from a real Supabase token;

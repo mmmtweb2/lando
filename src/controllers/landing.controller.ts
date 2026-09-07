@@ -10,6 +10,7 @@ import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
+import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -35,7 +36,7 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count')
+    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count')
     .eq('owner_email', email)
     .order('created_at', { ascending: false });
 
@@ -212,6 +213,35 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   }
 
   res.json({ ...publicData, whiteLabel, isOwner });
+}
+
+/**
+ * POST /api/landing/:slug/track-view
+ * POST /api/landing/:slug/track-cta-click
+ *
+ * Public, unauthenticated, fire-and-forget analytics counters (v1 — see
+ * migrations/019_page_analytics.sql for the full reasoning). Real visitors
+ * hit these, not logged-in users, so there is no auth here — only rate
+ * limiting (see landing.routes.ts). Always respond 200 regardless of outcome:
+ * an unknown slug, a non-published page, or a DB hiccup must never surface as
+ * a visible error to a visitor, and a 404 here would leak slug-existence to
+ * anyone probing. The actual increment is best-effort and never awaited by
+ * anything the visitor is waiting on beyond this request itself.
+ */
+export async function trackView(req: Request, res: Response): Promise<void> {
+  const { slug } = req.params;
+  res.status(204).send();
+  if (slug) {
+    trackPageView(slug).catch((e) => console.error('[ANALYTICS] trackPageView failed:', e));
+  }
+}
+
+export async function trackCtaClick(req: Request, res: Response): Promise<void> {
+  const { slug } = req.params;
+  res.status(204).send();
+  if (slug) {
+    trackPageCtaClick(slug).catch((e) => console.error('[ANALYTICS] trackPageCtaClick failed:', e));
+  }
 }
 
 // Credit cost of the AI image batch generated during page CREATION (hero +

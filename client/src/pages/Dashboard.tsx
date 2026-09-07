@@ -33,6 +33,10 @@ interface PageRow {
   expires_at: string | null;
   frozen_at: string | null;
   renewal_count: number | null;
+  // Minimal v1 page analytics (migrations/019_page_analytics.sql) — plain
+  // counters, no dashboard/charts yet, just "does this page get traffic".
+  view_count: number | null;
+  cta_click_count: number | null;
 }
 
 /** Annual renewal price. Mirrors RENEWAL_PRICE in src/config/billing.ts. */
@@ -353,6 +357,11 @@ function PageGrid({
             <StatusBadge status={p.status} />
           </div>
           <p className="text-xs text-slate-400 tabular-nums">{formatDate(p.created_at)}</p>
+          {p.status === 'published' && (
+            <p className="text-xs text-slate-400 tabular-nums">
+              {(p.view_count ?? 0).toLocaleString('he-IL')} צפיות · {(p.cta_click_count ?? 0).toLocaleString('he-IL')} קליקים
+            </p>
+          )}
           {needsRenewal(p) && (
             <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} />
           )}
