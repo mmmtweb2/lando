@@ -941,6 +941,21 @@ export default function LandingViewer() {
     if (page) setHiddenSections(page.ai_content.hidden_sections ?? []);
   }, [page]);
 
+  // Minimal v1 page-view analytics (see migrations/019_page_analytics.sql).
+  // Only real visitors count — never the owner's own edit-mode views, which
+  // would otherwise drown out actual traffic every time they check their
+  // page. Fire-and-forget: never awaited, errors swallowed silently, and
+  // must never affect rendering or block anything the visitor is doing.
+  const viewTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!page || !page.slug) return;
+    if (page.isOwner) return; // owner viewing/editing their own page — don't count
+    if (page.status !== 'published') return; // draft/frozen previews aren't real traffic
+    if (viewTrackedRef.current) return;
+    viewTrackedRef.current = true;
+    fetch(`/api/landing/${page.slug}/track-view`, { method: 'POST' }).catch(() => {});
+  }, [page]);
+
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
       <Loader2 size={36} className="animate-spin text-[#2E63F6]" />
@@ -1383,6 +1398,16 @@ export default function LandingViewer() {
   // Non-WhatsApp methods use the brand-color styling; WhatsApp keeps its green.
   const useExternalLink = ctaMethod !== 'whatsapp';
 
+  // Minimal v1 CTA-click analytics (see migrations/019_page_analytics.sql).
+  // Fire-and-forget alongside the CTA's own href navigation (`target="_blank"`,
+  // so nothing here needs to block/await/preventDefault it) — never counted
+  // for the owner's own edit-mode clicks, same reasoning as the view tracker.
+  function handleCtaClick() {
+    if (canEdit) return;
+    if (!page.slug || page.status !== 'published') return;
+    fetch(`/api/landing/${page.slug}/track-cta-click`, { method: 'POST' }).catch(() => {});
+  }
+
   const btnR = vibe === 'luxury' ? '2px' : vibe === 'tech' ? '8px' : '14px';
 
   const divider = <div className="w-12 h-1 mx-auto mt-3" style={{ backgroundImage: `linear-gradient(to right, ${primary}, ${accent})`, borderRadius: '4px' }} />;
@@ -1407,7 +1432,7 @@ export default function LandingViewer() {
 
   function ghostCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, background: onPrimary === '#ffffff' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)', border: `2px solid ${onPrimary === '#ffffff' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.2)'}`, color: onPrimary, ...extra }}>
         {ctaIcon}{ctaText}
@@ -1417,7 +1442,7 @@ export default function LandingViewer() {
 
   function solidCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, backgroundColor: primary, color: textOnColor(primary), ...extra }}>
         {ctaIcon}{ctaText}
@@ -2879,7 +2904,7 @@ export default function LandingViewer() {
 
             {/* Prominent white button */}
             <motion.a
-              href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+              href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
               whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
               className="inline-flex items-center gap-3 px-10 py-4 font-extrabold text-lg transition-shadow"
               style={{
@@ -3346,7 +3371,7 @@ export default function LandingViewer() {
       {/* Sticky glassmorphism header */}
       <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
             className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
             style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
@@ -3438,7 +3463,7 @@ export default function LandingViewer() {
             </div>
           )}
 
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
             className="flex items-center gap-3 w-full max-w-xs justify-center py-4 text-white font-bold shadow-lg transition active:scale-95 mt-2"
             style={{ backgroundColor: useExternalLink ? primary : '#25D366', borderRadius: '16px' }}>
             {ctaIcon}{ctaText}
@@ -3469,7 +3494,7 @@ export default function LandingViewer() {
       )}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
         aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
         className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
         style={{ backgroundColor: useExternalLink ? primary : '#25D366' }}>
