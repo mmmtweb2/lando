@@ -31,6 +31,72 @@ they listed. Weave these specifics into hero copy, about text, service descripti
 badges wherever they fit naturally — they are the difference between a generic page and this business's page.
 Never stretch, round, or extrapolate beyond what was actually written, and never invent a specific to fill a gap.`;
 
+// VIBE → VOICE: sentence-level register (word choice, sentence rhythm, formality) that
+// differentiates how a page SOUNDS by design_style/vibe — layered ON TOP OF, never instead
+// of, the WORD DIET and ANTI-CLICHÉ rules each prompt already enforces below. This is
+// deliberately a separate axis from PAGE GOAL → COPY TONE (emotional charge: reassuring/
+// urgent/warm/excited) — see the note the returned block ends with for how the two combine
+// when a business's vibe and goal would otherwise pull in different directions (e.g. a
+// "luxury" vibe on a "donation" goal, or a "vibrant"/playful vibe on a "direct_sale" goal).
+//
+// design_style's real values today (Wizard.tsx DESIGN_STYLE_OPTIONS) are '', 'luxury',
+// 'vibrant', 'minimal', 'warm' — mapped at render time (LandingViewer.tsx DESIGN_STYLE_VIBE)
+// to the ThemeVibe names luxury/playful/corporate/warm. 'tech' is a 5th ThemeVibe the render
+// engine already understands but no current design_style option produces; a voice branch for
+// it is included anyway so this stays correct with zero changes if/when a 'tech' option is
+// added to the Wizard, instead of silently falling through to the unspecified case.
+function buildVibeVoiceBlock(input: GenerateInput): string {
+  const voice =
+    input.design_style === 'luxury'
+      ? `"luxury": understated and confident — the opposite of a hard sell. Use short, declarative
+  sentences; avoid stacking two clauses with "ו-" where one plain sentence would do. NO
+  exclamation marks anywhere. Avoid superlative-reaching words like "הכי", "ללא תחרות",
+  "יוקרתי ביותר" — let a specific, concrete detail (materials, craft, exclusivity, attention to
+  detail) imply quality instead of asserting it outright. Address the reader with quiet
+  formality ("אתם"), never slangy contractions, chat-speak, or emoji.`
+      : input.design_style === 'vibrant'
+      ? `"vibrant" (playful): warm, energetic, conversational — sounds like a person talking, not a
+  brochure. Everyday words and natural spoken phrasing are welcome ("קבלו" rather than "אנו
+  שמחים להציע לכם"); mix short, punchy sentences with an occasional longer one for rhythm. At
+  most ONE exclamation mark in the ENTIRE section — spend it on the single most energetic
+  line, not every sentence. Prefer plain, concrete nouns over formal or institutional ones.`
+      : input.design_style === 'minimal'
+      ? `"minimal" (corporate): plain, precise, low-adjective. Each sentence should carry one clear
+  fact, benefit, or instruction rather than a mood. Prefer nouns and verbs over adjectives;
+  when an adjective is truly needed, make it a measurable-sounding one ("תוך 24 שעות") rather
+  than a mood word ("מדהים"). NO exclamation marks. Address the reader efficiently and
+  formally — brisk, not cold, not warm.`
+      : input.design_style === 'warm'
+      ? `"warm": personal, human, unhurried. Favor words that evoke closeness and care ("קרובים
+  אליכם", "מלווים אתכם לאורך הדרך") over corporate distance or process-speak. Sentences may run
+  a touch longer and more conversational than the other vibes — still fully inside the WORD
+  DIET caps above. ONE soft exclamation mark is acceptable when it reads as genuine warmth,
+  not hype.`
+      : (input.design_style as string) === 'tech'
+      ? `"tech": crisp, modern, competence-first. Short, active-voice sentences; no flowery or
+  emotional language. Favor precise capability/outcome words ("תוצאה מדידה", "זמן תגובה", "ממשק
+  פשוט") over feeling words. NO exclamation marks — let specificity carry the confidence
+  instead of enthusiasm.`
+      : `unspecified — infer a plausible, moderate register from the niche/description below.
+  Default to neutral-professional rather than picking a strong voice arbitrarily.`;
+
+  return `VIBE → VOICE (sentence-level register — word choice, sentence rhythm, formality — layered
+strictly INSIDE the WORD DIET and ANTI-CLICHÉ rules above: it never justifies exceeding a
+word/character cap, and it never justifies reusing a banned word under a different pretext):
+- ${voice}
+
+VIBE vs. PAGE GOAL — how the two combine: VIBE controls HOW something is said (register,
+rhythm, formality); PAGE GOAL controls WHAT emotional charge the message carries (reassurance /
+urgency / warmth / excitement). Apply both together — never let one replace the other. When
+they would pull in different directions (e.g. a "luxury" vibe on a "donation" goal, or a
+"minimal" vibe on a "registration" goal), let PAGE GOAL's emotional charge win, but express it
+THROUGH the vibe's word-choice/rhythm rules rather than by abandoning them — e.g. a
+luxury-voiced donation page stays warm and mission-driven in WHAT it says, but keeps luxury's
+short declarative sentences and still avoids exclamation marks; a minimal-voiced registration
+page still creates excitement through concrete specifics, never through exclamation marks or
+hype adjectives.`;
+}
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 export type StructuralLayout = 'bento' | 'editorial' | 'split' | 'classic';
@@ -415,6 +481,8 @@ PAGE GOAL → COPY TONE:
 - "donation": warm, mission-driven, impact-focused
 - "registration": excited, benefit-led, community-building
 
+${buildVibeVoiceBlock(input)}
+
 LAYOUT COMPOSITION RULES:
 Available block IDs (use ONLY these exact strings):
 hero_center, hero_split, services_bento, services_grid, benefits_list, benefits_cards,
@@ -593,6 +661,8 @@ WORD DIET (STRICT — no exceptions):
 ANTI-CLICHÉ RULE (CRITICAL):
 Banned words — NEVER use any of these in any Hebrew text:
 "חדשני", "מקצועיות ללא פשרות", "יחס אישי", "מוביל בתחומו", "שירות אדיב", "פתרונות מתקדמים", "ניסיון רב שנים"
+
+${buildVibeVoiceBlock(input)}
 
 SECTION RULES:
 - benefits: EXACTLY 3 items — concrete value, never invented facts, grounded in the business niche
