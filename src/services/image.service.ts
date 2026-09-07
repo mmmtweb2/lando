@@ -9,7 +9,17 @@ interface FalImage { url: string; width: number; height: number }
 interface FalResult { images: FalImage[] }
 
 /**
- * Generate a single targeted image via Fal.ai flux/schnell.
+ * Generate a single targeted image via Fal.ai flux/dev.
+ *
+ * Deliberately upgraded from the fast/distilled `flux/schnell` tier to the
+ * standard `flux/dev` tier (CEO decision, checked fal.ai's pricing first) —
+ * dev produces noticeably higher-fidelity hero/icon images. Per-image cost
+ * is roughly ~8x schnell's, which is economically negligible against
+ * Pagey's per-page price point. `num_inference_steps` was bumped from
+ * schnell's minimal 4 (schnell is a distilled few-step model; 4 is already
+ * near its ceiling) to 28 — fal.ai's commonly-used default for flux/dev's
+ * quality/speed balance. Leaving it at 4 would pay dev's higher price while
+ * wasting the quality dev is actually capable of.
  * @param prompt  Detailed English Flux prompt (hero photography or 3D icon).
  * @param size    'landscape_4_3' for hero images, 'square_hd' for service icons.
  */
@@ -23,12 +33,12 @@ export async function generateFalImage(
 
   let result: FalResult;
   try {
-    result = await fal.subscribe('fal-ai/flux/schnell', {
+    result = await fal.subscribe('fal-ai/flux/dev', {
       input: {
         prompt,
         image_size: size,
         num_images: 1,
-        num_inference_steps: 4,
+        num_inference_steps: 28,
       },
     }) as FalResult;
   } catch (err) {
