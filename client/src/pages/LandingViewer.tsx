@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Globe, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Globe, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -49,6 +49,7 @@ interface AiContent {
     phone?: string;
     email?: string;
     address?: string;
+    business_hours?: string;   // free text, shown verbatim in the "visit us" section
     cta_text?: string;         // v1 compat
     whatsapp_message?: string;
     cta_type?: string;         // user-chosen CTA target: whatsapp|email|phone|link
@@ -2079,6 +2080,76 @@ export default function LandingViewer() {
     );
   }
 
+  // ── Visit us: address / hours / map ─────────────────────────────────────
+  // Deliberately NOT part of the AI-driven block-composition engine below —
+  // this is a fixed, always-appended trust section for local businesses
+  // (bakeries, salons, clinics — the walk-in segment), independent of
+  // layout_composition/hidden_sections/render-time variant logic (those are
+  // out of scope here, see README part 16). Renders only what the business
+  // actually provided (NO_FABRICATION_RULE): address text is shown verbatim,
+  // business hours are free text copied verbatim (never parsed/reformatted),
+  // and the map only appears when there is a real address to key it off of.
+  // Hides entirely when neither field is present, same pattern as renderFaq.
+  function renderVisitUsSection() {
+    const address = ai_content.contact?.address;
+    const hours = ai_content.contact?.business_hours;
+    if (!address && !hours) return null;
+
+    const mapSrc = address
+      ? `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`
+      : null;
+
+    return (
+      <motion.section className="px-6 py-16 bg-white"
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-4xl mx-auto">
+          <motion.div variants={V.classic.item} className="text-center mb-10">
+            {sectionKicker('מידע לביקור')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>בואו לבקר אותנו</h2>
+            {divider}
+          </motion.div>
+          <div className={`grid ${mapSrc ? 'md:grid-cols-2' : ''} gap-6 items-stretch`}>
+            <motion.div variants={V.classic.item}
+              className={`flex flex-col gap-5 justify-center ${theme.cardRadius} border border-slate-200 bg-slate-50/60 p-6 sm:p-8`}>
+              {address && (
+                <div className="flex items-start gap-3">
+                  <MapPin size={20} className="flex-shrink-0 mt-0.5" style={{ color: primary }} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">כתובת</p>
+                    <p className="text-slate-700 font-medium">{address}</p>
+                  </div>
+                </div>
+              )}
+              {hours && (
+                <div className="flex items-start gap-3">
+                  <Clock size={20} className="flex-shrink-0 mt-0.5" style={{ color: primary }} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">שעות פעילות</p>
+                    <p className="text-slate-700 font-medium whitespace-pre-line">{hours}</p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+            {mapSrc && (
+              <motion.div variants={V.classic.item}
+                className={`overflow-hidden ${theme.cardRadius} border border-slate-200 shadow-sm min-h-[220px]`}>
+                <iframe
+                  src={mapSrc}
+                  title={`מפה — ${business_name}`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, minHeight: '260px', width: '100%' }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </motion.div>
+            )}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
   function renderExtendedSections() {
     return (
       <>
@@ -3146,6 +3217,10 @@ export default function LandingViewer() {
       {/* Lead capture form */}
       {enable_form && renderLeadForm()}
 
+      {/* Visit us: address / hours / map — a fixed trust section, independent
+          of the AI block-composition engine (see renderVisitUsSection). */}
+      {renderVisitUsSection()}
+
       {/* Contact footer */}
       <footer className="bg-slate-900 text-white px-6 py-16">
         <div className="max-w-md mx-auto flex flex-col items-center gap-6 text-center">
@@ -3164,12 +3239,6 @@ export default function LandingViewer() {
                 <a href={`mailto:${ai_content.contact.email}`} className="hover:text-white transition" dir="ltr">
                   {ai_content.contact.email}
                 </a>
-              </div>
-            )}
-            {ai_content.contact?.address && (
-              <div className="flex items-center justify-center gap-2 text-slate-300">
-                <MapPin size={15} className="flex-shrink-0" style={{ color: accent }} />
-                <span>{ai_content.contact.address}</span>
               </div>
             )}
           </div>

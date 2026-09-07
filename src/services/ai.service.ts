@@ -94,6 +94,7 @@ export interface AiContent {
     phone?: string;
     email?: string;
     address?: string;
+    business_hours?: string;   // free text, rendered/copied verbatim — never reformatted by the AI
     cta_text?: string;         // v1 compat
     whatsapp_message?: string;
     cta_type?: string;         // user-chosen CTA target: whatsapp|email|phone|link
@@ -133,6 +134,7 @@ export interface GenerateInput {
   phone_number: string;
   email?: string;
   address?: string;
+  business_hours?: string;
   vibe: string;
   design_style?: string;
   image_source: string;
@@ -272,6 +274,7 @@ function getMockContent(input: GenerateInput): AiContent {
       phone: input.phone_number,
       email: input.email ?? '',
       address: input.address ?? '',
+      business_hours: input.business_hours ?? '',
       whatsapp_message: `שלום! מצאתי את הדף של ${input.business_name} ואשמח לקבל פרטים נוספים.`,
     },
     design_system: {
@@ -514,7 +517,7 @@ Return EXACTLY this JSON (ALL fields required — do not omit any):
   "imageKeywords": ["English landscape keyword", "keyword 2", "keyword 3"]
 }
 
-CRITICAL: Copy phone, email, and address EXACTLY as provided. Base copy heavily on any user-provided marketing text.`;
+CRITICAL: Copy phone, email, address, and business hours EXACTLY as provided — never reformat or invent hours. Base copy heavily on any user-provided marketing text.`;
 }
 
 function buildCoreUser(input: GenerateInput): string {
@@ -528,6 +531,7 @@ function buildCoreUser(input: GenerateInput): string {
     `- Phone: ${input.phone_number}`,
     `- Email: ${input.email || 'not provided'}`,
     `- Address: ${input.address || 'not provided'}`,
+    `- Business hours (free text, present verbatim — do not reformat or invent): ${input.business_hours || 'not provided'}`,
     `- Include testimonials section: ${input.include_testimonials ? 'YES' : 'NO'}`,
   ];
   if (input.about_business) lines.push(`- About: ${input.about_business}`);
@@ -717,6 +721,7 @@ function mapToAiContent(s: Step1Output, input: GenerateInput): AiContent {
       phone: input.phone_number,
       email: input.email ?? '',
       address: input.address ?? '',
+      business_hours: input.business_hours ?? '',
       whatsapp_message: s.whatsappMessage,
     },
     design_system: {
