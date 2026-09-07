@@ -54,6 +54,39 @@ export async function generateFalImage(
 }
 
 /**
+ * generateFalImage() + download + re-encode to compressed WebP, stored in our
+ * own Supabase Storage — same optimization pipeline processAndSave() already
+ * applies to user-uploaded photos.
+ *
+ * ── Why this exists ───────────────────────────────────────────────────────
+ * Every AI-image call site used to store fal.ai's raw returned URL directly
+ * (an unoptimized PNG/JPEG on fal's own CDN, often 1-3 MB at flux/dev's
+ * quality). Reported as "pages load very slowly, especially images" — this
+ * was the real root cause: uploaded photos were always compressed via
+ * processAndSave(), but AI-generated hero/service images never were, and got
+ * larger still after the flux/schnell -> flux/dev upgrade (bigger, higher-
+ * fidelity source images). Downloading and re-encoding here brings AI images
+ * to WebP quality 80 at a bounded max width, matching what uploaded photos
+ * already get, and moves the asset into our own storage instead of leaving
+ * production pages permanently dependent on fal.ai's CDN staying up.
+ *
+ * @param maxWidth  1600 for hero (full-bleed), 800 for service/icon images —
+ *                  callers pass the right one for where the image renders.
+ */
+export async function generateAndOptimizeFalImage(
+  prompt: string,
+  size: 'landscape_4_3' | 'square_hd',
+  maxWidth: number,
+  prefix: string,
+): Promise<string> {
+  const falUrl = await generateFalImage(prompt, size);
+  const res = await fetch(falUrl);
+  if (!res.ok) throw new Error(`Failed to download generated image from fal.ai (${res.status})`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return processAndSave(buffer, maxWidth, prefix);
+}
+
+/**
  * Resize + re-encode an uploaded image to WebP and store it durably.
  *
  * Returns an ABSOLUTE Supabase Storage URL, where this used to return a

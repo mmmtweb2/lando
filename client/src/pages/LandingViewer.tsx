@@ -1145,6 +1145,13 @@ export default function LandingViewer() {
     void url;
     setPage((prev) => prev ? { ...prev, user_images: userImages } : prev);
     setCreditsRefreshKey((k) => k + 1);
+    // Image changes are already persisted by the modal's own API call — there
+    // is no separate "שמור שינויים" step for them. Show the same "✓ נשמר!"
+    // confirmation the text/color save flow shows, so the user gets feedback
+    // instead of wondering why the (correctly still-disabled) Save button
+    // didn't do anything.
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2500);
   }
 
   async function save() {
@@ -1176,6 +1183,9 @@ export default function LandingViewer() {
       setColorOverrides({});
       setPaletteOpen(false);
       setSaveStatus('saved');
+      // Auto-exit edit mode on a successful save — previously it stayed open
+      // indefinitely with no automatic way back to the normal page view.
+      setIsEditingMode(false);
       setTimeout(() => setSaveStatus('idle'), 2500);
     } catch {
       setSaveStatus('error');

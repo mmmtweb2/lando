@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { generateAiContent, regenerateSectionText, checkBusinessCoherence, suggestIntakeQuestions, type AiContent } from '../services/ai.service';
-import { processAndSave, generateFalImage } from '../services/image.service';
+import { processAndSave, generateAndOptimizeFalImage } from '../services/image.service';
 import { checkAndDeductCredits, refundCredits } from '../services/credits.service';
 import { CREDIT_COSTS } from '../config/credits';
 import { ensureUserProfile, type MinimalProfile } from '../services/profile.service';
@@ -542,8 +542,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
         // Run all in parallel; individual failures don't abort the batch
         const settled = await Promise.allSettled([
-          heroPrompt ? generateFalImage(heroPrompt, 'landscape_4_3') : Promise.resolve(null),
-          ...serviceImagePrompts.map((p) => generateFalImage(p, 'landscape_4_3')),
+          heroPrompt ? generateAndOptimizeFalImage(heroPrompt, 'landscape_4_3', 1600, 'ai-hero') : Promise.resolve(null),
+          ...serviceImagePrompts.map((p) => generateAndOptimizeFalImage(p, 'landscape_4_3', 800, 'ai-service')),
         ]);
 
         const heroResult = settled[0];
@@ -991,8 +991,8 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
       console.log(`[regenerateImageAi] Full set — hero: ${!!heroPrompt}, services: ${servicePrompts.length}`);
 
       const settled = await Promise.allSettled([
-        heroPrompt ? generateFalImage(heroPrompt, 'landscape_4_3') : Promise.resolve(null),
-        ...servicePrompts.map((p) => generateFalImage(p, 'landscape_4_3')),
+        heroPrompt ? generateAndOptimizeFalImage(heroPrompt, 'landscape_4_3', 1600, 'ai-hero') : Promise.resolve(null),
+        ...servicePrompts.map((p) => generateAndOptimizeFalImage(p, 'landscape_4_3', 800, 'ai-service')),
       ]);
 
       settled.forEach((r, i) => {
@@ -1027,7 +1027,8 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
       const finalPrompt = slotName.startsWith('service_')
         ? buildServiceImagePrompt(prompt!.trim(), pageContent?.design_tokens?.image_style, primaryColorHex)
         : prompt!.trim();
-      const url = await generateFalImage(finalPrompt, 'landscape_4_3');
+      const singleMaxWidth = slotName.startsWith('service_') ? 800 : 1600;
+      const url = await generateAndOptimizeFalImage(finalPrompt, 'landscape_4_3', singleMaxWidth, slotName.startsWith('service_') ? 'ai-service' : 'ai-hero');
       firstUrl = url;
       const updatedStore = applyImageSlot(current, slotName, url);
       serialized = JSON.stringify(updatedStore);
