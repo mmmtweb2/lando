@@ -14,6 +14,9 @@ import AdminDashboard  from './pages/AdminDashboard';
 import Login           from './pages/Login';
 import ResetPassword   from './pages/ResetPassword';
 import Dashboard       from './pages/Dashboard';
+import Privacy         from './pages/legal/Privacy';
+import Terms           from './pages/legal/Terms';
+import Accessibility   from './pages/legal/Accessibility';
 import { authFetch } from './lib/api';
 
 // ─── Protected route (Supabase auth) ─────────────────────────────────────────

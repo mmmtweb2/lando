@@ -92,6 +92,17 @@ interface AiContent {
   seo_title?: string;
   seo_description?: string;
   trust_badges?: Array<{ label: string }>;
+  // per-section heading/kicker overrides (part 16)
+  services_heading?: string;
+  services_kicker?: string;
+  benefits_heading?: string;
+  benefits_kicker?: string;
+  process_heading?: string;
+  process_kicker?: string;
+  testimonials_heading?: string;
+  testimonials_kicker?: string;
+  faq_heading?: string;
+  faq_kicker?: string;
 }
 
 // v2 AI image storage shape (stored as JSON in user_images column)
@@ -1404,7 +1415,7 @@ export default function LandingViewer() {
   // for the owner's own edit-mode clicks, same reasoning as the view tracker.
   function handleCtaClick() {
     if (canEdit) return;
-    if (!page.slug || page.status !== 'published') return;
+    if (!page || !page.slug || page.status !== 'published') return;
     fetch(`/api/landing/${page.slug}/track-cta-click`, { method: 'POST' }).catch(() => {});
   }
 
