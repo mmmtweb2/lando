@@ -1890,11 +1890,20 @@ export default function LandingViewer() {
     );
   }
 
-  function renderProcessSteps() {
+  function renderProcessBlock(isAlt: boolean) {
     const steps = ai_content.process_steps ?? [];
     if (!steps.length) return null;
+    const variant = resolveProcessVariant(steps.length);
+    if (variant === 'timeline') return renderProcessTimelineBlock(isAlt);
+    return renderProcessHorizontalBlock(isAlt);
+  }
+
+  function renderProcessHorizontalBlock(isAlt: boolean) {
+    const steps = ai_content.process_steps ?? [];
+    if (!steps.length) return null;
+    const bg = isAlt ? sectionBgAlt : sectionBg;
     return (
-      <section className="relative overflow-hidden px-6 py-20 bg-white">
+      <section className="relative overflow-hidden px-6 py-20" style={bg ?? { backgroundColor: '#ffffff' }}>
         {/* Ambient glow */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full blur-3xl opacity-10 pointer-events-none"
           style={{ backgroundColor: primary }} />
@@ -1951,6 +1960,13 @@ export default function LandingViewer() {
       ? (ai_content.testimonials ?? [])
       : (ai_content.testimonials ?? []).filter((t) => !isPlaceholder(t.quote));
     if (!testimonials.length) return null;
+    const variant = resolveTestimonialsVariant(testimonials.length);
+    if (variant === 'spotlight') return renderTestimonialsSpotlightBlock(testimonials);
+    return renderTestimonialsGridBlock(testimonials);
+  }
+
+  function renderTestimonialsGridBlock(testimonials: NonNullable<typeof ai_content.testimonials>) {
+    const isPlaceholder = (quote: string) => quote.includes('הכנס כאן') || quote.includes('ציטוט אמיתי');
     return (
       <section className="relative overflow-hidden px-6 py-20"
         style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}>
@@ -2017,6 +2033,88 @@ export default function LandingViewer() {
     );
   }
 
+  // Single large pull-quote — a genuine structural alternative to the card
+  // grid above (resolveTestimonialsVariant picks this for a lone testimonial
+  // or a luxury vibe, where one confident quote reads better than a grid).
+  // The featured quote is chosen deterministically via the shared per-page
+  // hash rather than always the first, and any remaining testimonials are
+  // listed underneath as compact rows so no real content is dropped.
+  function renderTestimonialsSpotlightBlock(testimonials: NonNullable<typeof ai_content.testimonials>) {
+    const isPlaceholder = (quote: string) => quote.includes('הכנס כאן') || quote.includes('ציטוט אמיתי');
+    const featuredIdx = pageVariantSeed() % testimonials.length;
+    const featured = testimonials[featuredIdx];
+    const rest = testimonials.filter((_, i) => i !== featuredIdx);
+    const featuredIsPholder = isPlaceholder(featured.quote);
+    return (
+      <section className="relative overflow-hidden px-6 py-24"
+        style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}>
+        <div className="absolute -top-32 -left-32 w-[450px] h-[450px] rounded-full blur-3xl opacity-15 pointer-events-none"
+          style={{ backgroundColor: accent }} />
+        <div className="absolute -bottom-32 -right-32 w-[380px] h-[380px] rounded-full blur-3xl opacity-12 pointer-events-none"
+          style={{ backgroundColor: primary }} />
+
+        <div className="relative max-w-2xl mx-auto">
+          <motion.div className="text-center mb-12"
+            initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_SMOOTH }}>
+            {sectionKicker(ai_content.testimonials_kicker || 'לקוחות מספרים')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.testimonials_heading || 'מה לקוחות אומרים'}</h2>
+            {divider}
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 28, scale: 0.98 }} whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true, margin: '-80px' }} transition={{ duration: 0.6, ease: EASE_EXPO }}
+            className={`relative flex flex-col items-center text-center gap-6 rounded-3xl p-10 sm:p-14 ${
+              featuredIsPholder
+                ? 'border-2 border-dashed border-amber-300 bg-amber-50'
+                : 'bg-white/80 backdrop-blur-md border border-white/60 shadow-xl'
+            }`}>
+            {featuredIsPholder && canEdit && (
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 rounded-lg px-2.5 py-1.5">
+                <Pencil size={11} />הוסף ציטוט אמיתי
+              </div>
+            )}
+            <div className="text-7xl leading-none font-black" style={{ color: `${primary}30` }}>"</div>
+            <EditableText as="p" className={`text-xl sm:text-2xl leading-relaxed font-medium max-w-xl ${featuredIsPholder ? 'text-amber-700 italic' : 'text-slate-700'}`}
+              value={getEdit(`testimonials.${featuredIdx}.quote`, featured.quote)}
+              onCommit={(v) => setEdit(`testimonials.${featuredIdx}.quote`, v)}
+              isEditing={isEditingMode} />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
+                {featured.author.charAt(0)}
+              </div>
+              <div className="text-right">
+                <EditableText as="p" className="font-bold text-slate-800 text-sm leading-tight"
+                  value={getEdit(`testimonials.${featuredIdx}.author`, featured.author)}
+                  onCommit={(v) => setEdit(`testimonials.${featuredIdx}.author`, v)}
+                  isEditing={isEditingMode} />
+                <EditableText as="p" className="text-xs text-slate-400"
+                  value={getEdit(`testimonials.${featuredIdx}.role`, featured.role)}
+                  onCommit={(v) => setEdit(`testimonials.${featuredIdx}.role`, v)}
+                  isEditing={isEditingMode} />
+              </div>
+            </div>
+          </motion.div>
+
+          {rest.length > 0 && (
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {rest.map((t, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-xl bg-white/60 border border-white/60 px-4 py-3">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
+                    {t.author.charAt(0)}
+                  </div>
+                  <p className="text-xs text-slate-500 leading-snug line-clamp-2">{t.quote}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
   function renderFaq() {
     const faq = ai_content.faq ?? [];
     if (!faq.length) return null;
@@ -2154,7 +2252,7 @@ export default function LandingViewer() {
     return (
       <>
         {renderBenefits()}
-        {renderProcessSteps()}
+        {renderProcessHorizontalBlock(false)}
         {renderTestimonials()}
         {renderFaq()}
       </>
@@ -2231,6 +2329,42 @@ export default function LandingViewer() {
     // Richer vibes keep the existing asymmetric bento treatment for mid/long lists.
     if (vibe === 'luxury' || vibe === 'warm') return 'bento';
     return 'grid';
+  }
+
+  type AboutVariant = 'centered' | 'split';
+
+  function resolveAboutVariant(): AboutVariant {
+    // The side-by-side composition needs a real about image — without one,
+    // 'centered' already degrades gracefully (heading + paragraph, no photo).
+    const aboutImage = legacyImages[1];
+    if (!aboutImage) return 'centered';
+    // Minimal/corporate reads cleanest as plain centered copy — no imagery flex.
+    if (vibe === 'corporate') return 'centered';
+    // Other vibes: an image exists, so let the shared per-page hash decide —
+    // keeps a batch of same-vibe pages from all picking the same shape.
+    return pageVariantSeed() % 3 === 0 ? 'centered' : 'split';
+  }
+
+  type TestimonialsVariant = 'grid' | 'spotlight';
+
+  function resolveTestimonialsVariant(count: number): TestimonialsVariant {
+    // A single real testimonial reads awkward as a lonely grid cell —
+    // give it the room a spotlight quote deserves instead.
+    if (count <= 1) return 'spotlight';
+    // Luxury/premium vibe: one large editorial quote beats a card grid.
+    if (vibe === 'luxury') return 'spotlight';
+    return 'grid';
+  }
+
+  type ProcessVariant = 'timeline' | 'horizontal';
+
+  function resolveProcessVariant(stepCount: number): ProcessVariant {
+    // A couple of steps read fine side by side — no need for a long vertical rail.
+    if (stepCount <= 2) return 'horizontal';
+    if (vibe === 'corporate' || vibe === 'tech') return 'timeline';
+    if (vibe === 'luxury') return 'horizontal';
+    // warm/playful with a longer list: let the shared per-page hash decide.
+    return pageVariantSeed() % 2 === 0 ? 'timeline' : 'horizontal';
   }
 
   function renderServicesBlock(isAlt: boolean) {
@@ -2372,6 +2506,12 @@ export default function LandingViewer() {
 
   function renderAboutSection(isAlt: boolean) {
     if (!ai_content.about?.content && !isEditingMode) return null;
+    const variant = resolveAboutVariant();
+    if (variant === 'split') return renderAboutSplitBlock(isAlt);
+    return renderAboutCenteredBlock(isAlt);
+  }
+
+  function renderAboutCenteredBlock(isAlt: boolean) {
     const bg = isAlt ? sectionBgAlt : sectionBg;
     return (
       <motion.section className={`${theme.fallbackBg} relative z-10 -mt-16 rounded-t-3xl px-6 pt-24 pb-16`} style={bg}
@@ -2392,6 +2532,40 @@ export default function LandingViewer() {
             </div>
           )}
         </motion.div>
+      </motion.section>
+    );
+  }
+
+  // Side-by-side text+image composition — a genuine structural alternative to
+  // the centered block above, only ever chosen (resolveAboutVariant) when a
+  // real about image exists. Mirrors the hero split block's side-flip pattern
+  // (mobile always stacks image-above-text; only desktop flips, via the same
+  // shared per-page hash so pages don't all mirror each other identically).
+  function renderAboutSplitBlock(isAlt: boolean) {
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    const imageOnRight = (pageVariantSeed() >> 3) % 2 === 0;
+    const imageOrderClass = imageOnRight ? '' : 'lg:order-last';
+    return (
+      <motion.section className={`${theme.fallbackBg} relative z-10 -mt-16 rounded-t-3xl overflow-hidden`} style={bg}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 items-center gap-10 lg:gap-0 pt-24 pb-16 px-6 lg:px-0">
+          <motion.div className={`${imageOrderClass} lg:px-10`} variants={V.split.left}>
+            <img src={legacyImages[1]} alt={business_name}
+              className={`w-full h-72 sm:h-96 object-cover ${theme.cardRadius} shadow-xl`}
+              style={imgTreatmentStyle} />
+          </motion.div>
+          <motion.div variants={V.split.right} className="max-w-lg mx-auto lg:px-10 text-center lg:text-right">
+            <EditableText as="h2" className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-1" style={{ color: clrHead }}
+              value={getEdit('about.heading', ai_content.about?.heading ?? 'קצת עלינו')}
+              onCommit={(v) => setEdit('about.heading', v)}
+              isEditing={isEditingMode} />
+            <div className="w-12 h-1 mt-3 mx-auto lg:mx-0" style={{ backgroundImage: `linear-gradient(to right, ${primary}, ${accent})`, borderRadius: '4px' }} />
+            <EditableText as="p" className="leading-relaxed text-lg mt-6" style={{ color: clrBody }}
+              value={getEdit('about.content', ai_content.about?.content ?? '')}
+              onCommit={(v) => setEdit('about.content', v)}
+              isEditing={isEditingMode} />
+          </motion.div>
+        </div>
       </motion.section>
     );
   }
@@ -2870,18 +3044,22 @@ export default function LandingViewer() {
     // a real hero image exists — see resolveHeroVariant above. Likewise both
     // services block ids dispatch through renderServicesBlock (grid / bento /
     // rows / iconlist), picked by item count + design_style — see
-    // resolveServicesVariant. This overrides the AI's structural_layout/
-    // layout_composition guess with a render-time decision driven by real,
-    // checkable signals, which is what actually varies the page's SHAPE
-    // rather than just its color.
+    // resolveServicesVariant. Both process block ids likewise dispatch through
+    // renderProcessBlock (timeline / horizontal — see resolveProcessVariant),
+    // and 'about'/'testimonials_grid' apply the same real-signal override
+    // internally (resolveAboutVariant / resolveTestimonialsVariant) even
+    // though they only have one AI-visible block id. This overrides the AI's
+    // structural_layout/layout_composition guess with a render-time decision
+    // driven by real, checkable signals, which is what actually varies the
+    // page's SHAPE rather than just its color.
     'hero_center':        () => renderHeroBlock(),
     'hero_split':         () => renderHeroBlock(),
     'services_bento':     (isAlt) => renderServicesBlock(isAlt),
     'services_grid':      (isAlt) => renderServicesBlock(isAlt),
     'benefits_list':      () => renderBenefits(),
     'benefits_cards':     (isAlt) => renderBenefitsCardsBlock(isAlt),
-    'process_timeline':   (isAlt) => renderProcessTimelineBlock(isAlt),
-    'process_horizontal': () => renderProcessSteps(),
+    'process_timeline':   (isAlt) => renderProcessBlock(isAlt),
+    'process_horizontal': (isAlt) => renderProcessBlock(isAlt),
     'testimonials_grid':  () => renderTestimonials(),
     'faq_accordion':      () => renderFaq(),
     'cta_banner':         () => renderCtaBannerBlock(),
