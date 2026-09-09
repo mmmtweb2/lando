@@ -3586,21 +3586,28 @@ export default function LandingViewer() {
       {/* ── Checkout modal ──────────────────────────────────────────────────── */}
       {(checkoutStatus === 'modal' || checkoutStatus === 'paying') && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden" dir="rtl">
+          <div className="relative w-full max-w-md max-h-[92vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col" dir="rtl">
 
-            {/* Coloured top strip */}
-            <div className="h-1.5 w-full" style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
+            {/* Close — a direct child of the non-scrolling outer box (not the
+                scrollable content below), so it stays reachable even when the
+                form is long enough to scroll on a short mobile viewport. */}
+            {checkoutStatus !== 'paying' && (
+              <button
+                onClick={() => setCheckoutStatus('idle')}
+                className="absolute top-4 left-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
+                aria-label="סגור">×</button>
+            )}
 
-            <div className="p-7 flex flex-col gap-5">
-              {/* Close */}
-              {checkoutStatus !== 'paying' && (
-                <button
-                  onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
-                  aria-label="סגור">×</button>
-              )}
+            {/* Scrollable body — the pay button used to be able to overflow
+                below the viewport on mobile with nothing scrollable to reach
+                it (this div previously had no height cap or scroll of its
+                own). Now the whole form scrolls inside a capped-height box. */}
+            <div className="overflow-y-auto">
+              {/* Coloured top strip */}
+              <div className="h-1.5 w-full" style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
 
-              {/* Header */}
+              <div className="p-7 flex flex-col gap-5">
+                {/* Header */}
               <div className="text-center pt-1">
                 <div className="text-3xl mb-2">🔒</div>
                 <h2 className="text-xl font-extrabold text-slate-900">שחרור דף לאוויר</h2>
@@ -3690,7 +3697,8 @@ export default function LandingViewer() {
                     מעביר לתשלום מאובטח...
                   </>
                 ) : `המשך לתשלום מאובטח — ${publishQuote ? publishQuote.finalAmount : 249} ש״ח`}
-              </button>
+                </button>
+              </div>
             </div>
           </div>
         </div>
