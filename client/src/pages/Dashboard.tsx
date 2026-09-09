@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, Settings, Users, LogOut,
-  CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles,
+  CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles, Share2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -308,6 +308,27 @@ function RenewalNotice({
   );
 }
 
+// Web Share API when available (opens the native share sheet — WhatsApp,
+// Messages, etc. — on mobile and on desktop browsers that support it),
+// falling back to clipboard copy everywhere else. `onCopied` lets the caller
+// show its own brief "copied" feedback for the fallback path.
+async function sharePage(slug: string, businessName: string, onCopied: () => void) {
+  const url = `https://pagey.co.il/p/${slug}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: businessName, url });
+      return;
+    } catch {
+      // User cancelled the share sheet, or it failed — fall through to copy
+      // rather than leaving the click with no effect at all.
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    onCopied();
+  } catch { /* clipboard unavailable — nothing more we can do here */ }
+}
+
 function PageGrid({
   pages, onDelete, onRenew, renewingId,
 }: {
@@ -316,6 +337,7 @@ function PageGrid({
   onRenew: (id: string) => void;
   renewingId: string | null;
 }) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   if (pages.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 flex flex-col items-center gap-3 text-center">
@@ -365,19 +387,33 @@ function PageGrid({
           {needsRenewal(p) && (
             <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} />
           )}
-          <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between">
-            <Link
-              to={`/p/${p.slug}`}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs font-medium text-[#2E63F6] hover:text-[#1E4FD6] transition-colors"
-            >
-              <ExternalLink size={12} />
-              צפייה בדף
-            </Link>
+          <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link
+                to={`/p/${p.slug}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-medium text-[#2E63F6] hover:text-[#1E4FD6] transition-colors flex-shrink-0"
+              >
+                <ExternalLink size={12} />
+                צפייה בדף
+              </Link>
+              {p.status === 'published' && (
+                <button
+                  onClick={() => sharePage(p.slug, p.business_name, () => {
+                    setCopiedId(p.id);
+                    setTimeout(() => setCopiedId((cur) => (cur === p.id ? null : cur)), 2000);
+                  })}
+                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#2E63F6] transition-colors flex-shrink-0"
+                >
+                  <Share2 size={12} />
+                  {copiedId === p.id ? 'הקישור הועתק! ✓' : 'שיתוף'}
+                </button>
+              )}
+            </div>
             <button
               onClick={() => onDelete(p.id, p.business_name)}
               title="מחק דף"
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-600 transition-colors"
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-600 transition-colors flex-shrink-0"
             >
               <Trash2 size={12} />
               מחק

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2 } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -1502,13 +1502,13 @@ export default function LandingViewer() {
   function serviceCards(svcImages: string[] = []) {
     return services.map((s, i) => (
       <motion.div key={s.id} variants={V.classic.item}
-        className={`${theme.cardRadius} ${cardGlass} flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl`}
+        className={`group ${theme.cardRadius} ${cardGlass} flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl`}
         style={techCard}>
         <EditableImage src={svcImages[i]} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
           className="w-full h-56 md:h-64" style={imgTreatmentStyle} isEditingMode={isEditingMode} canEdit={!!canEdit}
           onEditClick={() => openImageModal(`service_${i}`)} />
         <div className="flex flex-col gap-3 p-6 pt-4">
-          <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold`}
+          <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}
             style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
             {s.id}
           </div>
@@ -2740,7 +2740,7 @@ export default function LandingViewer() {
               const reversed = i % 2 === 1;
               return (
                 <motion.div key={s.id} variants={V.classic.item}
-                  className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                  className="group grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
                   <div className={`${theme.cardRadius} overflow-hidden min-h-56 lg:min-h-72 ${reversed ? 'lg:order-last' : ''}`}
                     style={imgTreatmentStyle}>
                     <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
@@ -2749,7 +2749,7 @@ export default function LandingViewer() {
                       onEditClick={() => openImageModal(`service_${i}`)} />
                   </div>
                   <div className={`flex flex-col gap-3 ${reversed ? 'lg:order-first' : ''}`}>
-                    <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold`}
+                    <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}
                       style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
                       {i + 1}
                     </div>
@@ -2789,11 +2789,16 @@ export default function LandingViewer() {
           <div className="flex flex-col divide-y" style={{ borderColor: `${primary}1a` }}>
             {services.map((s, i) => (
               <motion.div key={s.id} variants={V.classic.item}
-                className="flex items-start gap-5 py-6">
-                <div className={`w-10 h-10 flex-shrink-0 ${theme.badgeRadius} flex items-center justify-center text-sm font-bold`}
-                  style={{ border: `2px solid ${primary}`, color: primary }}>
+                whileHover={{ x: -6 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                className="group flex items-start gap-5 py-6 cursor-default">
+                <motion.div
+                  whileHover={{ scale: 1.12, rotate: -6, backgroundColor: primary, color: textOnColor(primary) }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+                  className={`w-10 h-10 flex-shrink-0 ${theme.badgeRadius} flex items-center justify-center text-sm font-bold`}
+                  style={{ border: `2px solid ${primary}`, color: primary, backgroundColor: 'transparent' }}>
                   {i + 1}
-                </div>
+                </motion.div>
                 <div className="flex flex-col gap-1.5 min-w-0">
                   <EditableText as="h3" className="font-bold text-lg text-slate-800"
                     value={getEdit(`services.${i}.title`, s.title)}
@@ -3801,14 +3806,26 @@ export default function LandingViewer() {
               <div className="w-full flex flex-col gap-2.5">
                 <button
                   onClick={async () => {
+                    const url = `https://pagey.co.il/p/${page.slug}`;
+                    // Native share sheet when available (WhatsApp, Messages,
+                    // etc. — this is exactly the moment a business owner wants
+                    // to send the fresh link to someone), clipboard as the
+                    // fallback everywhere else.
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({ title: business_name, url });
+                        return;
+                      } catch { /* cancelled or unsupported mid-call — fall through to copy */ }
+                    }
                     try {
-                      await navigator.clipboard.writeText(`https://pagey.co.il/p/${page.slug}`);
+                      await navigator.clipboard.writeText(url);
                       setLinkCopied(true);
                       setTimeout(() => setLinkCopied(false), 2000);
                     } catch { /* clipboard unavailable — ignore, link is shown in the address bar too */ }
                   }}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95">
-                  {linkCopied ? 'הקישור הועתק! ✓' : 'העתקת קישור לדף'}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95 flex items-center justify-center gap-2">
+                  <Share2 size={15} />
+                  {linkCopied ? 'הקישור הועתק! ✓' : 'שיתוף הדף'}
                 </button>
                 <Link
                   to="/dashboard?leads=1"
