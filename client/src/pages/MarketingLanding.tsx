@@ -154,9 +154,11 @@ function AnimatedDemo() {
       {/* floating badge */}
       <motion.div
         animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute -bottom-4 -right-3 bg-white rounded-2xl shadow-xl border border-slate-100 px-4 py-2.5 flex items-center gap-2">
-        <span className="rounded-full p-1.5" style={{ background: GRAD }}><Zap size={14} className="text-white" /></span>
-        <span className="text-xs font-bold text-slate-700">פחות מ-60 שניות</span>
+        className="absolute -bottom-4 -right-3 bg-white rounded-full shadow-xl border border-slate-100 p-2.5">
+        {/* Icon-only now — the "פחות מ-60 שניות" label was dropped: it
+            duplicated the hero headline right next to it, which already
+            makes that claim. */}
+        <span className="rounded-full p-1.5 flex" style={{ background: GRAD }}><Zap size={14} className="text-white" /></span>
       </motion.div>
     </div>
   );
