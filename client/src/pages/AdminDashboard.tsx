@@ -43,6 +43,29 @@ interface CouponRow {
   notes: string | null;
 }
 
+interface UserRow {
+  email: string;
+  created_at: string;
+  plan: string;
+  plan_expires_at: string | null;
+  credits: number;
+  page_credits: number;
+  page_credits_total: number;
+  white_label: boolean;
+  is_admin: boolean | null;
+  pages_total: number;
+  pages_published: number;
+}
+
+interface RevenueStats {
+  totalRevenue: number;
+  thisMonthRevenue: number;
+  last30DaysRevenue: number;
+  paidPaymentsCount: number;
+  monthlyBreakdown: { month: string; revenue: number; count: number }[];
+  byPurpose: { purpose: string; revenue: number; count: number }[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Where the admin-panel password lives for the lifetime of this TAB. Session
@@ -76,6 +99,16 @@ function formatTime(iso: string): string {
     hour: '2-digit', minute: '2-digit',
   });
 }
+
+function formatCurrency(amount: number): string {
+  return `₪${amount.toLocaleString('he-IL', { maximumFractionDigits: 0 })}`;
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  free:       'חינמי',
+  freelancer: 'פרילנסר',
+  agency:     'סוכנות',
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -269,8 +302,49 @@ export default function AdminDashboard() {
     if (!user || denied || !adminPw) return;
     loadReviewPayments();
     loadCoupons();
+    loadUsers();
+    loadRevenue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, denied, adminPw]);
+
+  // ── Customers (registered users) ─────────────────────────────────────────
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+
+  function loadUsers() {
+    setUsersLoading(true);
+    adminFetch('/api/admin/users')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת הלקוחות נכשלה');
+        return r.json() as Promise<UserRow[]>;
+      })
+      .then(setUsers)
+      .catch((e: Error) => setUsersError(e.message))
+      .finally(() => setUsersLoading(false));
+  }
+
+  const filteredUsers = users.filter((u) =>
+    u.email.toLowerCase().includes(userSearch.trim().toLowerCase()),
+  );
+
+  // ── Revenue overview ──────────────────────────────────────────────────────
+  const [revenue, setRevenue] = useState<RevenueStats | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(true);
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+
+  function loadRevenue() {
+    setRevenueLoading(true);
+    adminFetch('/api/admin/revenue')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת נתוני ההכנסות נכשלה');
+        return r.json() as Promise<RevenueStats>;
+      })
+      .then(setRevenue)
+      .catch((e: Error) => setRevenueError(e.message))
+      .finally(() => setRevenueLoading(false));
+  }
 
   async function handlePaymentAction(id: string, action: 'reverify' | 'force-activate') {
     setPaymentBusyId(id);
@@ -491,6 +565,125 @@ export default function AdminDashboard() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">דפי נחיתה</h1>
             <p className="text-sm text-slate-400 mt-1">ניהול כל הדפים שנוצרו</p>
+          </div>
+
+          {/* ── Revenue overview ──────────────────────────────────────────── */}
+          <div>
+            <h2 className="font-semibold text-slate-700 text-sm mb-3">הכנסות</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatCard
+                label="סה״כ הכנסות"
+                value={revenueLoading ? '—' : formatCurrency(revenue?.totalRevenue ?? 0)}
+                sub={revenue ? `${revenue.paidPaymentsCount} תשלומים` : undefined}
+              />
+              <StatCard label="החודש" value={revenueLoading ? '—' : formatCurrency(revenue?.thisMonthRevenue ?? 0)} />
+              <StatCard label="30 יום אחרונים" value={revenueLoading ? '—' : formatCurrency(revenue?.last30DaysRevenue ?? 0)} />
+              <StatCard
+                label="הכי נמכר"
+                value={revenueLoading || !revenue?.byPurpose[0] ? '—' : (PURPOSE_LABELS[revenue.byPurpose[0].purpose] ?? revenue.byPurpose[0].purpose)}
+                sub={revenue?.byPurpose[0] ? formatCurrency(revenue.byPurpose[0].revenue) : undefined}
+              />
+            </div>
+            {revenueError && <p className="text-xs text-red-500 mt-2">{revenueError}</p>}
+
+            {!revenueLoading && revenue && revenue.monthlyBreakdown.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-4">
+                <div className="px-5 py-4 border-b border-slate-100">
+                  <h3 className="font-semibold text-slate-700 text-sm">הכנסות לפי חודש</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                        <th className="px-4 py-2.5 font-medium">חודש</th>
+                        <th className="px-4 py-2.5 font-medium">הכנסות</th>
+                        <th className="px-4 py-2.5 font-medium">מס&apos; תשלומים</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {revenue.monthlyBreakdown.map((m) => (
+                        <tr key={m.month} className="border-b border-slate-50 last:border-0">
+                          <td className="px-4 py-3 text-slate-700" dir="ltr">{m.month}</td>
+                          <td className="px-4 py-3 text-slate-700 font-semibold">{formatCurrency(m.revenue)}</td>
+                          <td className="px-4 py-3 text-slate-500">{m.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Customers (registered users) ─────────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-700 text-sm">לקוחות</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{usersLoading ? '—' : `${users.length} משתמשים רשומים`}</p>
+              </div>
+              <div className="relative max-w-xs w-full">
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="חיפוש לפי אימייל..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition"
+                />
+              </div>
+            </div>
+
+            {usersLoading ? (
+              <div className="flex items-center justify-center py-20 text-slate-400 gap-3">
+                <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" opacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" />
+                </svg>
+                טוען לקוחות...
+              </div>
+            ) : usersError ? (
+              <p className="text-sm text-red-500 px-5 py-8 text-center">{usersError}</p>
+            ) : filteredUsers.length === 0 ? (
+              <p className="text-sm text-slate-400 px-5 py-8 text-center">אין לקוחות תואמים.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                      <th className="px-4 py-2.5 font-medium">אימייל</th>
+                      <th className="px-4 py-2.5 font-medium">נרשם</th>
+                      <th className="px-4 py-2.5 font-medium">תוכנית</th>
+                      <th className="px-4 py-2.5 font-medium">קרדיטים</th>
+                      <th className="px-4 py-2.5 font-medium">קרדיטי דפים</th>
+                      <th className="px-4 py-2.5 font-medium">דפים (פורסמו/סה״כ)</th>
+                      <th className="px-4 py-2.5 font-medium">מיתוג אישי</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((u) => (
+                      <tr key={u.email} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition">
+                        <td className="px-4 py-3 text-slate-700" dir="ltr">
+                          {u.email}
+                          {u.is_admin && <span className="mr-2 text-[10px] font-bold text-[#2E63F6] bg-[#E4EAFB] rounded-full px-2 py-0.5">מנהל</span>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(u.created_at)}</td>
+                        <td className="px-4 py-3 text-slate-700">{PLAN_LABELS[u.plan] ?? u.plan}</td>
+                        <td className="px-4 py-3 text-slate-700">{u.credits}</td>
+                        <td className="px-4 py-3 text-slate-700">{u.page_credits}</td>
+                        <td className="px-4 py-3 text-slate-700">{u.pages_published} / {u.pages_total}</td>
+                        <td className="px-4 py-3">
+                          {u.white_label
+                            ? <span className="text-[11px] font-semibold text-emerald-600">✓ פעיל</span>
+                            : <span className="text-[11px] text-slate-300">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* ── Stat cards ─────────────────────────────────────────────────── */}
