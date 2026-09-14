@@ -42,6 +42,15 @@ interface PageRow {
 
 /** Annual renewal price. Mirrors RENEWAL_PRICE in src/config/billing.ts. */
 const RENEWAL_PRICE = 99;
+/** Mirrors renewalPriceFor() in src/config/billing.ts — the lifetime-pages
+    discount tiers (79 ₪ at 5+, 59 ₪ at 10+). Kept in sync manually; the real
+    charge is always computed server-side by the same function, so a drift
+    here is a display-only bug, never a billing one. */
+function renewalPriceFor(pageCreditsTotal: number): number {
+  if (pageCreditsTotal >= 10) return 59;
+  if (pageCreditsTotal >= 5) return 79;
+  return RENEWAL_PRICE;
+}
 
 /** Show the renewal prompt on a live page once it is this close to expiring —
  *  the same T-30 threshold at which the first reminder email goes out, so the
@@ -180,7 +189,7 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
           <p className="mt-2 text-sm leading-relaxed text-slate-500 max-w-xl">
             {hasBalance
               ? 'כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.'
-              : 'פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).'}
+              : 'פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־198 ₪ (5 דפים) או 149 ₪ (10 דפים).'}
           </p>
         </div>
         <button onClick={onBuyBundle} className={`${btnSecondary} flex-shrink-0`}>
@@ -279,8 +288,8 @@ function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
  * completely unchanged — the prompt is a signal, and a permanent one is noise.
  */
 function RenewalNotice({
-  page, onRenew, busy,
-}: { page: PageRow; onRenew: (id: string) => void; busy: boolean }) {
+  page, onRenew, busy, renewalPrice,
+}: { page: PageRow; onRenew: (id: string) => void; busy: boolean; renewalPrice: number }) {
   const frozen = page.status === 'frozen';
   const days = daysUntil(page.expires_at);
 
@@ -301,7 +310,7 @@ function RenewalNotice({
         disabled={busy}
         className={`mt-2.5 w-full rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors disabled:opacity-50 ${frozen ? 'bg-slate-800 hover:bg-slate-900' : 'bg-amber-600 hover:bg-amber-700'}`}
       >
-        {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${RENEWAL_PRICE} ₪`}
+        {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${renewalPrice} ₪`}
       </button>
       {/* Same pre-payment disclosure as the other paid entry points. No
           checkbox here: a renewal re-buys a product this owner already bought
@@ -337,12 +346,13 @@ async function sharePage(slug: string, businessName: string, onCopied: () => voi
 }
 
 function PageGrid({
-  pages, onDelete, onRenew, renewingId,
+  pages, onDelete, onRenew, renewingId, renewalPrice,
 }: {
   pages: PageRow[];
   onDelete: (id: string, name: string) => void;
   onRenew: (id: string) => void;
   renewingId: string | null;
+  renewalPrice: number;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   if (pages.length === 0) {
@@ -392,7 +402,7 @@ function PageGrid({
             </p>
           )}
           {needsRenewal(p) && (
-            <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} />
+            <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} renewalPrice={renewalPrice} />
           )}
           <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 min-w-0">
@@ -458,6 +468,13 @@ export default function Dashboard() {
   const [pages, setPages]             = useState<PageRow[]>([]);
   const [leads, setLeads]             = useState<LeadRow[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  // 2026-09-14: distinguishes "genuinely no pages yet" from "the fetch
+  // failed" — without this, a network blip/expired-token/500 rendered the
+  // exact same empty state as a brand-new account, silently telling a
+  // paying customer their pages are gone. retryTick just forces the fetch
+  // effect below to re-run when the user clicks "try again".
+  const [dataError, setDataError]     = useState(false);
+  const [retryTick, setRetryTick]     = useState(0);
   const [activeTab, setActiveTab]     = useState<ActiveTab>('pages');
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [buying, setBuying] = useState(false);
@@ -567,6 +584,7 @@ export default function Dashboard() {
 
     async function fetchData() {
       setDataLoading(true);
+      setDataError(false);
       try {
         // Both fetched via the backend (service-role, token-authenticated) so the
         // browser never touches the DB directly and RLS can stay locked to deny-all.
@@ -599,6 +617,7 @@ export default function Dashboard() {
         }
       } catch (err) {
         console.error('[Dashboard] data fetch failed:', err);
+        if (!cancelled) setDataError(true);
       } finally {
         if (!cancelled) setDataLoading(false);
       }
@@ -606,7 +625,7 @@ export default function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user, retryTick]);
 
   // Auth resolving — full-screen spinner
   if (authLoading) {
@@ -865,7 +884,7 @@ export default function Dashboard() {
 
         {showDeleteAccount && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !deletingAccount && setShowDeleteAccount(false)}>
-            <div className="w-full max-w-md rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
                 <h3 className="text-base font-semibold tracking-tight text-red-700">מחיקת חשבון לצמיתות</h3>
                 {!deletingAccount && (
@@ -911,7 +930,7 @@ export default function Dashboard() {
 
         {showBuyCredits && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !buying && setShowBuyCredits(false)}>
-            <div className="w-full max-w-md rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
                 <h3 className="text-base font-semibold tracking-tight text-slate-900">טעינת קרדיטים</h3>
                 {!buying && (
@@ -1237,13 +1256,22 @@ export default function Dashboard() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.18 }}
                   >
-                    {activeTab === 'pages' ? (
+                    {dataError ? (
+                      <div className="rounded-xl border border-dashed border-red-200 bg-red-50/50 p-12 flex flex-col items-center gap-3 text-center">
+                        <p className="text-sm font-semibold text-red-700">משהו השתבש בטעינת הנתונים</p>
+                        <p className="text-sm text-red-500/80">זה לא בהכרח אומר שאין לכם דפים — כנראה תקלת רשת זמנית.</p>
+                        <button onClick={() => setRetryTick((t) => t + 1)} className={`${btnSecondary} mt-1`}>
+                          נסו שוב
+                        </button>
+                      </div>
+                    ) : activeTab === 'pages' ? (
                       dataLoading ? <PageGridSkeleton /> : (
                         <PageGrid
                           pages={pages}
                           onDelete={handleDeletePage}
                           onRenew={handleRenewPage}
                           renewingId={renewingId}
+                          renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : RENEWAL_PRICE}
                         />
                       )
                     ) : (

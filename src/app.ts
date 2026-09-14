@@ -68,7 +68,12 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: err.message ?? 'Internal server error' });
+  // 2026-09-14 pre-launch audit: was returning err.message straight to the
+  // client — a raw Postgres/Supabase driver error can include table/column/
+  // constraint names, handing an attacker free reconnaissance on any
+  // unexpected 500. Log the real error server-side (above); the client only
+  // ever gets a generic message.
+  res.status(500).json({ error: 'שגיאה בשרת. נסו שוב, ואם זה נמשך צרו איתנו קשר.' });
 });
 
 export default app;

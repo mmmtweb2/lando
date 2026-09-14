@@ -118,9 +118,21 @@ function SyncAuth() {
       body: JSON.stringify({ ref: pendingRef }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((profile: UserProfile | null) => { setUser(profile ?? fallback); })
-      .catch(() => { setUser(fallback); })
-      .finally(() => { setIsAuthReady(true); localStorage.removeItem('pending_ref'); });
+      .then((profile: UserProfile | null) => {
+        if (profile) {
+          setUser(profile);
+          localStorage.removeItem('pending_ref');
+        } else {
+          // Sync failed (non-OK response) — render the fallback now, but
+          // don't persist it: persisting would make the next mount trust
+          // this fake zero-credit profile as "already synced" forever (see
+          // the guard above). Keep pending_ref too, so a transient failure
+          // doesn't permanently drop the referral attribution.
+          setUser(fallback, false);
+        }
+      })
+      .catch(() => { setUser(fallback, false); })
+      .finally(() => { setIsAuthReady(true); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.email, authLoading]);
 

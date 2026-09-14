@@ -3453,9 +3453,9 @@ export default function LandingViewer() {
               onLoad={setCredits}
             />
           )}
-          <div className="flex items-center gap-2.5">
-            {logo_url && <img src={logo_url} alt={business_name} className="h-8 w-8 rounded-lg object-contain" />}
-            <span className="font-bold text-slate-800 text-sm">{business_name}</span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {logo_url && <img src={logo_url} alt={business_name} className="h-8 w-8 rounded-lg object-contain flex-shrink-0" />}
+            <span className="font-bold text-slate-800 text-sm truncate">{business_name}</span>
           </div>
         </div>
       </header>
@@ -3655,7 +3655,7 @@ export default function LandingViewer() {
                   on, and hiding that would be selling the expensive option to
                   someone we know we could serve for less. */}
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 text-center leading-relaxed">
-                מפרסמים כמה דפים? <Link to="/dashboard?bundles=1" className="font-semibold text-[#2E63F6] hover:underline">חבילת דפים</Link> מוזילה את המחיר לדף ל־186 ₪ (5 דפים) או 125 ₪ (10 דפים).
+                מפרסמים כמה דפים? <Link to="/dashboard?bundles=1" className="font-semibold text-[#2E63F6] hover:underline">חבילת דפים</Link> מוזילה את המחיר לדף ל־198 ₪ (5 דפים) או 149 ₪ (10 דפים).
               </div>
 
               {/* Secure redirect notice — card details are entered on SUMIT's
@@ -3723,15 +3723,21 @@ export default function LandingViewer() {
           clicks the confirm button below — no silent balance spend. ──────── */}
       {(checkoutStatus === 'confirm' || checkoutStatus === 'confirmPaying') && planStatus && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden" dir="rtl">
-            <div className="h-1.5 w-full" style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
-            <div className="p-7 flex flex-col gap-5">
-              {checkoutStatus !== 'confirmPaying' && (
-                <button
-                  onClick={() => setCheckoutStatus('idle')}
-                  className="absolute top-4 left-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
-                  aria-label="סגור">×</button>
-              )}
+          <div className="relative w-full max-w-md max-h-[92vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col" dir="rtl">
+            {/* Close — direct child of the non-scrolling outer box, same fix
+                pattern already applied to the publish checkout modal (2026-09-14
+                pre-launch audit: this modal had the identical overflow-hidden
+                + no-height-cap bug that made the pay button unreachable on
+                short mobile viewports). */}
+            {checkoutStatus !== 'confirmPaying' && (
+              <button
+                onClick={() => setCheckoutStatus('idle')}
+                className="absolute top-4 left-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
+                aria-label="סגור">×</button>
+            )}
+            <div className="overflow-y-auto">
+              <div className="h-1.5 w-full" style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
+              <div className="p-7 flex flex-col gap-5">
 
               <div className="text-center pt-1">
                 <div className="text-3xl mb-2">✅</div>
@@ -3791,6 +3797,7 @@ export default function LandingViewer() {
                     ביטול
                   </button>
                 )}
+              </div>
               </div>
             </div>
           </div>

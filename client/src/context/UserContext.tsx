@@ -11,7 +11,13 @@ export interface UserProfile {
 
 interface UserContextType {
   user: UserProfile | null;
-  setUser: (user: UserProfile | null) => void;
+  // `persist` (default true): whether to also write the profile to
+  // localStorage. Pass false for a transient/fallback value (e.g. a failed
+  // profile-sync) so it renders now but is NOT cached — otherwise a failed
+  // sync gets treated as "already synced" on every future mount (the guard
+  // in App.tsx's SyncAuth trusts anything cached under the user's email),
+  // permanently masking the real profile behind a fake zero-credit one.
+  setUser: (user: UserProfile | null, persist?: boolean) => void;
   isAuthReady: boolean;
   setIsAuthReady: (ready: boolean) => void;
 }
@@ -36,8 +42,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   });
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  function setUser(profile: UserProfile | null) {
+  function setUser(profile: UserProfile | null, persist = true) {
     setUserState(profile);
+    if (!persist) return;
     if (profile) localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
     else localStorage.removeItem(STORAGE_KEY);
   }

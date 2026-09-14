@@ -70,11 +70,16 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     }
     // A frozen page is an expired page, not an unpublished one. Selling a 249₪
     // publish for it would charge two and a half times the renewal price for the
-    // same outcome — the customer is entitled to bring it back for 99₪.
+    // same outcome — the customer is entitled to bring it back at their renewal
+    // price instead (2026-09-14: this used to hardcode "99 ₪" regardless of the
+    // account's lifetime-pages discount tier — fixed to quote the real price,
+    // the same one renewalPriceFor() will actually charge).
     if ((page as { status?: string }).status === 'frozen') {
+      const frozenAccountStatus = await getAccountStatus(email);
+      const price = renewalPriceFor(frozenAccountStatus.pageCreditsTotal);
       res.status(409).json({
         needsRenewal: true,
-        error: 'הדף פג תוקף. כדי להחזירו לאוויר יש לחדש אותו — 99 ₪ לשנה, ולא לשלם שוב על פרסום.',
+        error: `הדף פג תוקף. כדי להחזירו לאוויר יש לחדש אותו — ${price} ₪ לשנה, ולא לשלם שוב על פרסום.`,
       });
       return;
     }
