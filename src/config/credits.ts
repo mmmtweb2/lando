@@ -41,14 +41,15 @@
 //    and it replaces the old, unintentional 1-vs-4 inconsistency (which was a
 //    ~87% discount nobody had chosen).
 //
-// STARTING_CREDITS is derived from the table, not picked: Moshe's requirement is
-// that a new account can regenerate its images once and rewrite all of its text
-// twice, plus a small bonus.
-//   1 x full image-set regen (8) + 2 x full-page text rewrite (2 x 6 = 12) = 20
-//   + 4 bonus  →  24.
-// The 4-credit bonus is exactly one CREATE_IMAGE_SET, so a new user's very first
-// page can be generated with AI images and still have the full 20 credits of
-// editing budget Moshe asked for.
+// STARTING_CREDITS (2026-09-14, Moshe's call — repriced alongside the
+// single-page purchase grant below): a new account gets a small taste, not a
+// full editing budget for free. The real editing budget now comes from
+// actually BUYING a page (see SINGLE_PAGE_AI_CREDITS in config/billing.ts),
+// which also fixed a real inaccuracy: the checkout modal and Terms of Service
+// used to promise "20 עריכות AI כלולות" as part of the ₪249 page purchase, but
+// a single-page purchase granted 0 AI credits — the 20-credit budget was
+// actually STARTING_CREDITS, a ONE-TIME signup grant unrelated to any specific
+// purchase. Now the promise is real: buying a page grants AI credits directly.
 //
 // Whole numbers only — no fractional credits are ever charged or displayed.
 // The client mirrors this table in client/src/config/credits.ts; keep both in
@@ -75,5 +76,4 @@ export const CREDIT_COSTS = {
  * below (and to the DB default in migrations/011_credit_repricing.sql):
  *   1 full image-set regen + 2 full-page text rewrites + a 4-credit bonus.
  */
-export const STARTING_CREDITS =
-  CREDIT_COSTS.IMAGE_FULL_SET + 2 * CREDIT_COSTS.TEXT_FULL_PAGE + 4; // = 24
+export const STARTING_CREDITS = 10;

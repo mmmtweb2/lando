@@ -15,7 +15,10 @@ import { trackPageView, trackPageCtaClick } from '../services/analytics.service'
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, created_at, image_source, logo_url, enable_form, status')
+    .select(
+      'id, slug, business_name, created_at, image_source, logo_url, enable_form, status, ' +
+      'owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at',
+    )
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -111,6 +114,23 @@ export async function updateLandingPage(req: Request, res: Response): Promise<vo
 
 export async function deleteLandingPage(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
+
+  // Leads FIRST — `leads_landing_page_id_fkey` has no ON DELETE clause
+  // (NO ACTION, see 006_consolidate_schema.sql), so deleting a page that
+  // still has leads raises a foreign-key violation. This mirrors the ordering
+  // renewal.service.ts's hardDeleteFrozenPages already uses — found while
+  // auditing this path 2026-09-14: this admin delete button had NEVER deleted
+  // leads first, so deleting any page that had ever received a real lead
+  // through its contact form would 500 instead of deleting it.
+  const { error: leadsError } = await supabase
+    .from('leads')
+    .delete()
+    .eq('landing_page_id', id);
+
+  if (leadsError) {
+    res.status(500).json({ error: leadsError.message });
+    return;
+  }
 
   const { error } = await supabase
     .from('landing_pages')
@@ -399,7 +419,11 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         await consumeMonthlyCreate(req.authEmail);
       } catch (e) {
         if (e instanceof Error && e.message === 'monthly_create_limit') {
-          res.status(429).json({ error: 'הגעת למכסת יצירת הדפים החודשית של החשבון שלך. המכסה מתחדשת בתחילת החודש הבא.' });
+          res.status(429).json({ error: 'הגעת למכסת יצירת הדפים החודשית של החשבון החינמי שלך. המכסה מתחדשת בתחילת החודש הבא, או שדרגו לחבילת דפים לקבלת מכסה מורחבת.' });
+          return;
+        }
+        if (e instanceof Error && e.message === 'creation_allowance_limit') {
+          res.status(429).json({ error: 'הגעת למכסת היצירות הכלולה בחבילת הדפים שרכשתם. רכשו דף נוסף או חבילה נוספת כדי להמשיך ליצור.' });
           return;
         }
         throw e;

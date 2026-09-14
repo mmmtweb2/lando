@@ -70,7 +70,7 @@ interface AccountStatus {
   label: string;
   /** Page-publish balance — publishing a page costs exactly 1. Never expires. */
   pageCredits: number;
-  /** Lifetime page credits ever bought (drives the monthly creation cap tier). */
+  /** Lifetime page credits ever bought (drives the creation-allowance tier). */
   pageCreditsTotal: number;
   activePages: number;
   monthlyCreate: number;
@@ -195,7 +195,13 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
         {plan.monthlyCreate > 0 && (
           <div className="flex flex-col gap-2 px-5 py-3.5 border-t border-slate-100 sm:border-t-0 sm:border-s sm:border-slate-100">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-slate-500">דפים שנוצרו החודש</span>
+              {/* Free tier: a monthly-resetting quota (unchanged). Paid tier
+                  (2026-09-14): a LIFETIME creation allowance included in what
+                  was purchased (2x the pages bought) — framed as "included in
+                  the package", never "this month", since it doesn't reset. */}
+              <span className="text-sm text-slate-500">
+                {plan.tier === 'paid' ? 'יצירות כלולות בחבילה' : 'דפים שנוצרו החודש'}
+              </span>
               <span className="text-sm font-medium text-slate-900 tabular-nums">{plan.createdThisPeriod} / {plan.monthlyCreate}</span>
             </div>
             <UsageBar used={plan.createdThisPeriod} total={plan.monthlyCreate} />

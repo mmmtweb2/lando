@@ -3,8 +3,8 @@ import { supabase } from '../config/supabase';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
 import { publishPageWithCredit } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
-import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey } from '../config/billing';
-import { canPublishFromBalance, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
+import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey, renewalPriceFor } from '../config/billing';
+import { canPublishFromBalance, getAccountStatus, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
 import { checkRenewEligibility, grantRenewal } from '../services/renewal.service';
 import {
   CouponRow, checkCoupon, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption,
@@ -128,9 +128,11 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
 
     // NOTE: page_credits are deliberately NOT consulted. A page credit buys the
     // right to publish a NEW page (249₪ of value); spending one on a 99₪
-    // renewal would quietly overcharge the customer. Renewal is always its own
-    // flat fee — see RENEWAL_PRICE in config/billing.ts.
-    amount = RENEWAL_PRICE;
+    // renewal would quietly overcharge the customer. Renewal is its own fee —
+    // see RENEWAL_PRICE / renewalPriceFor in config/billing.ts. Discounted for
+    // accounts that have bought enough pages, lifetime (2026-09-14).
+    const renewalStatus = await getAccountStatus(email);
+    amount = renewalPriceFor(renewalStatus.pageCreditsTotal);
     itemName = `חידוש שנתי לדף נחיתה - ${eligibility.businessName ?? 'Pagey'}`;
   } else if (purpose === 'credits') {
     const pack = reference ? CREDIT_PACKS[reference] : undefined;
@@ -262,9 +264,15 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
  * is startPayment's job, and re-implementing those checks here would mean two
  * places that could disagree about who is allowed to pay for what.
  */
-function basePriceForPurpose(purpose: string, reference?: string): number | null {
+async function basePriceForPurpose(purpose: string, reference: string | undefined, email: string): Promise<number | null> {
   if (purpose === 'publish') return SINGLE_PAGE_PRICE;
-  if (purpose === 'renew') return RENEWAL_PRICE;
+  if (purpose === 'renew') {
+    // Same lifetime-purchase discount tier as startPayment's real renewal
+    // charge (renewalPriceFor) — this preview must never quote a price the
+    // real charge won't honour.
+    const status = await getAccountStatus(email);
+    return renewalPriceFor(status.pageCreditsTotal);
+  }
   if (purpose === 'credits') return reference ? (CREDIT_PACKS[reference]?.price ?? null) : null;
   if (purpose === 'bundle') return isBundleKey(reference) ? BUNDLES[reference as BundleKey].price : null;
   return null;
@@ -288,7 +296,7 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
   if (!code || !code.trim()) { res.status(400).json({ error: 'יש להזין קוד קופון.' }); return; }
   if (!purpose) { res.status(400).json({ error: "purpose must be 'publish', 'renew', 'credits' or 'bundle'" }); return; }
 
-  const baseAmount = basePriceForPurpose(purpose, reference);
+  const baseAmount = await basePriceForPurpose(purpose, reference, email);
   if (baseAmount === null) {
     res.status(400).json({ error: 'לא ניתן לחשב את מחיר הרכישה עבור הקופון.' });
     return;

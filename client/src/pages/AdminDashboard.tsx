@@ -13,6 +13,12 @@ interface PageRow {
   image_source: string;
   logo_url: string | null;
   enable_form: boolean;
+  status?: string;
+  owner_email?: string | null;
+  expires_at?: string | null;
+  renewal_reminder_30_at?: string | null;
+  renewal_reminder_7_at?: string | null;
+  renewal_reminder_0_at?: string | null;
 }
 
 interface PaymentRow {
@@ -102,6 +108,67 @@ function formatTime(iso: string): string {
 
 function formatCurrency(amount: number): string {
   return `₪${amount.toLocaleString('he-IL', { maximumFractionDigits: 0 })}`;
+}
+
+/** Whole days from now until `iso` — negative once it's in the past. */
+function daysUntil(iso: string): number {
+  const ms = new Date(iso).getTime() - Date.now();
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Expiry + days-remaining, colour-coded so a near-expiry page is obvious at a
+ * glance without opening it: red once it's expired or expiring today, amber
+ * inside the 7-day grace-period window, slate otherwise. Only published pages
+ * have an `expires_at` that matters — drafts and frozen pages render "—".
+ */
+function ExpiryCell({ page }: { page: PageRow }) {
+  if (page.status !== 'published' || !page.expires_at) {
+    return <span className="text-slate-300">—</span>;
+  }
+  const days = daysUntil(page.expires_at);
+  const urgent = days <= 0;
+  const soon = !urgent && days <= 7;
+  const color = urgent ? 'text-red-600' : soon ? 'text-amber-600' : 'text-slate-500';
+  const daysLabel = urgent ? 'פג תוקף' : days === 1 ? 'עוד יום' : `עוד ${days} ימים`;
+  return (
+    <span className={color}>
+      <span className="block">{formatDate(page.expires_at)}</span>
+      <span className={`text-xs ${urgent || soon ? 'font-semibold' : ''}`}>{daysLabel}</span>
+    </span>
+  );
+}
+
+/**
+ * Which of the 3 renewal reminder emails have actually been sent for this
+ * page (T-30 / T-7 / T-0 — see renewal.service.ts). Lets an admin confirm a
+ * specific customer really received their reminder instead of just trusting
+ * the sweep ran, without needing server-log access.
+ */
+function ReminderCell({ page }: { page: PageRow }) {
+  if (page.status !== 'published' && page.status !== 'frozen') {
+    return <span className="text-slate-300">—</span>;
+  }
+  const stages: { label: string; at: string | null | undefined }[] = [
+    { label: '30', at: page.renewal_reminder_30_at },
+    { label: '7', at: page.renewal_reminder_7_at },
+    { label: '0', at: page.renewal_reminder_0_at },
+  ];
+  return (
+    <div className="flex items-center gap-1" title="תזכורות חידוש שנשלחו (ימים לפני התפוגה)">
+      {stages.map((s) => (
+        <span
+          key={s.label}
+          title={s.at ? `נשלח ב-${formatDate(s.at)} ${formatTime(s.at)}` : 'טרם נשלח'}
+          className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold ${
+            s.at ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-300'
+          }`}
+        >
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 const PLAN_LABELS: Record<string, string> = {
@@ -211,6 +278,7 @@ export default function AdminDashboard() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
   const [search, setSearch] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<PageRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
@@ -512,8 +580,13 @@ export default function AdminDashboard() {
   }
 
   const filtered = pages.filter((p) =>
-    p.business_name.toLowerCase().includes(search.toLowerCase()),
+    p.business_name.toLowerCase().includes(search.toLowerCase())
+    && (!ownerFilter || (p.owner_email ?? '').toLowerCase() === ownerFilter.toLowerCase()),
   );
+
+  // Distinct owners, for the filter dropdown — sorted so the list is stable
+  // and scannable rather than in raw creation order.
+  const owners = Array.from(new Set(pages.map((p) => p.owner_email).filter((e): e is string => !!e))).sort();
 
   const sourceCount = pages.reduce<Record<string, number>>((acc, p) => {
     acc[p.image_source] = (acc[p.image_source] ?? 0) + 1;
@@ -937,19 +1010,29 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
 
             {/* Table header / search bar */}
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold text-slate-700 text-sm">כל הדפים</h2>
-              <div className="relative max-w-xs w-full">
-                <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="חיפוש לפי שם עסק..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition"
-                />
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={ownerFilter}
+                  onChange={(e) => setOwnerFilter(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition max-w-[200px]"
+                >
+                  <option value="">כל המשתמשים</option>
+                  {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <div className="relative max-w-xs w-full">
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="חיפוש לפי שם עסק..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition"
+                  />
+                </div>
               </div>
             </div>
 
@@ -982,9 +1065,12 @@ export default function AdminDashboard() {
                     <tr className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide bg-slate-50/60">
                       <th className="px-5 py-3 w-12" />
                       <th className="px-4 py-3">שם העסק</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">משתמש</th>
                       <th className="px-4 py-3 hidden sm:table-cell">תאריך יצירה</th>
                       <th className="px-4 py-3 hidden md:table-cell">מקור תמונה</th>
                       <th className="px-4 py-3 hidden lg:table-cell">טופס לידים</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">תפוגה</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">תזכורות</th>
                       <th className="px-4 py-3 text-left">פעולות</th>
                     </tr>
                   </thead>
@@ -1009,6 +1095,11 @@ export default function AdminDashboard() {
                           <p className="text-xs text-slate-400 mt-0.5 font-mono" dir="ltr">{p.slug}</p>
                         </td>
 
+                        {/* Owner */}
+                        <td className="px-4 py-3.5 hidden xl:table-cell text-slate-500 text-xs" dir="ltr">
+                          {p.owner_email ?? '—'}
+                        </td>
+
                         {/* Date */}
                         <td className="px-4 py-3.5 hidden sm:table-cell text-slate-500">
                           <span className="block">{formatDate(p.created_at)}</span>
@@ -1026,6 +1117,16 @@ export default function AdminDashboard() {
                             <span className={`w-1.5 h-1.5 rounded-full ${p.enable_form ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                             {p.enable_form ? 'פעיל' : 'כבוי'}
                           </span>
+                        </td>
+
+                        {/* Expiry */}
+                        <td className="px-4 py-3.5 hidden lg:table-cell text-xs">
+                          <ExpiryCell page={p} />
+                        </td>
+
+                        {/* Renewal reminders sent */}
+                        <td className="px-4 py-3.5 hidden xl:table-cell">
+                          <ReminderCell page={p} />
                         </td>
 
                         {/* Actions */}

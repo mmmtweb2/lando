@@ -12,7 +12,7 @@ export default function ReferralCard({ user }: Props) {
   const refCode = user.affiliate_code || user.email;
   const referralLink = `${window.location.origin}?ref=${encodeURIComponent(refCode)}`;
 
-  const waMessage = `היי! מצאתי כלי מדהים ליצירת דפי נחיתה עם AI ✨\nהצטרף דרך הקישור שלי וקבלו ביחד 5 ✦ קרדיטים לארנק: ${referralLink}`;
+  const waMessage = `היי! מצאתי כלי מדהים ליצירת דפי נחיתה עם AI ✨\nהצטרף דרך הקישור שלי ותקבל 5 ✦ קרדיטים לארנק שלך: ${referralLink}`;
 
   function copyLink() {
     navigator.clipboard.writeText(referralLink).then(() => {
@@ -34,8 +34,9 @@ export default function ReferralCard({ user }: Props) {
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900">הזמנת חברים</h3>
           <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">
-            על כל חבר שיירשם דרך הלינק שלך, תקבל{' '}
-            <span className="font-semibold text-slate-900">5 קרדיטים</span> לארנק
+            על כל חבר שיירשם ויפרסם דף ראשון דרך הלינק שלך, תקבל{' '}
+            <span className="font-semibold text-slate-900">10 קרדיטים</span> לארנק שלך,
+            והוא יקבל <span className="font-semibold text-slate-900">5 קרדיטים</span> משלו
           </p>
         </div>
       </div>

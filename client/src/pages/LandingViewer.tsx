@@ -3640,7 +3640,7 @@ export default function LandingViewer() {
                     'פרסום מיידי — גלוי לציבור',
                     'טפסי יצירת קשר פעילים',
                     'תוקף לשנה מלאה',
-                    '20 עריכות AI כלולות',
+                    '10 קרדיטי AI במתנה',
                   ].map((item) => (
                     <div key={item} className="flex items-center gap-2">
                       <span className="text-emerald-500 font-bold text-base leading-none">✓</span>

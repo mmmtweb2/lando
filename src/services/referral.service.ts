@@ -13,8 +13,8 @@
 // (`publishPageById`, src/controllers/landing.controller.ts). A signup with no
 // real page ever published now earns nothing, closing the mint.
 //
-// Same amounts as before (REFERRAL_BONUS = 5, both sides) — only the timing
-// changed. `addCredits` (credits.service.ts) already does the CAS the AI
+// 2026-09-14: amounts changed from a flat 5/5 to REFERRER_BONUS=10 /
+// REFEREE_BONUS=5 (see below) — the timing described here is unchanged. `addCredits` (credits.service.ts) already does the CAS the AI
 // credit balance needs; the new piece here is the CAS on
 // `referral_bonus_granted` itself, which makes the whole grant idempotent: a
 // page can only ever "first publish" once for a given owner in the sense that
@@ -25,8 +25,13 @@
 import { supabase } from '../config/supabase';
 import { addCredits } from './credits.service';
 
-/** Credits granted to BOTH the referrer and the referee, unchanged from before. */
-export const REFERRAL_BONUS = 5;
+/**
+ * Referral credits (2026-09-14, Moshe's call — was a flat 5/5): the sharer now
+ * earns more than the person they invited, as a real incentive to actually
+ * share rather than a symmetric "both get the same" split.
+ */
+export const REFERRER_BONUS = 10; // the person who shared their link
+export const REFEREE_BONUS = 5;   // the person who signed up through it
 
 interface RefereeRow {
   email?: string | null;
@@ -91,7 +96,7 @@ export async function grantReferralBonusOnFirstPublish(refereeEmail: string): Pr
   // Referee's own bonus. addCredits is itself a CAS on the credit balance, so
   // this can't clobber (or be clobbered by) any other concurrent balance
   // change (a spend, another grant).
-  await addCredits(normalized, REFERRAL_BONUS);
+  await addCredits(normalized, REFEREE_BONUS);
 
   // Referrer's bonus — looked up by code at grant time (not stored redundantly
   // on the referee row), so a referrer who changes their affiliate code, or is
@@ -117,7 +122,7 @@ export async function grantReferralBonusOnFirstPublish(refereeEmail: string): Pr
     return;
   }
 
-  await addCredits(referrer.email, REFERRAL_BONUS);
+  await addCredits(referrer.email, REFERRER_BONUS);
   // Coupon counter (surfaced on the referrer's dashboard as "X referrals").
   // Plain increment, same as the pre-existing signup-time code — a low-stakes
   // display counter, not a money balance, so it doesn't need the CAS discipline

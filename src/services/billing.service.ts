@@ -34,7 +34,8 @@
 import { supabase } from '../config/supabase';
 import { ensureUserProfile } from './profile.service';
 import {
-  BUNDLES, BundleKey, FREE_TIER, LEGACY_PLAN_CONVERSION, PAID_TIER, TierDef,
+  BUNDLES, BundleKey, CREATION_ALLOWANCE_MULTIPLIER, FREE_TIER,
+  LEGACY_PLAN_CONVERSION, PAID_TIER, SINGLE_PAGE_AI_CREDITS, TierDef,
 } from '../config/billing';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -112,20 +113,39 @@ export async function countActivePages(email: string): Promise<number> {
   return count ?? 0;
 }
 
+/**
+ * The paid-tier creation cap — CREATION_ALLOWANCE_MULTIPLIER x lifetime pages
+ * ever bought. A LIFETIME cap, not a monthly one: it never resets, it only
+ * grows (when the account buys more pages). Free-tier accounts use the plain
+ * FREE_TIER.monthlyCreate constant instead (unchanged, still resets monthly).
+ */
+function creationCapFor(row: BillingRow, tier: TierDef): number {
+  return tier.key === 'paid'
+    ? CREATION_ALLOWANCE_MULTIPLIER * (row.page_credits_total ?? 0)
+    : tier.monthlyCreate;
+}
+
 /** Full balance + usage snapshot for the dashboard and the publish flow. */
 export async function getAccountStatus(email: string): Promise<AccountStatus> {
   const row = await loadBillingRow(email);
   const tier = tierFor(row);
   const activePages = await countActivePages(email);
+  // Free tier: the counter resets every calendar month (period_key rotates).
+  // Paid tier: the SAME `pages_created_period` column is reused as a LIFETIME
+  // counter instead (see consumeMonthlyCreate) — no period check, it just
+  // accumulates for as long as the account has ever bought a page.
   const samePeriod = row.period_key === currentPeriodKey();
+  const createdThisPeriod = tier.key === 'paid'
+    ? row.pages_created_period ?? 0
+    : (samePeriod ? row.pages_created_period ?? 0 : 0);
   return {
     tier: tier.key,
     label: tier.label,
     pageCredits: row.page_credits ?? 0,
     pageCreditsTotal: row.page_credits_total ?? 0,
     activePages,
-    monthlyCreate: tier.monthlyCreate,
-    createdThisPeriod: samePeriod ? row.pages_created_period ?? 0 : 0,
+    monthlyCreate: creationCapFor(row, tier),
+    createdThisPeriod,
     whiteLabel: !!row.white_label,
   };
 }
@@ -200,48 +220,65 @@ export async function refundPageCredit(email: string): Promise<boolean> {
 }
 
 /**
- * Enforce + record the monthly page-creation cap. Admins are never capped.
- * Free accounts use FREE_TIER's cap (5/month, shipped 2026-08-31 — unchanged);
- * anyone who has ever bought page credits uses PAID_TIER's. monthlyCreate <= 0
- * means "no cap" for whichever tier is in effect.
- * Throws Error('monthly_create_limit') when the cap is hit.
+ * Enforce + record the page-creation cap. Admins are never capped.
+ *
+ * TWO DIFFERENT SHAPES, same column (`pages_created_period`), by design
+ * (2026-09-14 — see CREATION_ALLOWANCE_MULTIPLIER in config/billing.ts):
+ *  • FREE accounts: FREE_TIER's cap (5/MONTH, shipped 2026-08-31 —
+ *    unchanged), the counter resets every calendar month via `period_key`.
+ *  • PAID accounts: a LIFETIME cap (CREATION_ALLOWANCE_MULTIPLIER x pages
+ *    ever bought), the SAME column reused as a pure running total that never
+ *    resets — `period_key` is simply not consulted for paid accounts.
+ *
+ * Throws Error('monthly_create_limit') (free tier) or
+ * Error('creation_allowance_limit') (paid tier) when the cap is hit — two
+ * different messages because the right fix is different (wait for next month
+ * vs. buy another page) and the controller shows different Hebrew for each.
  */
 export async function consumeMonthlyCreate(email: string): Promise<void> {
   let row = await loadBillingRow(email);
   if (row.is_admin) return;
   const tier = tierFor(row);
-  if (tier.monthlyCreate <= 0) return;
+  const isPaid = tier.key === 'paid';
+  if (!isPaid && tier.monthlyCreate <= 0) return;
 
   const period = currentPeriodKey();
 
-  // Compare-and-swap on (period_key, pages_created_period), the same shape as
-  // credits.service.ts's atomic `.gte()` guard. The pre-2026-08-31 version read
-  // the counter and then wrote `used + 1` unconditionally, so N page creations
-  // fired at once all read the same value and all wrote the same increment —
-  // the cap could be overrun, and creations could go uncounted entirely.
-  //
-  // Each attempt re-reads, re-checks the cap, and only writes if the counter is
-  // still exactly what it read. Losing the swap means someone else incremented
-  // concurrently, so we retry against the fresh value.
+  // Compare-and-swap, the same shape as credits.service.ts's atomic `.gte()`
+  // guard. Each attempt re-reads, re-checks the cap, and only writes if the
+  // counter is still exactly what it read — losing the swap means someone
+  // else incremented concurrently, so we retry against the fresh value.
   for (let attempt = 0; attempt < 3; attempt++) {
+    const cap = creationCapFor(row, tier);
     const samePeriod = row.period_key === period;
-    const used = samePeriod ? row.pages_created_period ?? 0 : 0;
-    if (used >= tier.monthlyCreate) {
-      throw new Error('monthly_create_limit');
+    const used = isPaid ? (row.pages_created_period ?? 0) : (samePeriod ? row.pages_created_period ?? 0 : 0);
+    if (used >= cap) {
+      throw new Error(isPaid ? 'creation_allowance_limit' : 'monthly_create_limit');
     }
 
     let q = supabase
       .from('user_profiles')
-      .update({ pages_created_period: used + 1, period_key: period })
+      .update(
+        isPaid
+          // Lifetime counter — period_key is irrelevant for paid accounts and
+          // is left untouched.
+          ? { pages_created_period: used + 1 }
+          : { pages_created_period: used + 1, period_key: period },
+      )
       .eq('email', row.email);
-    // Guard on the exact state we based `used` on. For a brand-new period the
-    // guard is the OLD period_key (which may be NULL), so the first creation of
-    // the month resets the counter exactly once.
-    q = samePeriod
-      ? q.eq('period_key', period).eq('pages_created_period', used)
-      : row.period_key === null
-        ? q.is('period_key', null)
-        : q.eq('period_key', row.period_key);
+
+    if (isPaid) {
+      q = q.eq('pages_created_period', used);
+    } else {
+      // Guard on the exact state we based `used` on. For a brand-new period
+      // the guard is the OLD period_key (which may be NULL), so the first
+      // creation of the month resets the counter exactly once.
+      q = samePeriod
+        ? q.eq('period_key', period).eq('pages_created_period', used)
+        : row.period_key === null
+          ? q.is('period_key', null)
+          : q.eq('period_key', row.period_key);
+    }
 
     const { data } = await q.select('email').maybeSingle();
     if (data) return; // won the swap — this creation is counted
@@ -251,7 +288,7 @@ export async function consumeMonthlyCreate(email: string): Promise<void> {
 
   // Three consecutive lost swaps means heavy concurrent creation by one
   // account. Allow this one through rather than falsely blocking a paying
-  // customer: the worst case is a small overrun of the monthly cap, whereas a
+  // customer: the worst case is a small overrun of the cap, whereas a
   // spurious block stops work they have paid for. Logged so it is visible if it
   // ever happens for real.
   console.warn('[BILLING] consumeMonthlyCreate: gave up after 3 contended attempts', { email: row.email, period });
@@ -283,6 +320,16 @@ async function grantPageCredits(
     const curTotal = row.page_credits_total ?? 0;
     const curCredits = row.credits ?? 0;
 
+    // This account's FIRST-EVER page purchase (free -> paid transition,
+    // 2026-09-14): reset the creation counter to 0 as part of the same write.
+    // Without this, whatever the account had already used under the FREE
+    // tier's 5/month cap would carry straight into the new paid-tier LIFETIME
+    // cap (e.g. "already used 3" could exceed a brand-new 1-page purchase's
+    // cap of 2 before they ever create anything as a paying customer). Only
+    // fires once, at the moment page_credits_total goes from 0 to >0 — every
+    // later purchase just raises the cap and leaves the running total alone.
+    const isFirstPagePurchase = curTotal === 0 && pages > 0;
+
     const { data, error } = await supabase
       .from('user_profiles')
       .update({
@@ -291,6 +338,7 @@ async function grantPageCredits(
         credits: curCredits + aiCredits,
         // Once true, always true — a perk that was paid for is never revoked.
         white_label: whiteLabel || !!row.white_label,
+        ...(isFirstPagePurchase ? { pages_created_period: 0, period_key: null } : {}),
       })
       .eq('email', row.email)
       // CAS on BOTH balances this write is derived from. Without the credits
@@ -328,9 +376,13 @@ export async function grantBundle(email: string, bundleKey: string): Promise<boo
   return grantPageCredits(email, bundle.pages, bundle.aiCredits, bundle.whiteLabel);
 }
 
-/** Grant the single 249₪ page purchase: exactly one page credit, no AI credits. */
+/**
+ * Grant the single 249₪ page purchase: one page credit + SINGLE_PAGE_AI_CREDITS
+ * (10, as of 2026-09-14 — see config/billing.ts for why this replaced the old
+ * 0-AI-credit grant).
+ */
 export async function grantSinglePageCredit(email: string): Promise<boolean> {
-  return grantPageCredits(email, 1, 0, false);
+  return grantPageCredits(email, 1, SINGLE_PAGE_AI_CREDITS, false);
 }
 
 /**

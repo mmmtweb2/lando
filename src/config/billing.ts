@@ -7,16 +7,31 @@
 // tops up a non-expiring PAGE-PUBLISH BALANCE (`user_profiles.page_credits`).
 // Publishing a page costs exactly one page credit, whichever way it was bought:
 //
-//   • Single page — 249₪, buys 1 page credit. UNCHANGED, deliberately: Moshe
-//     wants the core product to stay a one-time purchase, as differentiation
-//     against the subscription-only market.
-//   • חבילת 5 דפים  —   990₪  → 5 page credits  (198₪/page, ~20% off)
-//   • חבילת 10 דפים — 1,490₪  → 10 page credits (149₪/page, ~40% off)
+//   • Single page — 249₪, buys 1 page credit + 10 AI credits. UNCHANGED
+//     PRICE, deliberately: Moshe wants the core product to stay a one-time
+//     purchase, as differentiation against the subscription-only market. The
+//     AI-credit grant is NEW (2026-09-14) — see SINGLE_PAGE_AI_CREDITS below.
+//   • חבילת 5 דפים  —   990₪  → 5 page credits, 75 AI credits (15/page)
+//                              (198₪/page, ~20% off)
+//   • חבילת 10 דפים — 1,490₪  → 10 page credits, 150 AI credits (15/page)
+//                              (149₪/page, ~40% off)
 //                              + PERMANENT white-label (hide the Pagey badge)
 //   • תוסף מיתוג אישי —  350₪  → PERMANENT white-label on its own, no pages
 //                              (2026-09-02: closes the gap where the 5-bundle
 //                              was economically dominated by the 10-bundle —
 //                              see the BUNDLES block below for the full note)
+//
+// CREATION ALLOWANCE (2026-09-14, Moshe's call): every real page purchase also
+// grants a LIFETIME page-CREATION allowance of 2x the pages bought — buying
+// the 10-bundle means you may CREATE (draft, iterate, throw away) up to 20
+// pages total, ever, not per month. This replaced the old flat 60/month cap
+// for paid accounts, which didn't map to anything a customer actually bought
+// and was confusing on the dashboard ("60" next to "I bought 10 pages"). See
+// CREATION_ALLOWANCE_MULTIPLIER below and billing.service.ts for enforcement.
+//
+// RENEWAL DISCOUNT (2026-09-14): the flat 99₪/year renewal now discounts by
+// lifetime pages ever bought (`page_credits_total`, already tracked, no new
+// column needed) — 79₪ at 5+, 59₪ at 10+. See renewalPriceFor below.
 //
 // A bundle never expires and has no renewal date. It is not a plan: there is no
 // `plan_expires_at` cliff, no monthly refill, no "active plan" state. Buy once,
@@ -33,6 +48,28 @@ import { CREDIT_COSTS } from './credits';
 
 /** One-time price of publishing a single page, bought on its own. Unchanged. */
 export const SINGLE_PAGE_PRICE = 249;
+
+/**
+ * AI credits granted alongside a single-page purchase (2026-09-14). Same
+ * 10-credits-per-page baseline the bundles build on top of (see
+ * CREDITS_PER_BUNDLE_PAGE below — bundles add a further +5/page loyalty
+ * bonus). Replaces the old, inaccurate promise: a single-page purchase used
+ * to grant 0 AI credits while the checkout modal and Terms of Service both
+ * claimed "20 עריכות AI כלולות" — that 20 was actually STARTING_CREDITS, a
+ * one-time signup grant unrelated to this purchase. Now the purchase itself
+ * grants real, dedicated AI credits.
+ */
+export const SINGLE_PAGE_AI_CREDITS = 10;
+
+/**
+ * Every REAL page purchase (single page or bundle) also grants a LIFETIME
+ * page-CREATION allowance of this many times the pages bought — e.g. the
+ * 10-bundle grants 20 total creations, ever, not per calendar month. See
+ * billing.service.ts's consumeMonthlyCreate/getAccountStatus for enforcement;
+ * this replaced the old flat PAID_TIER.monthlyCreate=60, which was the same
+ * number for every paid account regardless of what they'd actually bought.
+ */
+export const CREATION_ALLOWANCE_MULTIPLIER = 2;
 
 /**
  * Annual renewal of ONE already-published page — 99₪, one-time, manual.
@@ -52,6 +89,25 @@ export const SINGLE_PAGE_PRICE = 249;
  * customer is emailed at T-30/T-7/T-0 and pays by hand, each year, on purpose.
  */
 export const RENEWAL_PRICE = 99;
+
+/**
+ * Renewal-price discount tiers, by LIFETIME page credits ever bought
+ * (`page_credits_total` — never decreases, already tracked for the monthly-
+ * creation-cap tier, so this needed no new column). Mirrors the bundles' own
+ * per-page discount rate (~20% at the 5-tier, ~40% at the 10-tier) so the
+ * logic is the same story a customer already knows from the pricing page,
+ * just applied to renewal instead of the initial purchase.
+ *
+ * Deliberately keyed off CUMULATIVE lifetime purchases, not "which exact
+ * bundle SKU did you buy" — a customer who reached 10 pages via several
+ * single-page purchases gets the same discount as someone who bought the
+ * 10-bundle outright. Simpler to reason about, and arguably fairer.
+ */
+export function renewalPriceFor(pageCreditsTotal: number): number {
+  if (pageCreditsTotal >= 10) return 59;
+  if (pageCreditsTotal >= 5) return 79;
+  return RENEWAL_PRICE;
+}
 
 // ─── Monthly page-CREATION caps ──────────────────────────────────────────────
 // This is the anti-abuse cap on how many DRAFT pages an account can generate per
@@ -92,10 +148,21 @@ export const FREE_TIER: TierDef = {
  * workflow, while still bounding a compromised account or a looping script to a
  * knowable amount of AI spend (60 generations) instead of an unbounded one.
  */
+/**
+ * `monthlyCreate` here is VESTIGIAL and never read — kept only so TierDef
+ * doesn't need an optional field. A paid account's real creation cap is
+ * computed dynamically as CREATION_ALLOWANCE_MULTIPLIER * page_credits_total
+ * (see billing.service.ts), because it must grow every time the customer buys
+ * more pages, which a fixed constant on this object can't express. The old
+ * flat 60/month lived here until 2026-09-14 — replaced because it was the
+ * same number for every paid account no matter what they'd bought (a 10-page
+ * buyer and a 1-page buyer both saw "60"), which read as arbitrary on the
+ * dashboard next to what they'd actually purchased.
+ */
 export const PAID_TIER: TierDef = {
   key: 'paid',
   label: 'בעל חבילת דפים',
-  monthlyCreate: 60,
+  monthlyCreate: 0,
 };
 
 // ─── Bundles ─────────────────────────────────────────────────────────────────
@@ -141,7 +208,17 @@ export interface BundleDef {
  * the per-page price would quietly reprice the one product Moshe asked to leave
  * exactly as it is.
  */
-const CREDITS_PER_BUNDLE_PAGE = CREDIT_COSTS.CREATE_IMAGE_SET + CREDIT_COSTS.TEXT_FULL_PAGE; // = 10
+const CREDITS_PER_SINGLE_PAGE = CREDIT_COSTS.CREATE_IMAGE_SET + CREDIT_COSTS.TEXT_FULL_PAGE; // = 10, matches SINGLE_PAGE_AI_CREDITS above
+
+/**
+ * Bundles grant a LOYALTY BONUS on top of the single-page rate (2026-09-14,
+ * Moshe's call): +5 AI credits per page, so a bundle buyer always comes out
+ * ahead of buying the same number of pages one at a time — same logic as the
+ * bundle's own ₪/page discount, just applied to the AI-credit grant too.
+ *   5-bundle:  5 x (10 + 5) = 75
+ *   10-bundle: 10 x (10 + 5) = 150
+ */
+const CREDITS_PER_BUNDLE_PAGE = CREDITS_PER_SINGLE_PAGE + 5; // = 15
 
 export const BUNDLES: Record<BundleKey, BundleDef> = {
   bundle5: {
@@ -149,7 +226,7 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     label: 'חבילת 5 דפים',
     pages: 5,
     price: 990, // 198₪/page — ~20% off the 249₪ single-page price
-    aiCredits: 5 * CREDITS_PER_BUNDLE_PAGE, // 50
+    aiCredits: 5 * CREDITS_PER_BUNDLE_PAGE, // 75
     whiteLabel: false,
   },
   bundle10: {
@@ -157,7 +234,7 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     label: 'חבילת 10 דפים',
     pages: 10,
     price: 1490, // 149₪/page — ~40% off the 249₪ single-page price
-    aiCredits: 10 * CREDITS_PER_BUNDLE_PAGE, // 100
+    aiCredits: 10 * CREDITS_PER_BUNDLE_PAGE, // 150
     whiteLabel: true, // the 10-bundle's bonus perk (was the old agency tier's)
   },
   // 2026-09-02: standalone white-label purchase, decided with Moshe to close two
