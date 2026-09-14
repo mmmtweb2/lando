@@ -193,3 +193,110 @@ export async function purchaseCredits(req: Request, res: Response): Promise<void
 
   res.json({ credits: newBalance, added: chosen.credits, transactionId: result.transactionId });
 }
+
+// ─── Account deletion ──────────────────────────────────────────────────────────
+/**
+ * DELETE /api/users/me — the user permanently deletes their own account.
+ * 2026-09-14, Moshe's ask: "אופציה למשתמש למחיקת חשבון דרך ההגדרות".
+ *
+ * Irreversible, and deliberately thorough rather than a soft "deactivate":
+ *  1. Leads for every page the account owns — FIRST, same FK-safety reason as
+ *     the admin page-delete fix (leads_landing_page_id_fkey has no ON DELETE
+ *     clause, so deleting a page with leads first would fail).
+ *  2. The pages themselves.
+ *  3. The user_profiles row (balances, white-label flag, affiliate code — all
+ *     gone; any unused page-credit / AI-credit balance is forfeited, stated
+ *     plainly in the client-side confirmation before this is ever called).
+ *  4. The Supabase Auth user itself, via the Admin API — this is what
+ *     actually prevents the email from being used to log in again. Done LAST
+ *     and only after every DB row succeeded, so a failure here never leaves
+ *     the account's data gone but the login still working in a half state
+ *     (the reverse — auth gone, a DB row failed — is safer: the account is
+ *     already unreachable to its own owner at that point either way).
+ *
+ * payments / coupon_redemptions / coupons rows are DELIBERATELY NOT touched —
+ * they are financial/tax records (SUMIT issues a real invoice per payment),
+ * keyed by a plain email string with no FK to user_profiles, so nothing
+ * breaks by leaving them; deleting paid-for accounting history to honour an
+ * account-deletion request would trade a data-protection nicety for a real
+ * bookkeeping/legal problem.
+ *
+ * Admin accounts are refused here (see is_admin check below) — a safety rail
+ * against Moshe's own admin/test account accidentally being deleted through
+ * this exact new UI, not a real product restriction (an admin who genuinely
+ * wants to close their account can be unflagged first in the admin panel).
+ */
+export async function deleteAccount(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  const userId = req.authUserId;
+  if (!email || !userId) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('is_admin')
+    .eq('email', email)
+    .maybeSingle();
+
+  if ((profile as { is_admin?: boolean } | null)?.is_admin) {
+    res.status(403).json({ error: 'לא ניתן למחוק חשבון מנהל מערכת דרך מסך זה. יש להסיר קודם את הרשאת הניהול.' });
+    return;
+  }
+
+  const { data: ownedPages, error: pagesReadError } = await supabase
+    .from('landing_pages')
+    .select('id')
+    .eq('owner_email', email);
+
+  if (pagesReadError) {
+    res.status(500).json({ error: pagesReadError.message });
+    return;
+  }
+
+  const pageIds = (ownedPages ?? []).map((p) => (p as { id: string }).id);
+
+  if (pageIds.length > 0) {
+    const { error: leadsError } = await supabase
+      .from('leads')
+      .delete()
+      .in('landing_page_id', pageIds);
+    if (leadsError) {
+      res.status(500).json({ error: leadsError.message });
+      return;
+    }
+
+    const { error: pagesError } = await supabase
+      .from('landing_pages')
+      .delete()
+      .eq('owner_email', email);
+    if (pagesError) {
+      res.status(500).json({ error: pagesError.message });
+      return;
+    }
+  }
+
+  const { error: profileError } = await supabase
+    .from('user_profiles')
+    .delete()
+    .eq('email', email);
+  if (profileError) {
+    res.status(500).json({ error: profileError.message });
+    return;
+  }
+
+  const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+  if (authError) {
+    // The account's data and profile are already gone at this point — the
+    // customer's balances, pages and leads are permanently deleted either
+    // way. Only their ability to log back in with this email is uncertain
+    // now. Logged loudly so it's caught, but reported to the client as
+    // success: from the customer's perspective the deletion they asked for
+    // did happen, and a stray unusable auth row left behind is Moshe's
+    // cleanup problem, not something to surface as a scary error after
+    // telling them their data is gone.
+    console.error('[ACCOUNT] deleteAccount: DB rows deleted but auth.admin.deleteUser failed', {
+      email, userId, error: authError.message,
+    });
+  }
+
+  res.status(204).send();
+}

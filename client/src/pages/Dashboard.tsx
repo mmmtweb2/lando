@@ -483,6 +483,14 @@ export default function Dashboard() {
   const [bundleCoupon, setBundleCoupon] = useState<AppliedCoupon | null>(null);
   const [creditsCoupon, setCreditsCoupon] = useState<AppliedCoupon | null>(null);
 
+  // Account deletion (settings, 2026-09-14) — a typed-confirmation modal, same
+  // "type the exact thing to unlock the button" discipline the admin panel's
+  // own confirm-delete dialogs use for irreversible actions.
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+
   // Handle the return from the SUMIT payment redirect (?payment=success|cancelled|review|error).
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get('payment');
@@ -615,6 +623,28 @@ export default function Dashboard() {
   async function handleLogout() {
     await logout();
     navigate('/login', { replace: true });
+  }
+
+  async function handleDeleteAccount() {
+    if (!user?.email || deleteConfirmText.trim().toLowerCase() !== user.email.toLowerCase()) return;
+    setDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      const r = await authFetch('/api/users/me', { method: 'DELETE' });
+      if (!r.ok) {
+        const body = await r.json().catch(() => null) as { error?: string } | null;
+        setDeleteAccountError(body?.error ?? 'מחיקת החשבון נכשלה. נסו שוב.');
+        setDeletingAccount(false);
+        return;
+      }
+      // Everything server-side is already gone at this point — sign out
+      // locally and leave. No point staying "logged in" to a deleted account.
+      await logout();
+      navigate('/', { replace: true });
+    } catch {
+      setDeleteAccountError('מחיקת החשבון נכשלה. בדקו את החיבור לאינטרנט ונסו שוב.');
+      setDeletingAccount(false);
+    }
   }
 
   async function handleBuyBundle(bundleKey: 'bundle5' | 'bundle10' | 'whitelabel_addon') {
@@ -831,6 +861,52 @@ export default function Dashboard() {
             </button>
           </div>
         </header>
+
+        {showDeleteAccount && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !deletingAccount && setShowDeleteAccount(false)}>
+            <div className="w-full max-w-md rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <h3 className="text-base font-semibold tracking-tight text-red-700">מחיקת חשבון לצמיתות</h3>
+                {!deletingAccount && (
+                  <button onClick={() => setShowDeleteAccount(false)} aria-label="סגור"
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+                    <X size={18} />
+                  </button>
+                )}
+              </div>
+              <div className="p-6 flex flex-col gap-4">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3.5 text-sm text-red-700 leading-relaxed">
+                  פעולה זו תמחק לצמיתות את כל הדפים שלכם ({pages.length}), את כל הלידים שהתקבלו דרכם, ואת כל היתרה הבלתי מנוצלת (קרדיטים ודפים לתשלום). <span className="font-semibold">לא ניתן לבטל או לשחזר.</span> תשלומים וחשבוניות עבר נשארים ברשומות שלנו לצורכי הנהלת חשבונות בלבד.
+                </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm text-slate-600">
+                    להמשך, הקלידו את כתובת המייל שלכם: <span className="font-mono font-semibold text-slate-900" dir="ltr">{user.email}</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    dir="ltr"
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-300 transition"
+                    placeholder={user.email}
+                  />
+                </label>
+                {deleteAccountError && (
+                  <p className="text-sm text-center font-medium rounded-lg px-3 py-2 text-red-600 bg-red-50 border border-red-200">
+                    {deleteAccountError}
+                  </p>
+                )}
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deletingAccount || deleteConfirmText.trim().toLowerCase() !== (user.email ?? '').toLowerCase()}
+                  className="w-full py-3 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {deletingAccount ? 'מוחק חשבון...' : 'מחיקת החשבון שלי לצמיתות'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showBuyCredits && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !buying && setShowBuyCredits(false)}>
@@ -1053,6 +1129,22 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+
+              {/* Danger zone — account deletion (2026-09-14) */}
+              <div className="rounded-2xl border border-red-100 bg-red-50/50 p-5 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-red-700">מחיקת חשבון</span>
+                  <span className="text-xs text-red-500/80 leading-relaxed max-w-md">
+                    מוחק לצמיתות את כל הדפים, הלידים והיתרה שלכם (קרדיטים ודפים לא מנוצלים). לא ניתן לשחזר. חשבוניות ותשלומי עבר נשמרים לצורכי הנהלת חשבונות.
+                  </span>
+                </div>
+                <button
+                  onClick={() => { setDeleteConfirmText(''); setDeleteAccountError(null); setShowDeleteAccount(true); }}
+                  className="flex-shrink-0 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition"
+                >
+                  מחיקת החשבון שלי
+                </button>
+              </div>
             </motion.div>
           ) : (
             <>

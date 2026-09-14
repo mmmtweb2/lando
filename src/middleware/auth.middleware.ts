@@ -7,6 +7,10 @@ declare global {
   namespace Express {
     interface Request {
       authEmail?: string;
+      /** The Supabase Auth user id (uuid) — needed only where an operation must
+       *  reach the Auth Admin API directly (e.g. deleting the auth user itself
+       *  on account deletion), since everything else in this app keys by email. */
+      authUserId?: string;
       isAdmin?: boolean;
     }
   }
@@ -36,6 +40,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
   req.authEmail = data.user.email.toLowerCase();
+  req.authUserId = data.user.id;
   next();
 }
 
