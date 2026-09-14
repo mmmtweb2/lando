@@ -832,6 +832,22 @@ export default function Wizard() {
   const [intakeLoading, setIntakeLoading] = useState(false);
   const intakeFetchedFor = useRef<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  // Tracks whether the user has EXPLICITLY picked a primary-CTA target
+  // (step 4's four buttons). Needed so goal selection (step 0) can safely
+  // default the CTA to the goal's own external link (donation/direct_sale)
+  // without ever overriding a choice the user actually made.
+  //
+  // 2026-09-14 pre-launch audit: this hook used to live AFTER the
+  // `if (!isAuthReady || !user) return null` early return below. On a
+  // direct/hard navigation to /create (not via in-app SPA routing), the
+  // component's first render happens before auth resolves — that render
+  // calls fewer hooks (stops at the early return) than the next render once
+  // auth is ready (which reaches this one) — a classic conditional-hooks
+  // violation that crashed the whole page with React error #310 (a blank
+  // screen, no error boundary). Moved here, above every early return, so
+  // every render calls exactly the same hooks in the same order regardless
+  // of auth timing.
+  const ctaTypeTouchedRef = useRef(false);
 
   useEffect(() => {
     if (!result) return;
@@ -894,12 +910,6 @@ export default function Wizard() {
   function update<K extends keyof FormState>(key: K, val: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: val }));
   }
-
-  // Tracks whether the user has EXPLICITLY picked a primary-CTA target
-  // (step 4's four buttons). Needed so goal selection (step 0) can safely
-  // default the CTA to the goal's own external link (donation/direct_sale)
-  // without ever overriding a choice the user actually made.
-  const ctaTypeTouchedRef = useRef(false);
 
   // A donation/direct_sale page collects an external link (donation/payment
   // page) but cta_type's hardcoded initial value is always 'whatsapp' — so
