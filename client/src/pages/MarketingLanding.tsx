@@ -592,6 +592,8 @@ export default function MarketingLanding() {
             <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
             <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
             <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+            <a href="mailto:tirnoer.digital@gmail.com" dir="ltr" className="hover:text-[#2E63F6] transition">tirnoer.digital@gmail.com</a>
+            <a href="https://wa.me/16465358055" target="_blank" rel="noopener noreferrer" dir="ltr" className="hover:text-[#2E63F6] transition">WhatsApp</a>
           </div>
         </div>
       </footer>

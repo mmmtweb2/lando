@@ -4,7 +4,7 @@ import { TERMS_REFUND_CLAUSE } from '../../legal/refundPolicy';
 
 // תנאי השימוש של Pagey. Prices mirror src/config/billing.ts and the lifecycle
 // mirrors src/services/renewal.service.ts — if either changes, this changes.
-const SUPPORT_EMAIL = 'support@pagey.co.il';
+const SUPPORT_EMAIL = 'tirnoer.digital@gmail.com';
 
 export default function Terms() {
   return (

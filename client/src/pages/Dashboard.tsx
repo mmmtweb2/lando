@@ -5,6 +5,7 @@ import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, Settings, Users, LogOut,
   CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles, Share2,
+  Mail, MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -1129,6 +1130,39 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+
+              {/* Contact/support card (2026-09-14) — visible in a spot every user
+                  passes through, encouraging reach-out for any issue rather
+                  than silent churn. Deliberately placed before the danger
+                  zone, not after, so it doesn't read as an afterthought next
+                  to account deletion. */}
+              <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
+                <div className="flex items-start gap-3 min-w-0">
+                  <span className="mt-0.5 flex-shrink-0 text-[#2E63F6]"><Mail size={16} /></span>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-sm font-medium text-slate-900">נתקלתם בבעיה? יש שאלה?</span>
+                    <span className="text-xs text-slate-500 leading-relaxed">
+                      אנחנו כאן בשבילכם — אל תהססו לפנות בכל נושא, קטן כגדול.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <a
+                    href="mailto:tirnoer.digital@gmail.com"
+                    className={btnSecondary}
+                  >
+                    <Mail size={14} className="text-slate-400" /> אימייל
+                  </a>
+                  <a
+                    href="https://wa.me/16465358055"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={btnSecondary}
+                  >
+                    <MessageCircle size={14} className="text-slate-400" /> WhatsApp
+                  </a>
+                </div>
+              </div>
 
               {/* Danger zone — account deletion (2026-09-14) */}
               <div className="rounded-2xl border border-red-100 bg-red-50/50 p-5 flex items-center justify-between gap-4 flex-wrap">

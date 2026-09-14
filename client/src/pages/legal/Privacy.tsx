@@ -3,8 +3,8 @@ import LegalLayout, { LegalSection, LegalList } from './LegalLayout';
 // מדיניות הפרטיות של Pagey עצמה (לא של דפי הלקוחות).
 // Contact addresses here are the ones published to users — if they change,
 // change them in Terms.tsx and Accessibility.tsx too.
-const PRIVACY_EMAIL = 'privacy@pagey.co.il';
-const SUPPORT_EMAIL = 'support@pagey.co.il';
+const PRIVACY_EMAIL = 'tirnoer.digital@gmail.com';
+const SUPPORT_EMAIL = 'tirnoer.digital@gmail.com';
 
 export default function Privacy() {
   return (
