@@ -61,13 +61,67 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     .single();
 
   if (existing) {
+    const existingRow = existing as { affiliate_code?: string; referred_by_code?: string | null };
+
     // Backfill a missing affiliate_code (legacy profiles) so referral links use a
     // real code instead of falling back to the user's email.
-    if (!(existing as { affiliate_code?: string }).affiliate_code) {
+    if (!existingRow.affiliate_code) {
       const code = generateAffiliateCode();
       await supabase.from('user_profiles').update({ affiliate_code: code }).eq('email', normalizedEmail);
-      (existing as { affiliate_code?: string }).affiliate_code = code;
+      existingRow.affiliate_code = code;
     }
+
+    // Referral backfill (2026-09-14 — real bug Moshe found in a live test: the
+    // referral bonus never actually attributed). Root cause: this endpoint is
+    // the ONLY place that knows the ?ref= code (captured client-side into
+    // localStorage, sent here as `ref`), but it is NOT the only endpoint that
+    // can CREATE this account's profile row. `ensureUserProfile()`
+    // (profile.service.ts) self-heals a blank, referral-blind profile the
+    // moment ANY OTHER authenticated endpoint is hit — and WalletBadge fires
+    // GET /api/users/credits the instant a user's email is known, with no
+    // extra DB lookup, so it routinely wins the race against this call (which
+    // does an extra referrer lookup before its insert). Once that self-healed
+    // row existed, this whole `if (existing)` branch returned early and the
+    // referral relationship was silently dropped forever — no error, so it
+    // looked like it worked from the client's perspective.
+    //
+    // Fix: if this account still has NO referred_by_code and a ref code
+    // arrived, attribute it now instead of only at INSERT time. Safe by
+    // construction: the `.is('referred_by_code', null)` guard means this can
+    // never overwrite a real existing attribution (whichever call set it
+    // first wins), and the actual bonus payout still only happens later, on
+    // this user's first published page (referral.service.ts) — this only
+    // fixes the ATTRIBUTION, not the payout gate.
+    if (normalizedRef && !existingRow.referred_by_code) {
+      const { data: referrer } = await supabase
+        .from('user_profiles')
+        .select('email')
+        .eq('affiliate_code', normalizedRef)
+        .single();
+
+      // Self-referral guard: this branch is new territory the original
+      // INSERT-time check never had to cover (a brand-new row has no
+      // affiliate_code yet, so referring yourself was structurally
+      // impossible there). Here the account already has one, so without this
+      // check someone could revisit their own referral link, backfill their
+      // own account as its own referrer, and self-mint both sides' bonus on
+      // their next publish.
+      if (referrer && (referrer as { email?: string }).email !== normalizedEmail) {
+        const { data: backfilled } = await supabase
+          .from('user_profiles')
+          .update({ referred_by_code: normalizedRef, signup_discount: true })
+          .eq('email', normalizedEmail)
+          .is('referred_by_code', null)
+          .select('email')
+          .maybeSingle();
+
+        if (backfilled) {
+          existingRow.referred_by_code = normalizedRef;
+          (existing as { signup_discount?: boolean }).signup_discount = true;
+        }
+      }
+    }
+
     res.json(existing);
     return;
   }
