@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getAllLandingPages } from '../controllers/landing.controller';
 import { listReviewPayments, reverifyPayment, forceActivatePayment } from '../controllers/payment.controller';
 import { listCoupons, createCoupon, updateCoupon } from '../controllers/coupon.controller';
-import { listUsers, getRevenueStats } from '../controllers/adminStats.controller';
+import { listUsers, getRevenueStats, getSiteTraffic } from '../controllers/adminStats.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
 
@@ -23,6 +23,7 @@ router.get('/pages', requireAuth, requireAdmin, getAllLandingPages);
 // Customer list + revenue overview (admin dashboard upgrade).
 router.get('/users', requireAuth, requireAdmin, listUsers);
 router.get('/revenue', requireAuth, requireAdmin, getRevenueStats);
+router.get('/site-traffic', requireAuth, requireAdmin, getSiteTraffic);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for
 // context — these give an admin a way to inspect and resolve a payment stuck

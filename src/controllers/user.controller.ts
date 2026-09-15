@@ -6,6 +6,7 @@ import { ensureUserProfile } from '../services/profile.service';
 import { getAccountStatus } from '../services/billing.service';
 import { addCredits } from '../services/credits.service';
 import { BUNDLES, SINGLE_PAGE_PRICE } from '../config/billing';
+import { sendNewSignupAlert } from '../services/signup.mailer';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
 
@@ -165,6 +166,9 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     res.status(500).json({ error: error.message });
     return;
   }
+
+  // Fire-and-forget internal alert — never blocks/fails the signup itself.
+  sendNewSignupAlert(normalizedEmail).catch((e) => console.error('[SIGNUP MAIL] failed:', e));
 
   res.status(201).json(data);
 }

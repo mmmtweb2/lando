@@ -72,6 +72,16 @@ interface RevenueStats {
   byPurpose: { purpose: string; revenue: number; count: number }[];
 }
 
+interface SiteTrafficStats {
+  viewsToday: number;
+  viewsLast7Days: number;
+  viewsLast30Days: number;
+  uniqueVisitorsLast30Days: number;
+  dailyBreakdown: { day: string; views: number; uniqueVisitors: number }[];
+  bySource: { source: string; views: number }[];
+  topPaths: { path: string; views: number }[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Where the admin-panel password lives for the lifetime of this TAB. Session
@@ -372,6 +382,7 @@ export default function AdminDashboard() {
     loadCoupons();
     loadUsers();
     loadRevenue();
+    loadTraffic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, denied, adminPw]);
 
@@ -412,6 +423,23 @@ export default function AdminDashboard() {
       .then(setRevenue)
       .catch((e: Error) => setRevenueError(e.message))
       .finally(() => setRevenueLoading(false));
+  }
+
+  // ── Site traffic overview ─────────────────────────────────────────────────
+  const [traffic, setTraffic] = useState<SiteTrafficStats | null>(null);
+  const [trafficLoading, setTrafficLoading] = useState(true);
+  const [trafficError, setTrafficError] = useState<string | null>(null);
+
+  function loadTraffic() {
+    setTrafficLoading(true);
+    adminFetch('/api/admin/site-traffic')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת נתוני התעבורה נכשלה');
+        return r.json() as Promise<SiteTrafficStats>;
+      })
+      .then(setTraffic)
+      .catch((e: Error) => setTrafficError(e.message))
+      .finally(() => setTrafficLoading(false));
   }
 
   async function handlePaymentAction(id: string, action: 'reverify' | 'force-activate') {
@@ -684,6 +712,84 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Site traffic overview ────────────────────────────────────── */}
+          <div>
+            <h2 className="font-semibold text-slate-700 text-sm mb-3">תעבורה באתר</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatCard label="היום" value={trafficLoading ? '—' : traffic?.viewsToday ?? 0} />
+              <StatCard label="7 ימים אחרונים" value={trafficLoading ? '—' : traffic?.viewsLast7Days ?? 0} />
+              <StatCard
+                label="30 יום אחרונים"
+                value={trafficLoading ? '—' : traffic?.viewsLast30Days ?? 0}
+                sub={traffic ? `${traffic.uniqueVisitorsLast30Days} מבקרים ייחודיים` : undefined}
+              />
+              <StatCard
+                label="מקור מוביל"
+                value={trafficLoading || !traffic?.bySource[0] ? '—' : traffic.bySource[0].source}
+                sub={traffic?.bySource[0] ? `${traffic.bySource[0].views} צפיות` : undefined}
+              />
+            </div>
+            {trafficError && <p className="text-xs text-red-500 mt-2">{trafficError}</p>}
+
+            {!trafficLoading && traffic && (traffic.bySource.length > 0 || traffic.dailyBreakdown.length > 0) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                {traffic.bySource.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100">
+                      <h3 className="font-semibold text-slate-700 text-sm">מקורות תנועה</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                            <th className="px-4 py-2.5 font-medium">מקור</th>
+                            <th className="px-4 py-2.5 font-medium">צפיות</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {traffic.bySource.map((s) => (
+                            <tr key={s.source} className="border-b border-slate-50 last:border-0">
+                              <td className="px-4 py-3 text-slate-700">{s.source}</td>
+                              <td className="px-4 py-3 text-slate-700 font-semibold">{s.views}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {traffic.dailyBreakdown.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100">
+                      <h3 className="font-semibold text-slate-700 text-sm">צפיות לפי יום</h3>
+                    </div>
+                    <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                            <th className="px-4 py-2.5 font-medium">תאריך</th>
+                            <th className="px-4 py-2.5 font-medium">צפיות</th>
+                            <th className="px-4 py-2.5 font-medium">מבקרים ייחודיים</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {traffic.dailyBreakdown.map((d) => (
+                            <tr key={d.day} className="border-b border-slate-50 last:border-0">
+                              <td className="px-4 py-3 text-slate-700" dir="ltr">{d.day}</td>
+                              <td className="px-4 py-3 text-slate-700 font-semibold">{d.views}</td>
+                              <td className="px-4 py-3 text-slate-500">{d.uniqueVisitors}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

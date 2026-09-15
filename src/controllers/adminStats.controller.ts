@@ -134,3 +134,96 @@ export async function getRevenueStats(_req: Request, res: Response): Promise<voi
     byPurpose: byPurposeArr,
   });
 }
+
+interface SiteVisitRow {
+  path: string;
+  referrer: string | null;
+  utm_source: string | null;
+  visitor_id: string;
+  created_at: string;
+}
+
+/**
+ * Marketing-site traffic overview (site_visits — see
+ * migrations/021_site_visits.sql). Same computed-in-Node approach as
+ * getRevenueStats above, at the same volume tier — no SQL views/RPCs needed
+ * yet. Only the last 90 days are pulled to keep this cheap as the table
+ * grows; the dashboard only ever shows a 30-day view anyway.
+ */
+export async function getSiteTraffic(_req: Request, res: Response): Promise<void> {
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('site_visits')
+    .select('path, referrer, utm_source, visitor_id, created_at')
+    .gte('created_at', ninetyDaysAgo)
+    .order('created_at', { ascending: false });
+
+  if (error) { res.status(500).json({ error: error.message }); return; }
+
+  const rows = (data ?? []) as SiteVisitRow[];
+
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  let viewsToday = 0;
+  let viewsLast7Days = 0;
+  let viewsLast30Days = 0;
+  const uniqueVisitors30d = new Set<string>();
+  const byDay = new Map<string, { views: number; visitors: Set<string> }>();
+  const bySource = new Map<string, number>();
+  const byPath = new Map<string, number>();
+
+  for (const r of rows) {
+    const created = new Date(r.created_at);
+    if (created < thirtyDaysAgo) continue; // stats below are all 30-day-scoped
+
+    viewsLast30Days += 1;
+    uniqueVisitors30d.add(r.visitor_id);
+    if (created >= startOfDay) viewsToday += 1;
+    if (created >= sevenDaysAgo) viewsLast7Days += 1;
+
+    const dayKey = created.toISOString().slice(0, 10);
+    const d = byDay.get(dayKey) ?? { views: 0, visitors: new Set<string>() };
+    d.views += 1;
+    d.visitors.add(r.visitor_id);
+    byDay.set(dayKey, d);
+
+    // Source = utm_source if present, else the referrer's hostname, else "ישיר" (direct).
+    let source = r.utm_source?.trim() || null;
+    if (!source && r.referrer) {
+      try { source = new URL(r.referrer).hostname.replace(/^www\./, ''); } catch { source = null; }
+    }
+    source = source || 'ישיר';
+    bySource.set(source, (bySource.get(source) ?? 0) + 1);
+
+    byPath.set(r.path, (byPath.get(r.path) ?? 0) + 1);
+  }
+
+  const dailyBreakdown = Array.from(byDay.entries())
+    .map(([day, v]) => ({ day, views: v.views, uniqueVisitors: v.visitors.size }))
+    .sort((a, b) => b.day.localeCompare(a.day))
+    .slice(0, 30);
+
+  const bySourceArr = Array.from(bySource.entries())
+    .map(([source, views]) => ({ source, views }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10);
+
+  const topPaths = Array.from(byPath.entries())
+    .map(([path, views]) => ({ path, views }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10);
+
+  res.json({
+    viewsToday,
+    viewsLast7Days,
+    viewsLast30Days,
+    uniqueVisitorsLast30Days: uniqueVisitors30d.size,
+    dailyBreakdown,
+    bySource: bySourceArr,
+    topPaths,
+  });
+}

@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { supabase } from '../config/supabase';
 import { STARTING_CREDITS } from '../config/credits';
+import { sendNewSignupAlert } from './signup.mailer';
 
 export interface MinimalProfile {
   email: string;
@@ -45,5 +46,12 @@ export async function ensureUserProfile(email: string): Promise<MinimalProfile> 
   if (error || !created) {
     throw new Error(`Failed to create user profile: ${error?.message ?? 'unknown error'}`);
   }
+
+  // Fire-and-forget internal alert — this is the SECOND insert path for a new
+  // user_profiles row (see user.controller.ts's authUser for the first); both
+  // must trigger the alert since either can win the self-heal race (same
+  // reasoning as the referral-attribution fix — see README).
+  sendNewSignupAlert(normalized).catch((e) => console.error('[SIGNUP MAIL] failed:', e));
+
   return created as MinimalProfile;
 }

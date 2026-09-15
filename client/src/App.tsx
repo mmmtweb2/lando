@@ -2,7 +2,7 @@ import { type ReactNode, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserProvider, useUser } from './context/UserContext';
 import type { UserProfile } from './context/UserContext';
@@ -139,6 +139,52 @@ function SyncAuth() {
   return null;
 }
 
+// ─── Site traffic tracker ─────────────────────────────────────────────────────
+// Lightweight page-view logger for the MARKETING site (see
+// migrations/021_site_visits.sql + admin dashboard's "תעבורה" section).
+// Fires once per route change, fire-and-forget, never blocks rendering.
+// visitor_id is a random id persisted in localStorage so the admin dashboard
+// can approximate unique visitors — not a real identity, just a per-browser
+// counting key with no PII.
+function getOrCreateVisitorId(): string {
+  const KEY = 'pagey_visitor_id';
+  try {
+    const existing = localStorage.getItem(KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(KEY, id);
+    return id;
+  } catch {
+    // Private-browsing/storage-blocked fallback — a fresh id per view is fine,
+    // it just won't count as a returning unique visitor.
+    return crypto.randomUUID();
+  }
+}
+
+function SiteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const body = {
+      path: location.pathname,
+      visitorId: getOrCreateVisitorId(),
+      referrer: document.referrer || null,
+      utmSource: params.get('utm_source'),
+      utmMedium: params.get('utm_medium'),
+      utmCampaign: params.get('utm_campaign'),
+    };
+    fetch('/api/site/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  return null;
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -148,6 +194,7 @@ export default function App() {
         <BrowserRouter>
           <AuthErrorRedirect />
           <SyncAuth />
+          <SiteTracker />
           <Routes>
             <Route path="/"          element={<MarketingLanding />} />
             <Route path="/create"    element={<Wizard />} />
