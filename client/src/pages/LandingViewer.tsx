@@ -6,6 +6,7 @@ import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink 
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import { CREDIT_COSTS } from '../config/credits';
 import { LandoMark } from '../components/Lando';
 import PageLegalFooter from '../components/PageLegalFooter';
@@ -1108,6 +1109,7 @@ export default function LandingViewer() {
     // The cancellation-exclusion acknowledgment gates the charge itself, not
     // just the button: no payment starts without it.
     if (!refundAck) return;
+    trackEvent('checkout_started', { pageId: page.id });
     setCheckoutStatus('paying');
     setCheckoutError(null);
     try {

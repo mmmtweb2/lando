@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useUser } from '../context/UserContext';
 import { LandoBot } from './Lando';
 import { authFetch } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import { CREDIT_COSTS } from '../config/credits';
 import {
   Building2,
@@ -849,6 +850,17 @@ export default function Wizard() {
   // of auth timing.
   const ctaTypeTouchedRef = useRef(false);
 
+  // Fires once, the first time this component actually renders for a real,
+  // authenticated user (never for the pre-auth-resolved null renders) — see
+  // migrations/022_funnel_events.sql / README part 34. Also above every early
+  // return, same discipline as ctaTypeTouchedRef above.
+  const wizardStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthReady || !user || wizardStartedRef.current) return;
+    wizardStartedRef.current = true;
+    trackEvent('wizard_started');
+  }, [isAuthReady, user]);
+
   useEffect(() => {
     if (!result) return;
     if (window.innerWidth >= 1024) return;
@@ -935,6 +947,7 @@ export default function Wizard() {
     setError(null);
     setDir(next > step ? 1 : -1);
     setStep(next);
+    if (next > step) trackEvent('wizard_step_reached', { step: next, label: STEPS[next] });
   }
 
   function setWantsImages(yes: boolean) {

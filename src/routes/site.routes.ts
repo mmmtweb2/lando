@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { trackSiteVisit } from '../controllers/site.controller';
+import { trackSiteVisit, trackFunnelEvent } from '../controllers/site.controller';
 import { rateLimit } from '../middleware/rateLimit';
 
 const router = Router();
@@ -15,5 +15,6 @@ const siteTrackLimiter = rateLimit({
 });
 
 router.post('/track', siteTrackLimiter, trackSiteVisit);
+router.post('/event', siteTrackLimiter, trackFunnelEvent);
 
 export default router;

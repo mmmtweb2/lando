@@ -11,6 +11,7 @@ import {
 } from '../services/billing.service';
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
+import { logFunnelEvent } from '../services/funnel.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -693,6 +694,8 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         return;
       }
 
+      logFunnelEvent('page_created', { userEmail: safeOwnerEmail, meta: { pageId: (data as { id?: string })?.id, imageSource: image_source } });
+
       // NOTE (2026-08-31, payment-enforcement audit): page creation used to grant
       // the owner +10 credits unconditionally, on EVERY page created. Creation
       // itself is not metered (only later regeneration is), and free-tier page
@@ -772,6 +775,7 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
     grantReferralBonusOnFirstPublish(ownerEmail).catch((err) => {
       console.error('[PUBLISH] referral bonus grant threw', { id, error: err instanceof Error ? err.message : err });
     });
+    logFunnelEvent('page_published', { userEmail: ownerEmail, meta: { pageId: id } });
   }
 
   return data as PublishedPage;

@@ -18,6 +18,7 @@ import Privacy         from './pages/legal/Privacy';
 import Terms           from './pages/legal/Terms';
 import Accessibility   from './pages/legal/Accessibility';
 import { authFetch } from './lib/api';
+import { getOrCreateVisitorId } from './lib/analytics';
 
 // ─── Protected route (Supabase auth) ─────────────────────────────────────────
 
@@ -146,21 +147,6 @@ function SyncAuth() {
 // visitor_id is a random id persisted in localStorage so the admin dashboard
 // can approximate unique visitors — not a real identity, just a per-browser
 // counting key with no PII.
-function getOrCreateVisitorId(): string {
-  const KEY = 'pagey_visitor_id';
-  try {
-    const existing = localStorage.getItem(KEY);
-    if (existing) return existing;
-    const id = crypto.randomUUID();
-    localStorage.setItem(KEY, id);
-    return id;
-  } catch {
-    // Private-browsing/storage-blocked fallback — a fresh id per view is fine,
-    // it just won't count as a returning unique visitor.
-    return crypto.randomUUID();
-  }
-}
-
 function SiteTracker() {
   const location = useLocation();
 

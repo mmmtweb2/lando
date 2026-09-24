@@ -13,7 +13,7 @@
 
 import { Resend } from 'resend';
 
-const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || 'mmmtirnoer@gmail.com';
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || 'tirnoer.digital@gmail.com';
 
 function escapeHtml(s: string): string {
   return s

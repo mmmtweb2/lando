@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import { supabase } from '../config/supabase';
 import { STARTING_CREDITS } from '../config/credits';
 import { sendNewSignupAlert } from './signup.mailer';
+import { logFunnelEvent } from './funnel.service';
 
 export interface MinimalProfile {
   email: string;
@@ -52,6 +53,7 @@ export async function ensureUserProfile(email: string): Promise<MinimalProfile> 
   // must trigger the alert since either can win the self-heal race (same
   // reasoning as the referral-attribution fix — see README).
   sendNewSignupAlert(normalized).catch((e) => console.error('[SIGNUP MAIL] failed:', e));
+  logFunnelEvent('signup_completed', { userEmail: normalized });
 
   return created as MinimalProfile;
 }

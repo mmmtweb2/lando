@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { trackEvent } from '../lib/analytics';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 type InfoScreen = null | 'magic' | 'confirm' | 'reset';
@@ -46,6 +47,7 @@ export default function Login() {
     setError(null);
     try {
       if (mode === 'signup') {
+        trackEvent('signup_attempt');
         const { data, error: signErr } = await supabase.auth.signUp({
           email: trimmed,
           password,

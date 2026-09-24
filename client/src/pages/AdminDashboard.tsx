@@ -82,11 +82,21 @@ interface SiteTrafficStats {
   topPaths: { path: string; views: number }[];
 }
 
+interface FunnelStats {
+  steps: { event: string; label: string; count: number }[];
+  wizardSteps: { step: number; count: number }[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Where the admin-panel password lives for the lifetime of this TAB. Session
  *  storage, not localStorage: closing the tab must forget it. */
 const ADMIN_PW_KEY = 'pagey_admin_panel_pw';
+
+// Mirrors Wizard.tsx's own STEPS array (kept as a separate local copy here —
+// this is a read-only display label, not shared logic worth importing across
+// files) — used to label funnel wizardSteps by index.
+const WIZARD_STEP_LABELS = ['מטרת הדף', 'פרטי העסק', 'פרטים מדויקים', 'לוגו', 'קשר ולינקים', 'תמונות'];
 
 const PURPOSE_LABELS: Record<string, string> = {
   publish: 'פרסום דף',
@@ -383,6 +393,7 @@ export default function AdminDashboard() {
     loadUsers();
     loadRevenue();
     loadTraffic();
+    loadFunnel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, denied, adminPw]);
 
@@ -440,6 +451,23 @@ export default function AdminDashboard() {
       .then(setTraffic)
       .catch((e: Error) => setTrafficError(e.message))
       .finally(() => setTrafficLoading(false));
+  }
+
+  // ── Signup→publish funnel ─────────────────────────────────────────────────
+  const [funnel, setFunnel] = useState<FunnelStats | null>(null);
+  const [funnelLoading, setFunnelLoading] = useState(true);
+  const [funnelError, setFunnelError] = useState<string | null>(null);
+
+  function loadFunnel() {
+    setFunnelLoading(true);
+    adminFetch('/api/admin/funnel')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת נתוני המשפך נכשלה');
+        return r.json() as Promise<FunnelStats>;
+      })
+      .then(setFunnel)
+      .catch((e: Error) => setFunnelError(e.message))
+      .finally(() => setFunnelLoading(false));
   }
 
   async function handlePaymentAction(id: string, action: 'reverify' | 'force-activate') {
@@ -790,6 +818,66 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Signup→publish funnel ─────────────────────────────────────── */}
+          <div>
+            <h2 className="font-semibold text-slate-700 text-sm mb-3">משפך המרה (30 יום אחרונים)</h2>
+            {funnelError && <p className="text-xs text-red-500 mb-2">{funnelError}</p>}
+            {!funnelLoading && funnel && funnel.steps.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                        <th className="px-4 py-2.5 font-medium">שלב</th>
+                        <th className="px-4 py-2.5 font-medium">משתמשים/מבקרים ייחודיים</th>
+                        <th className="px-4 py-2.5 font-medium">מהשלב הקודם</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnel.steps.map((s, i) => {
+                        const prev = i > 0 ? funnel.steps[i - 1].count : null;
+                        const pct = prev && prev > 0 ? Math.round((s.count / prev) * 100) : null;
+                        return (
+                          <tr key={s.event} className="border-b border-slate-50 last:border-0">
+                            <td className="px-4 py-3 text-slate-700">{s.label}</td>
+                            <td className="px-4 py-3 text-slate-700 font-semibold">{s.count}</td>
+                            <td className="px-4 py-3 text-slate-500">{pct !== null ? `${pct}%` : '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {!funnelLoading && funnel && funnel.wizardSteps.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-4">
+                <div className="px-5 py-4 border-b border-slate-100">
+                  <h3 className="font-semibold text-slate-700 text-sm">התקדמות באשף יצירת הדף, לפי שלב</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                        <th className="px-4 py-2.5 font-medium">שלב</th>
+                        <th className="px-4 py-2.5 font-medium">מבקרים ייחודיים שהגיעו</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnel.wizardSteps.map((s) => (
+                        <tr key={s.step} className="border-b border-slate-50 last:border-0">
+                          <td className="px-4 py-3 text-slate-700">{WIZARD_STEP_LABELS[s.step] ?? `שלב ${s.step + 1}`}</td>
+                          <td className="px-4 py-3 text-slate-700 font-semibold">{s.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

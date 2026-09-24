@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { logFunnelEvent } from '../services/funnel.service';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
 import { publishPageWithCredit } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
@@ -548,6 +549,13 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
       paid_at: ok ? new Date().toISOString() : null,
     })
     .eq('id', ref);
+
+  if (ok) {
+    logFunnelEvent('purchase_completed', {
+      userEmail: pay.user_email,
+      meta: { purpose: pay.purpose, amount: pay.amount, reference: pay.reference },
+    });
+  }
 
   res.redirect(clientUrl(ok ? 'success' : 'review'));
 }

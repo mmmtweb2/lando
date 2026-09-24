@@ -135,6 +135,16 @@ export async function getRevenueStats(_req: Request, res: Response): Promise<voi
   });
 }
 
+const ANDROID_APP_SOURCE_LABELS: Record<string, string> = {
+  'com.google.android.gm':            'Gmail',
+  'com.whatsapp':                     'WhatsApp',
+  'com.instagram.android':            'Instagram',
+  'com.facebook.katana':               'Facebook',
+  'com.facebook.orca':                 'Messenger',
+  'com.google.android.googlequicksearchbox': 'Google',
+  'com.android.chrome':                'Chrome',
+};
+
 interface SiteVisitRow {
   path: string;
   referrer: string | null;
@@ -197,6 +207,12 @@ export async function getSiteTraffic(_req: Request, res: Response): Promise<void
       try { source = new URL(r.referrer).hostname.replace(/^www\./, ''); } catch { source = null; }
     }
     source = source || 'ישיר';
+    // Android apps that open a link in an in-app browser send their own
+    // package name as the referrer (e.g. "android-app://com.google.android.gm"),
+    // not a real website — new URL().hostname on it comes out as the raw
+    // package id. Map the common ones to a readable name instead of showing
+    // "com.google.android.gm" in the dashboard.
+    source = ANDROID_APP_SOURCE_LABELS[source] ?? source;
     bySource.set(source, (bySource.get(source) ?? 0) + 1);
 
     byPath.set(r.path, (byPath.get(r.path) ?? 0) + 1);
@@ -226,4 +242,79 @@ export async function getSiteTraffic(_req: Request, res: Response): Promise<void
     bySource: bySourceArr,
     topPaths,
   });
+}
+
+interface FunnelEventRow {
+  event_name: string;
+  visitor_id: string | null;
+  user_email: string | null;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+}
+
+// The main funnel, in order. Each step counts DISTINCT actors (visitor_id for
+// client-fired intent events, user_email for server-fired truth events) —
+// one person retrying five times must not look like five conversions.
+const FUNNEL_STEPS: { event: string; label: string; actorField: 'visitor_id' | 'user_email' }[] = [
+  { event: 'signup_attempt',    label: 'ניסיון הרשמה',        actorField: 'visitor_id' },
+  { event: 'signup_completed',  label: 'הרשמה הושלמה',        actorField: 'user_email' },
+  { event: 'wizard_started',    label: 'פתיחת אשף יצירת דף',  actorField: 'visitor_id' },
+  { event: 'page_created',      label: 'דף נוצר',              actorField: 'user_email' },
+  { event: 'checkout_started',  label: 'תחילת תשלום',          actorField: 'visitor_id' },
+  { event: 'page_published',    label: 'דף פורסם',             actorField: 'user_email' },
+  { event: 'purchase_completed', label: 'רכישה הושלמה',       actorField: 'user_email' },
+];
+
+/**
+ * Signup→publish funnel drop-off, from funnel_events (migrations/022). Built
+ * 2026-09-24 after launch week showed real traffic but ~0 purchases, with no
+ * way to see WHERE people were dropping off — see README part 34. Same
+ * Node-side aggregation approach as getRevenueStats/getSiteTraffic above.
+ */
+export async function getFunnelStats(_req: Request, res: Response): Promise<void> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('funnel_events')
+    .select('event_name, visitor_id, user_email, meta, created_at')
+    .gte('created_at', thirtyDaysAgo)
+    .order('created_at', { ascending: false });
+
+  if (error) { res.status(500).json({ error: error.message }); return; }
+
+  const rows = (data ?? []) as FunnelEventRow[];
+
+  const actorsByEvent = new Map<string, Set<string>>();
+  const wizardStepActors = new Map<number, Set<string>>();
+
+  for (const r of rows) {
+    const set = actorsByEvent.get(r.event_name) ?? new Set<string>();
+    const actor = r.event_name === 'signup_completed' || r.event_name === 'page_created'
+      || r.event_name === 'page_published' || r.event_name === 'purchase_completed'
+      ? r.user_email
+      : r.visitor_id;
+    if (actor) set.add(actor);
+    actorsByEvent.set(r.event_name, set);
+
+    if (r.event_name === 'wizard_step_reached' && r.visitor_id) {
+      const step = typeof r.meta?.step === 'number' ? r.meta.step : null;
+      if (step !== null) {
+        const s = wizardStepActors.get(step) ?? new Set<string>();
+        s.add(r.visitor_id);
+        wizardStepActors.set(step, s);
+      }
+    }
+  }
+
+  const steps = FUNNEL_STEPS.map((s) => ({
+    event: s.event,
+    label: s.label,
+    count: actorsByEvent.get(s.event)?.size ?? 0,
+  }));
+
+  const wizardSteps = Array.from(wizardStepActors.entries())
+    .map(([step, actors]) => ({ step, count: actors.size }))
+    .sort((a, b) => a.step - b.step);
+
+  res.json({ steps, wizardSteps });
 }
