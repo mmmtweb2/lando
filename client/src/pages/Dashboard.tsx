@@ -5,8 +5,9 @@ import {
   Globe, Plus, ExternalLink, Loader2,
   LayoutDashboard, Settings, Users, LogOut,
   CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles, Share2,
-  Mail, MessageCircle,
+  Mail, MessageCircle, QrCode,
 } from 'lucide-react';
+import QrModal from '../components/QrModal';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
@@ -355,6 +356,7 @@ function PageGrid({
   renewalPrice: number;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [qrPage, setQrPage] = useState<{ slug: string; name: string } | null>(null);
   if (pages.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 flex flex-col items-center gap-3 text-center">
@@ -426,6 +428,15 @@ function PageGrid({
                   {copiedId === p.id ? 'הקישור הועתק! ✓' : 'שיתוף'}
                 </button>
               )}
+              {p.status === 'published' && (
+                <button
+                  onClick={() => setQrPage({ slug: p.slug, name: p.business_name })}
+                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#2E63F6] transition-colors flex-shrink-0"
+                >
+                  <QrCode size={12} />
+                  QR
+                </button>
+              )}
             </div>
             <button
               onClick={() => onDelete(p.id, p.business_name)}
@@ -438,6 +449,13 @@ function PageGrid({
           </div>
         </div>
       ))}
+      {qrPage && (
+        <QrModal
+          url={`https://pagey.co.il/p/${qrPage.slug}`}
+          title={qrPage.name}
+          onClose={() => setQrPage(null)}
+        />
+      )}
     </div>
   );
 }
