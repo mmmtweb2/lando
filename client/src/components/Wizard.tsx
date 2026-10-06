@@ -145,6 +145,40 @@ const PAGE_GOAL_OPTIONS: { value: PageGoal; label: string; desc: string; emoji: 
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+// ─── Draft persistence (2026-10-06, part 35) ─────────────────────────────────
+// The whole form lives in React state until the single POST at the end, so a
+// closed tab / accidental refresh mid-wizard used to lose everything. Saved
+// per user email in localStorage (never leaks across accounts on a shared
+// browser) and expires after 7 days. File objects (logo, uploaded photos)
+// cannot be serialized, so they are dropped — a restored 'upload' image
+// source falls back to 'none' rather than pointing at files that are gone.
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const draftKey = (email: string) => `pagey_wizard_draft_${email.trim().toLowerCase()}`;
+
+interface SavedDraft {
+  savedAt: number;
+  step: number;
+  form: Omit<FormState, 'logo' | 'user_images'>;
+  intakeAnswers: Record<string, string>;
+}
+
+function loadDraft(email: string): SavedDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(email));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as SavedDraft;
+    if (!d?.form || Date.now() - d.savedAt > DRAFT_TTL_MS) {
+      localStorage.removeItem(draftKey(email));
+      return null;
+    }
+    return d;
+  } catch { return null; }
+}
+
+function clearDraft(email: string) {
+  try { localStorage.removeItem(draftKey(email)); } catch { /* storage blocked — nothing to clear */ }
+}
+
 const DESIGN_STYLE_OPTIONS: { value: Exclude<DesignStyle, ''>; label: string; desc: string; emoji: string }[] = [
   { value: 'luxury',  label: 'יוקרתי ומאופק',   emoji: '✦', desc: 'כהה, אלגנטי, מרשים' },
   { value: 'vibrant', label: 'צבעוני ונועז',     emoji: '⚡', desc: 'אנרגטי, חי, בולט' },
@@ -860,6 +894,43 @@ export default function Wizard() {
     wizardStartedRef.current = true;
     trackEvent('wizard_started');
   }, [isAuthReady, user]);
+
+  // Restore a saved draft once, when the user is known and the form is still
+  // untouched; then autosave (debounced) on every change. `draftReadyRef`
+  // blocks the autosave until the restore attempt has run, so the empty
+  // initial form can never overwrite a saved draft.
+  const draftReadyRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthReady || !user || draftReadyRef.current) return;
+    draftReadyRef.current = true;
+    const d = loadDraft(user.email);
+    if (!d) return;
+    const restored = { ...d.form, logo: null, user_images: [] as File[] };
+    if (restored.image_source === 'upload') {
+      restored.image_source = 'none';
+      restored.wants_images = false;
+    }
+    setForm((prev) => ({ ...prev, ...restored }));
+    setStep(Math.min(Math.max(d.step, 0), STEPS.length - 1));
+    setIntakeAnswers(d.intakeAnswers ?? {});
+  }, [isAuthReady, user]);
+
+  useEffect(() => {
+    if (!user || !draftReadyRef.current || result) return;
+    const t = setTimeout(() => {
+      try {
+        const { logo: _logo, user_images: _imgs, ...rest } = form;
+        const draft: SavedDraft = { savedAt: Date.now(), step, form: rest, intakeAnswers };
+        localStorage.setItem(draftKey(user.email), JSON.stringify(draft));
+      } catch { /* storage full/blocked — draft saving is best-effort */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [form, step, intakeAnswers, user, result]);
+
+  // A successfully created page ends the draft.
+  useEffect(() => {
+    if (result && user) clearDraft(user.email);
+  }, [result, user]);
 
   useEffect(() => {
     if (!result) return;

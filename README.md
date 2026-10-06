@@ -418,3 +418,15 @@ New `GET /api/admin/funnel` (`getFunnelStats()`, same Node-aggregation style as 
 Also shipped, from the same conversation: a small `ANDROID_APP_SOURCE_LABELS` map in `getSiteTraffic()` — Android apps that open a link in their in-app browser send their own package name as the referrer (e.g. `android-app://com.google.android.gm`), which the existing hostname-based source resolution surfaced as a raw, unreadable package id; now mapped to a readable name (Gmail, WhatsApp, Instagram, etc.) for the common ones.
 
 `tsc` clean both sides. **Not yet committed** — a stuck `.git/index.lock` on Moshe's machine blocked every git write this session (see below); code is done and verified, just needs Moshe to clear the lock so it can be committed and pushed.
+
+## Upgrade round: wizard autosave, JSON-LD, abandoned drafts (2026-10-06, part 35)
+
+Post-launch upgrade round agreed with Moshe. Shipped in this commit:
+
+- **Wizard autosave** (`Wizard.tsx`) — form state + current step persisted to `localStorage` (key `pagey_wizard_draft_<email>`, debounced 600ms, 7-day TTL, files/logo excluded since they can't be serialised), restored on mount, cleared once a page is created. All hooks sit above the early return (hooks-order rule).
+- **Schema.org LocalBusiness JSON-LD** (`LandingViewer.tsx`) — emitted inside `<Helmet>` for non-draft pages (name, url, description, image/logo, phone, email, address, sameAs). `<` escaped in the JSON. Note: crawlers that don't run JS get meta via `servePageWithOgTags`; JSON-LD is injected client-side (Google renders JS).
+- **Abandoned-draft lifecycle** — `migrations/023_abandoned_drafts.sql` adds `draft_clock_at` (DEFAULT NOW(), so existing drafts start their clock at migration time) plus `draft_reminder_1d_at`, `draft_reminder_7d_at`, `draft_warning_30d_at`. New `draftCleanup.service.ts` runs inside the existing 6h sweep timer: reminders at day 1 and 7, final warning at day 30 ("deleted in 7 days"), delete at day 37 (leads first, then the page, CAS-guarded on `status='draft'`). Mails via new `draft.mailer.ts` (same template language as `renewal.mailer.ts`, best-effort). Sending one stage marks less-urgent stages as handled. Until migration 023 runs the stage logs query errors and does nothing (harmless).
+- **Decided not to build**: mobile camera capture (the default file input already offers camera or gallery; `capture` would remove gallery).
+
+Still open from the round: QR download in Dashboard (needs `qrcode` installed on Moshe's Mac), section-jump bug on landing pages (needs a live page to observe), customer subdomain (needs DNS provider details + wildcard cert).
+`tsc` clean both sides.

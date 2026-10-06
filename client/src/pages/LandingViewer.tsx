@@ -3407,6 +3407,29 @@ export default function LandingViewer() {
     ai_content.about?.content?.slice(0, 150) ||
     'דף נחיתה מקצועי';
 
+  // schema.org LocalBusiness structured data (2026-10-06, part 35) — lets
+  // Google understand this is a local business (name/phone/address) and show
+  // rich results. Published pages only: a draft is noindex and has no public
+  // URL worth describing. Opening hours are deliberately omitted — they are
+  // free text shown verbatim, and mapping them onto openingHoursSpecification
+  // would mean guessing; a wrong machine-readable schedule is worse than none.
+  // `<` is escaped so a business name can never close the script tag.
+  const structuredData = isDraft ? null : JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name: business_name,
+    url: `https://pagey.co.il/p/${page.slug}`,
+    description: ai_content.seo_description ?? ogDescription,
+    image: heroImageUrl || logo_url || undefined,
+    logo: logo_url || undefined,
+    telephone: phone || undefined,
+    email: ctaEmail || undefined,
+    address: ai_content.contact?.address
+      ? { '@type': 'PostalAddress', streetAddress: ai_content.contact.address, addressCountry: 'IL' }
+      : undefined,
+    sameAs: [facebook_url, instagram_url].filter(Boolean),
+  }).replace(/</g, '\\u003c');
+
   const toolbarVisible = !!canEdit;
   const fabBottom = toolbarVisible ? 'bottom-20' : 'bottom-6';
 
@@ -3438,6 +3461,7 @@ export default function LandingViewer() {
         <meta name="twitter:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta name="twitter:description" content={ai_content.seo_description ?? ogDescription} />
         {heroImageUrl && <meta name="twitter:image" content={heroImageUrl} />}
+        {structuredData && <script type="application/ld+json">{structuredData}</script>}
       </Helmet>
 
       {/* Sticky glassmorphism header */}

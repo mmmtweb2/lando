@@ -22,6 +22,7 @@
 
 import { supabase } from '../config/supabase';
 import { sendRenewalReminder, ReminderKind } from './renewal.mailer';
+import { runDraftSweep } from './draftCleanup.service';
 
 // ─── Lifecycle constants ─────────────────────────────────────────────────────
 
@@ -648,6 +649,9 @@ export function startRenewalSweep(): void {
     runRenewalSweep().catch((err) => {
       // Never let a sweep failure take down the web server.
       console.error('[SWEEP] renewal sweep threw:', err);
+    });
+    runDraftSweep().catch((err) => {
+      console.error('[SWEEP] draft sweep threw:', err);
     });
   };
 
