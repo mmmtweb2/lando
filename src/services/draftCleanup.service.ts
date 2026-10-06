@@ -144,3 +144,28 @@ export async function runDraftSweep(): Promise<{ reminded: number; deleted: numb
   if (reminded || deleted) console.log('[DRAFTS] draft sweep done', { reminded, deleted });
   return { reminded, deleted };
 }
+
+/**
+ * The owner is actively working on a draft — restart its abandonment clock and
+ * clear the reminder marks so the day-1/7/30 sequence starts over. Guarded on
+ * status = 'draft' (a no-op for published pages). Best-effort, never throws.
+ */
+export function touchDraft(id: string | undefined): void {
+  if (!id) return;
+  void (async () => {
+    try {
+      await supabase
+        .from('landing_pages')
+        .update({
+          draft_clock_at: new Date().toISOString(),
+          draft_reminder_1d_at: null,
+          draft_reminder_7d_at: null,
+          draft_warning_30d_at: null,
+        })
+        .eq('id', id)
+        .eq('status', 'draft');
+    } catch (err) {
+      console.error('[DRAFTS] touchDraft failed', { id, err });
+    }
+  })();
+}

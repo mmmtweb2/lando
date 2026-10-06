@@ -1334,7 +1334,7 @@ export default function LandingViewer() {
   // Design token–driven card style: glassmorphism (default) vs flat clean
   const cardGlass = ai_content.design_tokens?.background_effect === 'clean'
     ? 'bg-white border border-slate-100 shadow-sm'
-    : 'bg-white/80 backdrop-blur-md border border-white/60 shadow-lg';
+    : 'bg-white/80 md:backdrop-blur-md border border-white/60 shadow-lg';
 
   // Design token derived variables
   const backgroundEffect = ai_content.design_tokens?.background_effect ?? 'glassmorphism';
@@ -1504,7 +1504,7 @@ export default function LandingViewer() {
   function serviceCards(svcImages: string[] = []) {
     return services.map((s, i) => (
       <motion.div key={s.id} variants={V.classic.item}
-        className={`group ${theme.cardRadius} ${cardGlass} flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl`}
+        className={`group ${theme.cardRadius} ${cardGlass} flex flex-col overflow-hidden transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl`}
         style={techCard}>
         <EditableImage src={svcImages[i]} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
           className="w-full h-56 md:h-64" style={imgTreatmentStyle} isEditingMode={isEditingMode} canEdit={!!canEdit}
@@ -1593,7 +1593,7 @@ export default function LandingViewer() {
         {services.length > 0 && (
           <motion.div variants={V.bento.cell} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {services.map((s, i) => (
-              <div key={s.id} className={`${theme.cardRadius} bg-white/80 backdrop-blur-sm border border-white/60 shadow-md flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl`} style={techCard}>
+              <div key={s.id} className={`${theme.cardRadius} bg-white/80 md:backdrop-blur-sm border border-white/60 shadow-md flex flex-col overflow-hidden transition-[translate,box-shadow] duration-300 hover:-translate-y-1.5 hover:shadow-xl`} style={techCard}>
                 <EditableImage src={isAiFormat ? iconUrls[i] : legacyImages[i + 2]}
                   primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                   className="w-full h-48" isEditingMode={isEditingMode} canEdit={!!canEdit}
@@ -1698,7 +1698,7 @@ export default function LandingViewer() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true, margin: '-80px' }}
                       transition={{ duration: 0.6, delay: i * 0.14, ease: EASE_SMOOTH }}
-                      className={`h-full flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 backdrop-blur-sm border border-white/60 shadow-md transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl`}>
+                      className={`h-full flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 md:backdrop-blur-sm border border-white/60 shadow-md transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl`}>
                       <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                         className="w-full h-56 md:h-64"
                         isEditingMode={isEditingMode} canEdit={!!canEdit}
@@ -1940,8 +1940,8 @@ export default function LandingViewer() {
                 className={`
                   ${i === 0 ? 'sm:col-span-2 flex-row items-start' : 'flex-col'}
                   flex gap-5 p-6 ${theme.cardRadius}
-                  bg-white/80 backdrop-blur-md border border-white/60 shadow-lg
-                  hover:-translate-y-1.5 hover:shadow-2xl transition-all duration-300
+                  bg-white/80 md:backdrop-blur-md border border-white/60 shadow-lg
+                  hover:-translate-y-1.5 hover:shadow-2xl transition-[translate,box-shadow] duration-300
                 `}
                 style={techCard}>
                 <div className={`${i === 0 ? 'w-14 h-14 rounded-2xl' : 'w-10 h-10 rounded-xl'} flex-shrink-0 flex items-center justify-center mt-0.5`}
@@ -2069,10 +2069,10 @@ export default function LandingViewer() {
                   whileInView={{ opacity: 1, y: 0, scale: 1 }}
                   viewport={{ once: true, margin: '-80px' }}
                   transition={{ duration: 0.5, delay: i * 0.1, ease: EASE_EXPO }}
-                  className={`relative flex flex-col gap-3 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 ${
+                  className={`relative flex flex-col gap-3 rounded-2xl p-6 transition-[translate,box-shadow] duration-300 hover:-translate-y-1.5 ${
                     isPholder
                       ? 'border-2 border-dashed border-amber-300 bg-amber-50'
-                      : 'bg-white/80 backdrop-blur-md border border-white/60 shadow-lg hover:shadow-2xl'
+                      : 'bg-white/80 md:backdrop-blur-md border border-white/60 shadow-lg hover:shadow-2xl'
                   }`}>
                   {isPholder && canEdit && (
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 rounded-lg px-2.5 py-1.5 self-start">
@@ -2144,7 +2144,7 @@ export default function LandingViewer() {
             className={`relative flex flex-col items-center text-center gap-6 rounded-3xl p-10 sm:p-14 ${
               featuredIsPholder
                 ? 'border-2 border-dashed border-amber-300 bg-amber-50'
-                : 'bg-white/80 backdrop-blur-md border border-white/60 shadow-xl'
+                : 'bg-white/80 md:backdrop-blur-md border border-white/60 shadow-xl'
             }`}>
             {featuredIsPholder && canEdit && (
               <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 rounded-lg px-2.5 py-1.5">
@@ -2206,7 +2206,7 @@ export default function LandingViewer() {
           <div className="flex flex-col gap-2">
             {faq.map((item, i) => (
               <motion.div key={i} variants={V.classic.item}
-                className={`${theme.cardRadius} overflow-hidden border border-slate-200 bg-white/90 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
+                className={`${theme.cardRadius} overflow-hidden border border-slate-200 bg-white/90 md:backdrop-blur-sm transition-[translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md`}>
                 {isEditingMode ? (
                   <div className="p-5 flex flex-col gap-2">
                     <EditableText as="p" className="font-semibold text-slate-800 text-sm"
@@ -2691,7 +2691,7 @@ export default function LandingViewer() {
                   initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-80px' }}
                   transition={{ duration: 0.6, delay: i * 0.14, ease: EASE_SMOOTH }}
-                  className={`flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 backdrop-blur-sm border border-white/60 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl ${i === 0 ? 'shadow-xl' : 'shadow-md'}`}>
+                  className={`flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 md:backdrop-blur-sm border border-white/60 transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl ${i === 0 ? 'shadow-xl' : 'shadow-md'}`}>
                   <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                     className={`w-full ${i === 0 ? 'h-72 md:h-80' : 'h-52 md:h-60'}`}
                     style={imgTreatmentStyle}
@@ -2842,7 +2842,7 @@ export default function LandingViewer() {
                 whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 viewport={{ once: true, margin: '-80px' }}
                 transition={{ duration: 0.55, delay: i * 0.1, ease: EASE_EXPO }}
-                className={`flex flex-col gap-4 p-6 ${theme.cardRadius} bg-white/80 backdrop-blur-md border border-white/60 shadow-lg hover:-translate-y-1.5 hover:shadow-2xl transition-all duration-300`}>
+                className={`flex flex-col gap-4 p-6 ${theme.cardRadius} bg-white/80 md:backdrop-blur-md border border-white/60 shadow-lg hover:-translate-y-1.5 hover:shadow-2xl transition-[translate,box-shadow] duration-300`}>
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})` }}>
                   <Check size={18} color="#fff" />
@@ -3106,7 +3106,7 @@ export default function LandingViewer() {
                   initial={{ opacity: 0, scale: 0.96 }} whileInView={{ opacity: 1, scale: 1 }}
                   viewport={{ once: true, margin: '-60px' }}
                   transition={{ duration: 0.5, delay: i * 0.07, ease: EASE_EXPO }}
-                  className={`relative overflow-hidden ${theme.cardRadius} ${i === 0 ? 'col-span-2 row-span-2 aspect-square sm:aspect-[4/3]' : 'aspect-square'} bg-slate-100 shadow-md hover:-translate-y-1 hover:shadow-xl transition-all duration-300`}>
+                  className={`relative overflow-hidden ${theme.cardRadius} ${i === 0 ? 'col-span-2 row-span-2 aspect-square sm:aspect-[4/3]' : 'aspect-square'} bg-slate-100 shadow-md hover:-translate-y-1 hover:shadow-xl transition-[translate,box-shadow] duration-300`}>
                   <EditableImage
                     src={src}
                     primaryColor={primary}

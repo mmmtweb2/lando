@@ -12,6 +12,7 @@ import {
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 import { logFunnelEvent } from '../services/funnel.service';
+import { touchDraft } from '../services/draftCleanup.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -110,6 +111,7 @@ export async function updateLandingPage(req: Request, res: Response): Promise<vo
     return;
   }
 
+  touchDraft(id);
   res.json(data);
 }
 
@@ -950,6 +952,7 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
 
   if (error) { res.status(500).json({ error: error.message }); return; }
 
+  touchDraft(id);
   res.json({ url, user_images: serialized });
 }
 
@@ -1076,6 +1079,7 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
       return;
     }
 
+    touchDraft(id);
     res.json({ url: firstUrl, user_images: serialized, credits: newCredits });
   } catch (err) {
     // The charge already happened (credits are deducted before the generation
@@ -1203,6 +1207,7 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
       return;
     }
 
+    touchDraft(id);
     res.json({ ai_content: (saved as { ai_content: AiContent }).ai_content, credits: newCredits });
   } catch (err) {
     // Charged up-front; nothing was delivered — give the credits back.

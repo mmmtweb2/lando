@@ -430,3 +430,8 @@ Post-launch upgrade round agreed with Moshe. Shipped in this commit:
 
 Still open from the round: QR download in Dashboard (needs `qrcode` installed on Moshe's Mac), section-jump bug on landing pages (needs a live page to observe), customer subdomain (needs DNS provider details + wildcard cert).
 `tsc` clean both sides.
+
+### Part 35 addendum (2026-10-06): landing-page "jumping" fix + active-draft clock reset
+
+- **Jumping sections (mobile)** — measured on the live page: document height and heading positions are stable while scrolling (no layout shift), so the cause is paint-level, not layout. Two likely culprits fixed in `LandingViewer.tsx`: (1) `transition-all` on `motion.*` cards/FAQ items made CSS transition framer-motion's inline `transform`/`opacity`, double-easing the entrance and re-triggering on every state change — replaced with `transition-[translate,box-shadow]` (Tailwind v4 hover lift uses the `translate` property, so hover still animates); (2) `backdrop-blur` on ~12 cards (benefits, process, FAQ, etc.) causes repaint flicker while scrolling on mobile GPUs — now `md:backdrop-blur-*` (desktop only; `bg-white/80` looks nearly identical without it). Not visually verifiable in the headless pane — needs Moshe's check on a real phone.
+- **Active-draft clock reset** — `touchDraft(id)` in `draftCleanup.service.ts` restarts `draft_clock_at` and clears the reminder marks whenever the owner saves content edits, image uploads, AI image regeneration or AI text regeneration on a draft (no-op for published pages).
