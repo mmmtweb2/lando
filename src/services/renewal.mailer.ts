@@ -13,6 +13,7 @@
 
 import { Resend } from 'resend';
 import { RENEWAL_PRICE } from '../config/billing';
+import { publicPageUrl } from './subdomain.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 
@@ -23,6 +24,7 @@ export interface ReminderParams {
   to: string;
   pageId: string;
   slug: string;
+  subdomain?: string | null;
   businessName: string;
   expiresAt: string | null;
 }
@@ -142,7 +144,7 @@ function buildEmailHtml(p: ReminderParams): { subject: string; html: string } {
   // direct payment link: nothing should be chargeable straight from an email
   // link, and the customer should be signed in as themselves before paying.
   const renewUrl = `${APP_URL}/dashboard?renew=${encodeURIComponent(p.pageId)}`;
-  const pageUrl = `${APP_URL}/p/${encodeURIComponent(p.slug)}`;
+  const pageUrl = publicPageUrl(encodeURIComponent(p.slug), p.subdomain);
 
   const html = `<!DOCTYPE html>
 <html dir="rtl" lang="he">

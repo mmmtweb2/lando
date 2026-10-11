@@ -265,6 +265,7 @@ export async function grantRenewal(email: string, id: string): Promise<boolean> 
 interface ReminderRow {
   id: string;
   slug: string;
+  subdomain?: string | null;
   business_name: string | null;
   owner_email: string | null;
   expires_at: string | null;
@@ -308,7 +309,7 @@ async function sendDueReminders(now: Date): Promise<number> {
 
     const { data, error } = await supabase
       .from('landing_pages')
-      .select('id, slug, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
+      .select('id, slug, subdomain, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
       .eq('status', 'published')
       .is(column, null)
       .not('expires_at', 'is', null)
@@ -364,6 +365,7 @@ async function sendDueReminders(now: Date): Promise<number> {
         to: row.owner_email,
         pageId: row.id,
         slug: row.slug,
+        subdomain: row.subdomain ?? null,
         businessName: row.business_name ?? 'העסק שלך',
         expiresAt: row.expires_at,
       });
@@ -390,7 +392,7 @@ async function freezeExpiredPages(now: Date): Promise<number> {
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, owner_email, expires_at')
+    .select('id, slug, subdomain, business_name, owner_email, expires_at')
     .eq('status', 'published')
     .not('expires_at', 'is', null)
     .lte('expires_at', cutoff.toISOString())
@@ -429,6 +431,7 @@ async function freezeExpiredPages(now: Date): Promise<number> {
         to: row.owner_email,
         pageId: row.id,
         slug: row.slug,
+        subdomain: row.subdomain ?? null,
         businessName: row.business_name ?? 'העסק שלך',
         expiresAt: row.expires_at,
       });
@@ -469,7 +472,7 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
 
     const { data, error } = await supabase
       .from('landing_pages')
-      .select('id, slug, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
+      .select('id, slug, subdomain, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
       .eq('status', 'frozen')
       .is(column, null)
       .not('frozen_at', 'is', null)
@@ -513,6 +516,7 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
         to: row.owner_email,
         pageId: row.id,
         slug: row.slug,
+        subdomain: row.subdomain ?? null,
         businessName: row.business_name ?? 'העסק שלך',
         expiresAt: row.frozen_at ?? null,
       });
@@ -544,7 +548,7 @@ async function hardDeleteFrozenPages(now: Date): Promise<number> {
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, owner_email, frozen_at')
+    .select('id, slug, subdomain, business_name, owner_email, frozen_at')
     .eq('status', 'frozen')
     .not('frozen_at', 'is', null)
     .lte('frozen_at', cutoff.toISOString())

@@ -454,3 +454,5 @@ Every published page now gets a readable subdomain. `/p/<slug>` keeps working fo
 - Not changed: renewal/draft emails and the lead-notification email still link to `/p/<slug>` (valid); easy follow-up to switch them to the subdomain.
 
 `tsc` clean both sides. Not verifiable end-to-end until the wildcard DNS + Traefik host rule are live.
+
+Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now show/link the page's subdomain URL (via `publicPageUrl`); the renewal sweep queries select `subdomain` and pass it through. Draft emails link to the dashboard and need no change. Traefik wildcard routing (Cloudflare proxied `*` record, SSL mode Full, a catch-all `HostRegexp` router in Coolify) is documented in the chat hand-off, not in the repo.
