@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { publicPageUrl } from '../lib/pageUrl';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2 } from 'lucide-react';
@@ -114,6 +115,7 @@ interface AiImageStore {
 
 interface LandingPage {
   id: string;
+  subdomain?: string | null;
   slug: string;
   business_name: string;
   phone_number: string;
@@ -874,8 +876,9 @@ function applyEdits(content: AiContent, changes: Record<string, string>): AiCont
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function LandingViewer() {
-  const { slug } = useParams<{ slug: string }>();
+export default function LandingViewer({ slugOverride }: { slugOverride?: string } = {}) {
+  const { slug: routeSlug } = useParams<{ slug: string }>();
+  const slug = slugOverride ?? routeSlug;
   const { user } = useUser();
   const [page, setPage] = useState<LandingPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -3418,7 +3421,7 @@ export default function LandingViewer() {
     '@context': 'https://schema.org',
     '@type': 'LocalBusiness',
     name: business_name,
-    url: `https://pagey.co.il/p/${page.slug}`,
+    url: publicPageUrl(page.slug, page.subdomain),
     description: ai_content.seo_description ?? ogDescription,
     image: heroImageUrl || logo_url || undefined,
     logo: logo_url || undefined,
@@ -3449,7 +3452,7 @@ export default function LandingViewer() {
             (Two independent passes today hit this same bug — logic below is
             the merged, equivalent fix.) */}
         <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
-        <link rel="canonical" href={`https://pagey.co.il/p/${page.slug}`} />
+        <link rel="canonical" href={publicPageUrl(page.slug, page.subdomain)} />
         <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
@@ -3847,7 +3850,7 @@ export default function LandingViewer() {
               <div className="w-full flex flex-col gap-2.5">
                 <button
                   onClick={async () => {
-                    const url = `https://pagey.co.il/p/${page.slug}`;
+                    const url = publicPageUrl(page.slug, page.subdomain);
                     // Native share sheet when available (WhatsApp, Messages,
                     // etc. — this is exactly the moment a business owner wants
                     // to send the fresh link to someone), clipboard as the

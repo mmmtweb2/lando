@@ -7,6 +7,7 @@ import router from './routes';
 import { servePageWithOgTags } from './controllers/og.controller';
 import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
+import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
 
 const app = express();
 
@@ -41,6 +42,34 @@ const ogPageLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 120,
   message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
+});
+// Customer subdomains (cafe-dani.pagey.co.il). Cloudflare proxies the wildcard
+// record, so the TCP peer is Cloudflare — restore the real visitor IP from
+// CF-Connecting-IP (scoped to subdomain hosts only, so the apex's IP handling is
+// untouched). Only GET / is intercepted: assets, /api/* and every other path
+// fall through to the normal static/API/SPA handlers on the same host.
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  const sub = subdomainFromHost(req.hostname);
+  if (!sub) { next(); return; }
+
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (typeof cfIp === 'string' && cfIp) {
+    Object.defineProperty(req, 'ip', { value: cfIp, configurable: true });
+  }
+
+  if (req.method !== 'GET' || req.path !== '/') { next(); return; }
+
+  ogPageLimiter(req, res, async () => {
+    try {
+      const page = await getPageBySubdomain(sub);
+      if (!page) { res.redirect(302, `https://${ROOT_DOMAIN}/`); return; }
+      res.locals.pageSlug = page.slug;
+      res.locals.bySubdomain = sub;
+      await servePageWithOgTags(req, res);
+    } catch (err) {
+      next(err);
+    }
+  });
 });
 app.get('/p/:slug', ogPageLimiter, servePageWithOgTags);
 

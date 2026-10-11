@@ -23,6 +23,7 @@
 import { supabase } from '../config/supabase';
 import { sendRenewalReminder, ReminderKind } from './renewal.mailer';
 import { runDraftSweep } from './draftCleanup.service';
+import { backfillSubdomains } from './subdomain.service';
 
 // ─── Lifecycle constants ─────────────────────────────────────────────────────
 
@@ -652,6 +653,9 @@ export function startRenewalSweep(): void {
     });
     runDraftSweep().catch((err) => {
       console.error('[SWEEP] draft sweep threw:', err);
+    });
+    backfillSubdomains().catch((err) => {
+      console.error('[SWEEP] subdomain backfill threw:', err);
     });
   };
 

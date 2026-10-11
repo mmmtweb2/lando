@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { publicPageUrl } from '../services/subdomain.service';
 import { supabase } from '../config/supabase';
 
 const SITE_URL = 'https://pagey.co.il';
@@ -18,7 +19,7 @@ function escapeXml(str: string): string {
 export async function serveSitemap(_req: Request, res: Response): Promise<void> {
   const { data: pages, error } = await supabase
     .from('landing_pages')
-    .select('slug, published_at, created_at')
+    .select('slug, subdomain, published_at, created_at')
     .eq('status', 'published');
 
   if (error) {
@@ -34,7 +35,7 @@ export async function serveSitemap(_req: Request, res: Response): Promise<void> 
       ?? (page as { created_at?: string }).created_at;
     const lastmod = lastmodRaw ? new Date(lastmodRaw).toISOString().slice(0, 10) : undefined;
     urls.push(
-      `  <url>\n    <loc>${SITE_URL}/p/${escapeXml(page.slug as string)}</loc>${
+      `  <url>\n    <loc>${escapeXml(publicPageUrl(page.slug as string, (page as { subdomain?: string | null }).subdomain))}</loc>${
         lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : ''
       }\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`
     );

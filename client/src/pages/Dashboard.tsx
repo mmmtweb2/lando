@@ -8,6 +8,7 @@ import {
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
+import { publicPageUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
@@ -24,6 +25,7 @@ import CouponField, { type CouponQuote } from '../components/CouponField';
 interface PageRow {
   id: string;
   slug: string;
+  subdomain?: string | null;
   business_name: string;
   created_at: string;
   logo_url: string | null;
@@ -329,8 +331,7 @@ function RenewalNotice({
 // Messages, etc. — on mobile and on desktop browsers that support it),
 // falling back to clipboard copy everywhere else. `onCopied` lets the caller
 // show its own brief "copied" feedback for the fallback path.
-async function sharePage(slug: string, businessName: string, onCopied: () => void) {
-  const url = `https://pagey.co.il/p/${slug}`;
+async function sharePage(url: string, businessName: string, onCopied: () => void) {
   if (navigator.share) {
     try {
       await navigator.share({ title: businessName, url });
@@ -356,7 +357,7 @@ function PageGrid({
   renewalPrice: number;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [qrPage, setQrPage] = useState<{ slug: string; name: string } | null>(null);
+  const [qrPage, setQrPage] = useState<{ url: string; name: string } | null>(null);
   if (pages.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 flex flex-col items-center gap-3 text-center">
@@ -392,7 +393,7 @@ function PageGrid({
               )}
               <div className="min-w-0">
                 <p className="font-medium text-slate-900 text-sm truncate">{p.business_name}</p>
-                <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">/p/{p.slug}</p>
+                <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">{publicPageLabel(p.slug, p.subdomain)}</p>
               </div>
             </div>
             <StatusBadge status={p.status} />
@@ -418,7 +419,7 @@ function PageGrid({
               </Link>
               {p.status === 'published' && (
                 <button
-                  onClick={() => sharePage(p.slug, p.business_name, () => {
+                  onClick={() => sharePage(publicPageUrl(p.slug, p.subdomain), p.business_name, () => {
                     setCopiedId(p.id);
                     setTimeout(() => setCopiedId((cur) => (cur === p.id ? null : cur)), 2000);
                   })}
@@ -430,7 +431,7 @@ function PageGrid({
               )}
               {p.status === 'published' && (
                 <button
-                  onClick={() => setQrPage({ slug: p.slug, name: p.business_name })}
+                  onClick={() => setQrPage({ url: publicPageUrl(p.slug, p.subdomain), name: p.business_name })}
                   className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#2E63F6] transition-colors flex-shrink-0"
                 >
                   <QrCode size={12} />
@@ -451,7 +452,7 @@ function PageGrid({
       ))}
       {qrPage && (
         <QrModal
-          url={`https://pagey.co.il/p/${qrPage.slug}`}
+          url={qrPage.url}
           title={qrPage.name}
           onClose={() => setQrPage(null)}
         />

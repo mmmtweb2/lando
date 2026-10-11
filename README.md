@@ -439,3 +439,18 @@ Still open from the round: QR download in Dashboard (needs `qrcode` installed on
 ### Part 35 addendum 2 (2026-10-06): QR code for published pages
 
 New `client/src/components/QrModal.tsx` + a "QR" button on every published page card in `Dashboard.tsx` (next to Share). Opens a modal with the page's public URL as a QR code and a "download PNG" button (1024px, margin 2, error correction M — sharp enough for print). The `qrcode` library (new dependency in `client/package.json`, installed by Moshe on his Mac) is loaded with a dynamic `import()` so it stays out of the main bundle. Pure client-side; no backend, no DB. When the subdomain feature lands, the URL passed to `QrModal` should switch to the page's subdomain URL. `tsc -b` clean; a local `vite build` could not run in the Linux VM (Mac-native rolldown binary), so the first real build is the Docker/Coolify one.
+
+## Customer subdomains: cafe-dani.pagey.co.il (2026-10-11, part 36)
+
+Every published page now gets a readable subdomain. `/p/<slug>` keeps working for every page forever (existing links, QR codes already printed, the owner's edit flow, drafts) — the subdomain is additive, and the page's `canonical` / JSON-LD / sitemap entry / share link / QR code point at the subdomain once it has one.
+
+- **DB**: `migrations/024_page_subdomain.sql` — nullable `landing_pages.subdomain` (lowercase) + partial unique index (`WHERE subdomain IS NOT NULL`), which makes assignment race-safe.
+- **Naming** (`src/services/subdomain.service.ts`): Claude Haiku turns the Hebrew business name into a short English label (3.5s timeout); fallback is a built-in Hebrew→Latin transliteration, then a random `page-xxxx`. Collisions → `-2…-6`, then a random suffix (retry on Postgres 23505). A reserved-word list (`www`, `api`, `admin`, `mail`, `login`, … ~110 names) can never be assigned; format `^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$`.
+- **When**: `publishPageById` assigns one at publish (awaited, bounded, best-effort — failure leaves the page at `/p/<slug>`). Pages published before this feature are backfilled by the existing 6h sweep (`backfillSubdomains`, 40/pass).
+- **Routing** (`app.ts`): a middleware before `/p/:slug` maps the Host header to a subdomain and, for `GET /` only, resolves the page and serves it through `servePageWithOgTags` (so link previews/SEO get real OG tags + the subdomain canonical). The slug is injected as `window.__PAGEY_SLUG__`; `App.tsx` renders `LandingViewer` at `/` when it is set (`LandingViewer` takes a `slugOverride` prop). Assets, `/api/*` and all other paths fall through to the normal handlers on the same host (same-origin, so lead forms/analytics work unchanged). Unknown subdomain → 302 to the main site. The marketing `SiteTracker` skips subdomain visits.
+- **Real visitor IP**: subdomains are served through Cloudflare's proxy, so on subdomain hosts only, `req.ip` is restored from `CF-Connecting-IP` (otherwise every visitor would share a Cloudflare edge IP and trip the per-IP rate limiters). The apex is untouched.
+- **Client**: new `client/src/lib/pageUrl.ts` (`publicPageUrl`, `publicPageLabel`, `subdomainPageSlug`); Dashboard card label, share button and QR now use the subdomain URL; `getMyPages` returns `subdomain`.
+- **Infra (done by Moshe, not in the repo)**: DNS moved to Cloudflare (own account, nameservers alec/raquel); a proxied wildcard `*` A record → server IP; SSL/TLS mode Full; Coolify/Traefik router must accept `*.pagey.co.il`. Env var `ROOT_DOMAIN` (default `pagey.co.il`).
+- Not changed: renewal/draft emails and the lead-notification email still link to `/p/<slug>` (valid); easy follow-up to switch them to the subdomain.
+
+`tsc` clean both sides. Not verifiable end-to-end until the wildcard DNS + Traefik host rule are live.

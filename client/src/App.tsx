@@ -19,6 +19,7 @@ import Terms           from './pages/legal/Terms';
 import Accessibility   from './pages/legal/Accessibility';
 import { authFetch } from './lib/api';
 import { getOrCreateVisitorId } from './lib/analytics';
+import { subdomainPageSlug } from './lib/pageUrl';
 
 // ─── Protected route (Supabase auth) ─────────────────────────────────────────
 
@@ -147,10 +148,15 @@ function SyncAuth() {
 // visitor_id is a random id persisted in localStorage so the admin dashboard
 // can approximate unique visitors — not a real identity, just a per-browser
 // counting key with no PII.
+// Set when the server routed a page subdomain (cafe-dani.pagey.co.il) to this app.
+const subSlug = subdomainPageSlug();
+
 function SiteTracker() {
   const location = useLocation();
 
   useEffect(() => {
+    // A customer's own page on its subdomain is not a marketing-site visit.
+    if (subdomainPageSlug()) return;
     const params = new URLSearchParams(location.search);
     const body = {
       path: location.pathname,
@@ -182,7 +188,7 @@ export default function App() {
           <SyncAuth />
           <SiteTracker />
           <Routes>
-            <Route path="/"          element={<MarketingLanding />} />
+            <Route path="/"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <MarketingLanding />} />
             <Route path="/create"    element={<Wizard />} />
             <Route path="/login"     element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />

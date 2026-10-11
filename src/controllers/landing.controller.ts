@@ -13,6 +13,7 @@ import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
+import { assignSubdomain } from '../services/subdomain.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -41,7 +42,7 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
 
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('id, slug, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count')
+    .select('id, slug, subdomain, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count')
     .eq('owner_email', email)
     .order('created_at', { ascending: false });
 
@@ -738,6 +739,7 @@ export interface PublishedPage {
   status: string;
   published_at: string;
   expires_at: string;
+  subdomain?: string | null;
 }
 
 /**
@@ -763,6 +765,18 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
   if (error || !data) {
     console.error('[PUBLISH] update failed:', error?.message);
     return null;
+  }
+
+  // Readable subdomain (cafe-dani.pagey.co.il). Awaited (bounded: the AI naming
+  // call has a 3.5s timeout and falls back to transliteration) so the response
+  // can already carry it; best-effort — a failure leaves the page at /p/<slug>
+  // and the periodic backfill retries.
+  try {
+    const bn = await supabase.from('landing_pages').select('business_name').eq('id', id).single();
+    const sub = await assignSubdomain(id, (bn.data as { business_name?: string | null } | null)?.business_name ?? null);
+    if (sub) (data as Record<string, unknown>).subdomain = sub;
+  } catch (e) {
+    console.error('[PUBLISH] subdomain assignment failed (non-fatal)', e);
   }
 
   // Referral bonus (see referral.service.ts): fires on the owner's first

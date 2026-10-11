@@ -3,6 +3,7 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { supabase } from '../config/supabase';
 import { getAccountStatus } from '../services/billing.service';
+import { publicPageUrl } from '../services/subdomain.service';
 
 function escapeHtml(str: string): string {
   return str
@@ -34,19 +35,31 @@ async function loadHtmlShell(): Promise<string> {
   }
 }
 
+/**
+ * Requests that arrive on a page's own subdomain (cafe-dani.pagey.co.il/) are
+ * routed here by app.ts with res.locals.pageSlug set. The SPA has no /p/:slug
+ * in its URL then, so the slug is injected into the HTML for the client router.
+ */
+function injectSubdomainSlug(html: string, res: Response): string {
+  const slug = res.locals.pageSlug as string | undefined;
+  if (!slug || !res.locals.bySubdomain) return html;
+  const tag = `<script>window.__PAGEY_SLUG__=${JSON.stringify(slug).replace(/</g, '\\u003c')};</script>`;
+  return html.replace('</head>', `${tag}\n  </head>`);
+}
+
 export async function servePageWithOgTags(req: Request, res: Response): Promise<void> {
-  const { slug } = req.params;
+  const slug = (res.locals.pageSlug as string | undefined) ?? req.params.slug;
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, address, phone_number')
+    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, subdomain, address, phone_number')
     .eq('slug', slug)
     .single();
 
   if (error || !page) {
     // Not found — let the SPA handle the 404 UI
     const shell = await loadHtmlShell();
-    res.status(200).setHeader('Content-Type', 'text/html').send(shell);
+    res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(shell, res));
     return;
   }
 
@@ -75,7 +88,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   const ogStatus = (page as { status?: string | null }).status;
   if (ogStatus === 'draft' || ogStatus === 'frozen') {
     const shell = await loadHtmlShell();
-    res.status(200).setHeader('Content-Type', 'text/html').send(shell);
+    res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(shell, res));
     return;
   }
 
@@ -116,7 +129,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // are not (drafts are still publicly fetchable via GET /:slug, so this
   // matters: without it a draft could get indexed before the owner publishes).
   const isPublished = page.status === 'published';
-  const pageUrl = `${SITE_URL}/p/${page.slug as string}`;
+  const pageUrl = publicPageUrl(page.slug as string, (page as { subdomain?: string | null }).subdomain);
   const robotsContent = isPublished ? 'index,follow' : 'noindex,nofollow';
 
   // JSON-LD LocalBusiness structured data — only for published pages (drafts
@@ -181,5 +194,5 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
     .replace('</head>', `${ogTags}\n  </head>`);
 
-  res.status(200).setHeader('Content-Type', 'text/html').send(html);
+  res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(html, res));
 }
