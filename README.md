@@ -456,3 +456,8 @@ Every published page now gets a readable subdomain. `/p/<slug>` keeps working fo
 `tsc` clean both sides. Not verifiable end-to-end until the wildcard DNS + Traefik host rule are live.
 
 Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now show/link the page's subdomain URL (via `publicPageUrl`); the renewal sweep queries select `subdomain` and pass it through. Draft emails link to the dashboard and need no change. Traefik wildcard routing (Cloudflare proxied `*` record, SSL mode Full, a catch-all `HostRegexp` router in Coolify) is documented in the chat hand-off, not in the repo.
+
+### חלק 36 – תוספת: ניתוב תת-דומיינים בתשתית (אוקטובר 2026)
+- DNS מנוהל ב-Cloudflare (אזור pagey.co.il; NS: alec/raquel). רשומות apex ו-www ו-TXT(SPF) במצב DNS only (ענן אפור) כדי ש-Let's Encrypt של Coolify ימשיך לעבוד; רשומת `*` A → 167.235.133.128 במצב Proxied. מצב SSL/TLS ב-Cloudflare: Full (לא strict).
+- Coolify (האפליקציה lando:main): נוספו Container Labels מותאמים (Readonly labels כבוי): נתבי Traefik `http-wild-<appid>` ו-`https-wild-<appid>` עם `HostRegexp(^[a-z0-9-]+[.]pagey[.]co[.]il$) && !Host(www.pagey.co.il)`, שירות קיים בפורט 3000, TLS בלי certresolver (התעודה למבקרים מסופקת על ידי Cloudflare).
+- אימות: `page-owad.pagey.co.il` מגיש את הדף; תת-דומיין לא קיים מפנה ל-pagey.co.il; ‏www אינו מנותב לאפליקציה (כך היה גם קודם).
