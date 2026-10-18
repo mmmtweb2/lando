@@ -14,6 +14,7 @@ import { trackPageView, trackPageCtaClick } from '../services/analytics.service'
 import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
 import { assignSubdomain } from '../services/subdomain.service';
+import { deleteLeadsForPageTree } from '../services/pageTree.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -44,6 +45,7 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
     .from('landing_pages')
     .select('id, slug, subdomain, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count')
     .eq('owner_email', email)
+    .is('parent_id', null) // child SEO pages are not listed as pages of their own
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -126,13 +128,12 @@ export async function deleteLandingPage(req: Request, res: Response): Promise<vo
   // auditing this path 2026-09-14: this admin delete button had NEVER deleted
   // leads first, so deleting any page that had ever received a real lead
   // through its contact form would 500 instead of deleting it.
-  const { error: leadsError } = await supabase
-    .from('leads')
-    .delete()
-    .eq('landing_page_id', id);
+  // deleteLeadsForPageTree also removes the leads of any child pages (the
+  // parent_id cascade would otherwise be blocked by their leads).
+  const leadsError = await deleteLeadsForPageTree(id);
 
   if (leadsError) {
-    res.status(500).json({ error: leadsError.message });
+    res.status(500).json({ error: leadsError });
     return;
   }
 

@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from '../config/supabase';
+import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendRenewalReminder, ReminderKind } from './renewal.mailer';
 import { runDraftSweep } from './draftCleanup.service';
 import { backfillSubdomains } from './subdomain.service';
@@ -143,13 +144,15 @@ export interface RenewEligibility {
 export async function checkRenewEligibility(email: string, id: string): Promise<RenewEligibility> {
   const { data, error } = await supabase
     .from('landing_pages')
-    .select('owner_email, status, business_name')
+    .select('owner_email, status, business_name, parent_id')
     .eq('id', id)
     .maybeSingle();
 
   if (error || !data) return { ok: false, reason: 'not_found' };
 
-  const row = data as { owner_email?: string | null; status?: string | null; business_name?: string | null };
+  const row = data as { owner_email?: string | null; status?: string | null; business_name?: string | null; parent_id?: string | null };
+  // A child (SEO) page inherits status/expiry from its parent — it can never be renewed on its own.
+  if (row.parent_id) return { ok: false, reason: 'not_found' };
   const owner = (row.owner_email ?? '').trim().toLowerCase();
   if (!owner || owner !== email.trim().toLowerCase()) {
     return { ok: false, reason: 'not_owner', status: row.status ?? null };
@@ -311,6 +314,7 @@ async function sendDueReminders(now: Date): Promise<number> {
       .from('landing_pages')
       .select('id, slug, subdomain, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
       .eq('status', 'published')
+      .is('parent_id', null)
       .is(column, null)
       .not('expires_at', 'is', null)
       .lte('expires_at', threshold.toISOString())
@@ -394,6 +398,7 @@ async function freezeExpiredPages(now: Date): Promise<number> {
     .from('landing_pages')
     .select('id, slug, subdomain, business_name, owner_email, expires_at')
     .eq('status', 'published')
+    .is('parent_id', null)
     .not('expires_at', 'is', null)
     .lte('expires_at', cutoff.toISOString())
     .limit(BATCH_LIMIT);
@@ -474,6 +479,7 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
       .from('landing_pages')
       .select('id, slug, subdomain, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
       .eq('status', 'frozen')
+      .is('parent_id', null)
       .is(column, null)
       .not('frozen_at', 'is', null)
       .lte('frozen_at', threshold.toISOString())
@@ -550,6 +556,7 @@ async function hardDeleteFrozenPages(now: Date): Promise<number> {
     .from('landing_pages')
     .select('id, slug, subdomain, business_name, owner_email, frozen_at')
     .eq('status', 'frozen')
+    .is('parent_id', null)
     .not('frozen_at', 'is', null)
     .lte('frozen_at', cutoff.toISOString())
     .limit(BATCH_LIMIT);
@@ -562,14 +569,11 @@ async function hardDeleteFrozenPages(now: Date): Promise<number> {
   let deleted = 0;
   for (const row of (data ?? []) as (ReminderRow & { frozen_at: string | null })[]) {
     // 1. Leads FIRST — the FK has no cascade.
-    const { error: leadsErr } = await supabase
-      .from('leads')
-      .delete()
-      .eq('landing_page_id', row.id);
+    const leadsErr = await deleteLeadsForPageTree(row.id);
 
     if (leadsErr) {
       console.error('[SWEEP] leads delete failed — page left frozen, will retry next sweep', {
-        id: row.id, error: leadsErr.message,
+        id: row.id, error: leadsErr,
       });
       continue;
     }

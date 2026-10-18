@@ -40,7 +40,8 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
   // One extra query for page counts per owner rather than N+1 lookups.
   const { data: pages, error: pagesError } = await supabase
     .from('landing_pages')
-    .select('owner_email, status');
+    .select('owner_email, status')
+    .is('parent_id', null);
 
   if (pagesError) { res.status(500).json({ error: pagesError.message }); return; }
 

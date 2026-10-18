@@ -461,3 +461,10 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 - DNS מנוהל ב-Cloudflare (אזור pagey.co.il; NS: alec/raquel). רשומות apex ו-www ו-TXT(SPF) במצב DNS only (ענן אפור) כדי ש-Let's Encrypt של Coolify ימשיך לעבוד; רשומת `*` A → 167.235.133.128 במצב Proxied. מצב SSL/TLS ב-Cloudflare: Full (לא strict).
 - Coolify (האפליקציה lando:main): נוספו Container Labels מותאמים (Readonly labels כבוי): נתבי Traefik `http-wild-<appid>` ו-`https-wild-<appid>` עם `HostRegexp(^[a-z0-9-]+[.]pagey[.]co[.]il$) && !Host(www.pagey.co.il)`, שירות קיים בפורט 3000, TLS בלי certresolver (התעודה למבקרים מסופקת על ידי Cloudflare).
 - אימות: `page-owad.pagey.co.il` מגיש את הדף; תת-דומיין לא קיים מפנה ל-pagey.co.il; ‏www אינו מנותב לאפליקציה (כך היה גם קודם).
+
+## חלק 37 – Pagey SEO, Sprint 1 – שלב 2: דפי-בן (מיגרציה 025)
+- branch: `feature/seo-sprint1` (לא ב-main). מיגרציה `025_child_pages.sql`: עמודות `parent_id` (FK עם ON DELETE CASCADE), `target_keyword`, `sub_slug`, אינדקס ייחודי (parent_id, sub_slug), CHECK שמחייב sub_slug לילד בלבד. **סדר פריסה: קודם ה-SQL ב-Supabase, אחר כך מיזוג** (הקוד מסנן `parent_id IS NULL`, ובלי העמודה השאילתות ייכשלו).
+- דפי-בן לא נספרים במכסה (`countActivePages`), לא מופיעים ב-`getMyPages`, לא נכללים ב-sweep של חידושים/הקפאה/מחיקה (4 שאילתות ב-renewal.service) ולא ב-sweep של טיוטות נטושות (2 שאילתות), ולא בספירות admin (`listUsers`). `getMyLeads` לא שונה (כולל ילדים לפי owner_email).
+- `checkRenewEligibility` מחזיר `not_found` לדף-בן; `startPayment` (publish) דוחה דף-בן (סטייה קטנה מהמסמך: אי אפשר לשלם פרסום על דף-בן).
+- `deleteLeadsForPageTree(pageId)` (src/services/pageTree.service.ts) מוחק לידים של הדף ושל ילדיו; בשימוש ב-deleteLandingPage, deleteAbandonedDrafts ו-hardDeleteFrozenPages. אם נכשל — הדף לא נמחק. מחיקת חשבון (user.controller) לא שונתה: היא מוחקת לפי כל ה-ids של owner_email, וילדים נושאים את אותו owner_email.
+- ירושת סטטוס/תפוגה מהאב נעשית בקריאה (שלב 3), בלי סנכרון.

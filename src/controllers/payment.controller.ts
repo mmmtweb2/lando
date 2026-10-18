@@ -58,10 +58,10 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     if (!reference) { res.status(400).json({ error: 'reference (page id) required' }); return; }
     const { data: page } = await supabase
       .from('landing_pages')
-      .select('owner_email, status, business_name')
+      .select('owner_email, status, business_name, parent_id')
       .eq('id', reference)
       .single();
-    if (!page || (page as { owner_email?: string }).owner_email?.toLowerCase() !== email) {
+    if (!page || (page as { owner_email?: string }).owner_email?.toLowerCase() !== email || (page as { parent_id?: string | null }).parent_id) {
       res.status(403).json({ error: 'אין לך הרשאה לפרסם דף זה.' });
       return;
     }
