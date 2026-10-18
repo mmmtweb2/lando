@@ -8,7 +8,7 @@ import {
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
-import { publicPageUrl, publicPageLabel } from '../lib/pageUrl';
+import { shareUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
@@ -419,7 +419,7 @@ function PageGrid({
               </Link>
               {p.status === 'published' && (
                 <button
-                  onClick={() => sharePage(publicPageUrl(p.slug, p.subdomain), p.business_name, () => {
+                  onClick={() => sharePage(shareUrl(p.slug, p.subdomain), p.business_name, () => {
                     setCopiedId(p.id);
                     setTimeout(() => setCopiedId((cur) => (cur === p.id ? null : cur)), 2000);
                   })}
@@ -431,7 +431,7 @@ function PageGrid({
               )}
               {p.status === 'published' && (
                 <button
-                  onClick={() => setQrPage({ url: publicPageUrl(p.slug, p.subdomain), name: p.business_name })}
+                  onClick={() => setQrPage({ url: shareUrl(p.slug, p.subdomain), name: p.business_name })}
                   className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#2E63F6] transition-colors flex-shrink-0"
                 >
                   <QrCode size={12} />

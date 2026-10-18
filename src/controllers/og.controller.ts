@@ -3,7 +3,8 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { supabase } from '../config/supabase';
 import { getAccountStatus } from '../services/billing.service';
-import { publicPageUrl } from '../services/subdomain.service';
+import { canonicalUrl, resolveBPage } from '../services/subdomain.service';
+import { buildJsonLdScripts, injectSeoBody, renderSeoBody, SeoPage } from '../services/seoRender';
 
 function escapeHtml(str: string): string {
   return str
@@ -42,7 +43,7 @@ async function loadHtmlShell(): Promise<string> {
  */
 function injectSubdomainSlug(html: string, res: Response): string {
   const slug = res.locals.pageSlug as string | undefined;
-  if (!slug || !res.locals.bySubdomain) return html;
+  if (!slug || !(res.locals.bySubdomain || res.locals.bPath)) return html;
   const tag = `<script>window.__PAGEY_SLUG__=${JSON.stringify(slug).replace(/</g, '\\u003c')};</script>`;
   return html.replace('</head>', `${tag}\n  </head>`);
 }
@@ -52,7 +53,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, subdomain, address, phone_number')
+    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, subdomain, address, phone_number, parent_id, sub_slug, facebook_url, instagram_url')
     .eq('slug', slug)
     .single();
 
@@ -61,6 +62,26 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     const shell = await loadHtmlShell();
     res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(shell, res));
     return;
+  }
+
+  // A child (SEO) page has no status or expiry of its own — it inherits both from
+  // its parent, at read time (no sync). Orphaned child → treated as not found.
+  const parentId = (page as { parent_id?: string | null }).parent_id ?? null;
+  let parentSubdomain: string | null = null;
+  let effectiveStatus = (page as { status?: string | null }).status;
+  if (parentId) {
+    const { data: parent } = await supabase
+      .from('landing_pages')
+      .select('status, subdomain')
+      .eq('id', parentId)
+      .maybeSingle();
+    if (!parent) {
+      const shell = await loadHtmlShell();
+      res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(shell, res));
+      return;
+    }
+    effectiveStatus = (parent as { status?: string | null }).status;
+    parentSubdomain = (parent as { subdomain?: string | null }).subdomain ?? null;
   }
 
   // Draft pages are pre-payment/pre-publish and now only viewable by their
@@ -85,7 +106,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // tags. A lapsed page must not keep generating rich, live-looking previews in
   // WhatsApp and Facebook that promise a working page and deliver an offline
   // one; that reflects worse on the customer than a plain link does.
-  const ogStatus = (page as { status?: string | null }).status;
+  const ogStatus = effectiveStatus;
   if (ogStatus === 'draft' || ogStatus === 'frozen') {
     const shell = await loadHtmlShell();
     res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(shell, res));
@@ -128,29 +149,17 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // Canonical URL + robots directive — published pages are indexable, drafts
   // are not (drafts are still publicly fetchable via GET /:slug, so this
   // matters: without it a draft could get indexed before the owner publishes).
-  const isPublished = page.status === 'published';
-  const pageUrl = publicPageUrl(page.slug as string, (page as { subdomain?: string | null }).subdomain);
+  const isPublished = effectiveStatus === 'published';
+  const pageUrl = canonicalUrl(
+    { slug: page.slug as string, subdomain: (page as { subdomain?: string | null }).subdomain, sub_slug: (page as { sub_slug?: string | null }).sub_slug },
+    parentSubdomain,
+  );
   const robotsContent = isPublished ? 'index,follow' : 'noindex,nofollow';
 
-  // JSON-LD LocalBusiness structured data — only for published pages (drafts
-  // shouldn't get indexable structured data), built only from real stored
-  // data. Never fabricate a missing field (NO_FABRICATION_RULE product
-  // principle) — omit phone/address/image entirely when not on file.
-  let jsonLd = '';
-  if (isPublished) {
-    const localBusiness: Record<string, unknown> = {
-      '@context': 'https://schema.org',
-      '@type': 'LocalBusiness',
-      name: page.business_name,
-      url: pageUrl,
-    };
-    if (page.phone_number) localBusiness.telephone = page.phone_number;
-    if (page.address) {
-      localBusiness.address = { '@type': 'PostalAddress', streetAddress: page.address };
-    }
-    if (firstImage) localBusiness.image = firstImage;
-    jsonLd = `<script type="application/ld+json">${JSON.stringify(localBusiness).replace(/</g, '\\u003c')}</script>`;
-  }
+  // JSON-LD (LocalBusiness + FAQPage) — only for published pages, built only from
+  // real stored data (NO_FABRICATION_RULE). Server-side ONLY: the client no
+  // longer emits structured data, so there is exactly one copy.
+  const jsonLd = isPublished ? buildJsonLdScripts(page as unknown as SeoPage, pageUrl, firstImage) : '';
 
   const ogTags = `
     <title>${escapeHtml(title)}</title>
@@ -190,9 +199,34 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     .replace(/<meta name="twitter:image"[^>]*>\s*/gi, '');
 
   // Replace the generic <title> and inject this page's own OG tags before </head>
-  const html = shellWithoutGenericTags
+  const withHead = shellWithoutGenericTags
     .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
     .replace('</head>', `${ogTags}\n  </head>`);
 
+  // Published pages also get their real content (h1/h2/text/FAQ) inside #root so
+  // crawlers see it without running JS; createRoot replaces it on load.
+  const html = isPublished
+    ? injectSeoBody(withHead, renderSeoBody(page as unknown as SeoPage))
+    : withHead;
+
   res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(html, res));
+}
+
+/**
+ * GET /b/:subdomain and /b/:subdomain/:subSlug — the canonical, indexed URLs.
+ * Resolves the page (a child via its parent's subdomain + sub_slug), exposes its
+ * slug to the SPA, and reuses servePageWithOgTags for everything else. An unknown
+ * path is a real 404 (status code) so crawlers drop it; the SPA still renders its
+ * own not-found screen from the same shell.
+ */
+export async function serveBPage(req: Request, res: Response): Promise<void> {
+  const found = await resolveBPage(req.params.subdomain, req.params.subSlug);
+  if (!found) {
+    const shell = await loadHtmlShell();
+    res.status(404).setHeader('Content-Type', 'text/html').send(shell);
+    return;
+  }
+  res.locals.pageSlug = found.slug;
+  res.locals.bPath = true;
+  await servePageWithOgTags(req, res);
 }

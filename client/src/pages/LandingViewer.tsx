@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { publicPageUrl } from '../lib/pageUrl';
+import { shareUrl } from '../lib/pageUrl';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2 } from 'lucide-react';
@@ -114,6 +114,7 @@ interface AiImageStore {
 }
 
 interface LandingPage {
+  canonical_url?: string; // server-computed indexed URL (/b/...)
   id: string;
   subdomain?: string | null;
   slug: string;
@@ -3410,28 +3411,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     ai_content.about?.content?.slice(0, 150) ||
     'דף נחיתה מקצועי';
 
-  // schema.org LocalBusiness structured data (2026-10-06, part 35) — lets
-  // Google understand this is a local business (name/phone/address) and show
-  // rich results. Published pages only: a draft is noindex and has no public
-  // URL worth describing. Opening hours are deliberately omitted — they are
-  // free text shown verbatim, and mapping them onto openingHoursSpecification
-  // would mean guessing; a wrong machine-readable schedule is worse than none.
-  // `<` is escaped so a business name can never close the script tag.
-  const structuredData = isDraft ? null : JSON.stringify({
-    '@context': 'https://schema.org',
-    '@type': 'LocalBusiness',
-    name: business_name,
-    url: publicPageUrl(page.slug, page.subdomain),
-    description: ai_content.seo_description ?? ogDescription,
-    image: heroImageUrl || logo_url || undefined,
-    logo: logo_url || undefined,
-    telephone: phone || undefined,
-    email: ctaEmail || undefined,
-    address: ai_content.contact?.address
-      ? { '@type': 'PostalAddress', streetAddress: ai_content.contact.address, addressCountry: 'IL' }
-      : undefined,
-    sameAs: [facebook_url, instagram_url].filter(Boolean),
-  }).replace(/</g, '\\u003c');
+  // JSON-LD (LocalBusiness + FAQPage) is emitted by the server only
+  // (og.controller.ts) — emitting it here too would duplicate it.
 
   const toolbarVisible = !!canEdit;
   const fabBottom = toolbarVisible ? 'bottom-20' : 'bottom-6';
@@ -3452,7 +3433,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             (Two independent passes today hit this same bug — logic below is
             the merged, equivalent fix.) */}
         <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
-        <link rel="canonical" href={publicPageUrl(page.slug, page.subdomain)} />
+        <link rel="canonical" href={page.canonical_url ?? shareUrl(page.slug, page.subdomain)} />
         <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
@@ -3464,7 +3445,6 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         <meta name="twitter:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta name="twitter:description" content={ai_content.seo_description ?? ogDescription} />
         {heroImageUrl && <meta name="twitter:image" content={heroImageUrl} />}
-        {structuredData && <script type="application/ld+json">{structuredData}</script>}
       </Helmet>
 
       {/* Sticky glassmorphism header */}
@@ -3850,7 +3830,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <div className="w-full flex flex-col gap-2.5">
                 <button
                   onClick={async () => {
-                    const url = publicPageUrl(page.slug, page.subdomain);
+                    const url = shareUrl(page.slug, page.subdomain);
                     // Native share sheet when available (WhatsApp, Messages,
                     // etc. — this is exactly the moment a business owner wants
                     // to send the fresh link to someone), clipboard as the

@@ -13,7 +13,7 @@ import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
-import { assignSubdomain } from '../services/subdomain.service';
+import { assignSubdomain, canonicalUrl } from '../services/subdomain.service';
 import { deleteLeadsForPageTree } from '../services/pageTree.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
@@ -208,7 +208,24 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   //
   // The owner and admins still get the full page, so the owner can see exactly
   // what they are renewing.
-  const pageStatus = (data as { status?: string | null }).status ?? null;
+  // A child (SEO) page inherits status from its parent at read time — it has no
+  // lifecycle of its own (see migration 025). An orphan is treated as not found.
+  const parentId = (data as { parent_id?: string | null }).parent_id ?? null;
+  let parentSubdomain: string | null = null;
+  let pageStatus = (data as { status?: string | null }).status ?? null;
+  if (parentId) {
+    const { data: parent } = await supabase
+      .from('landing_pages')
+      .select('status, subdomain')
+      .eq('id', parentId)
+      .maybeSingle();
+    if (!parent) {
+      res.status(404).json({ error: 'Landing page not found' });
+      return;
+    }
+    pageStatus = (parent as { status?: string | null }).status ?? null;
+    parentSubdomain = (parent as { subdomain?: string | null }).subdomain ?? null;
+  }
   if ((pageStatus === 'draft' || pageStatus === 'frozen') && !isOwner) {
     let isAdminViewer = false;
     if (req.authEmail) {
@@ -237,7 +254,16 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
     }
   }
 
-  res.json({ ...publicData, whiteLabel, isOwner });
+  const canonical_url = canonicalUrl(
+    {
+      slug: (data as { slug: string }).slug,
+      subdomain: (data as { subdomain?: string | null }).subdomain,
+      sub_slug: (data as { sub_slug?: string | null }).sub_slug,
+    },
+    parentSubdomain,
+  );
+  // For a child, `status` is the parent's (what the client branches on).
+  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner });
 }
 
 /**

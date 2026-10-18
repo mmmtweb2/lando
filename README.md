@@ -468,3 +468,11 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 - `checkRenewEligibility` מחזיר `not_found` לדף-בן; `startPayment` (publish) דוחה דף-בן (סטייה קטנה מהמסמך: אי אפשר לשלם פרסום על דף-בן).
 - `deleteLeadsForPageTree(pageId)` (src/services/pageTree.service.ts) מוחק לידים של הדף ושל ילדיו; בשימוש ב-deleteLandingPage, deleteAbandonedDrafts ו-hardDeleteFrozenPages. אם נכשל — הדף לא נמחק. מחיקת חשבון (user.controller) לא שונתה: היא מוחקת לפי כל ה-ids של owner_email, וילדים נושאים את אותו owner_email.
 - ירושת סטטוס/תפוגה מהאב נעשית בקריאה (שלב 3), בלי סנכרון.
+
+## חלק 38 – Pagey SEO, Sprint 1 – שלב 3: SEO בשרת
+- **כתובות:** `shareUrl` (שיתוף/QR/דשבורד/מיילים = תת-דומיין, או `/p/<slug>`) נפרד מ-`canonicalUrl` (אינדוקס = `pagey.co.il/b/<subdomain>`, לילד `/b/<subdomain>/<sub_slug>`, בלי תת-דומיין: `/p/<slug>`). `publicPageUrl` שונה ל-`shareUrl` (שרת: subdomain.service.ts, לקוח: lib/pageUrl.ts). השרת מחזיר `canonical_url` ב-`GET /api/landing/:slug`, והלקוח משתמש בו ב-`<link rel=canonical>`.
+- **נתיבים:** `GET /b/:subdomain` ו-`/b/:subdomain/:subSlug` (og.controller `serveBPage` + `resolveBPage`; ילד נשלף לפי subdomain של האב + sub_slug). נתיב לא קיים מחזיר 404 אמיתי. ב-React Router שני נתיבים מקבילים; ה-slug מוזרק ל-`window.__PAGEY_SLUG__`. `/p/:slug` ותת-דומיין ממשיכים לעבוד; ה-canonical שלהם עכשיו `/b/`.
+- **SSR קל:** `src/services/seoRender.ts` — `renderSeoBody` מזריק ל-`<div id="root">` את h1 (hero.title), h2+טקסט (about/services/benefits), FAQ וכתובת/טלפון; כל התוכן עובר escape; סעיפים מוסתרים (`hidden_sections`) לא מוזרקים. הלקוח עובד עם createRoot ומחליף את התוכן.
+- **JSON-LD:** LocalBusiness + FAQPage (מתוך `ai_content.faq`) רק בשרת (`buildJsonLdScripts`); הייצור בצד הלקוח (LandingViewer) הוסר.
+- **ירושה בקריאה (בלי סנכרון):** דף-בן מוצג רק אם האב published — og.controller, `getLandingPage` (draft/frozen → 404/410 לפי סטטוס האב, והתשובה מחזירה את סטטוס האב) ו-`submitLead`.
+- **sitemap:** דפי-אב published עם כתובות `/b/` קנוניות, ודפי-בן של אבות published (`/b/<sub>/<sub_slug>`).

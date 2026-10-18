@@ -1,8 +1,10 @@
-// Public URL of a published page: its own subdomain when it has one
-// (cafe-dani.pagey.co.il), else the always-valid /p/<slug> path.
+// SHARE URL of a published page (QR, dashboard, WhatsApp): its own subdomain
+// when it has one (cafe-dani.pagey.co.il), else the always-valid /p/<slug> path.
+// The CANONICAL (indexed) URL is different — pagey.co.il/b/<subdomain> — and is
+// computed by the server (`canonical_url` on GET /api/landing/:slug).
 export const ROOT_DOMAIN = 'pagey.co.il';
 
-export function publicPageUrl(slug: string, subdomain?: string | null): string {
+export function shareUrl(slug: string, subdomain?: string | null): string {
   return subdomain ? `https://${subdomain}.${ROOT_DOMAIN}` : `https://${ROOT_DOMAIN}/p/${slug}`;
 }
 
