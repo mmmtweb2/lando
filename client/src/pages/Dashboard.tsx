@@ -18,6 +18,7 @@ import LeadsTable, { type LeadFeedItem, type LeadsSummary } from '../components/
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
+import SeoProductPanel, { ProductSwitch } from '../components/SeoProductPanel';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +90,8 @@ interface AccountStatus {
   monthlyCreate: number;
   createdThisPeriod: number;
   whiteLabel: boolean;
+  /** Which products the account holds (migration 027). pagey_pages is always true. */
+  entitlements?: { pagey_pages: boolean; seo_autopilot: boolean };
 }
 
 interface BundleDef {
@@ -502,6 +505,7 @@ export default function Dashboard() {
   const [walletKey, setWalletKey] = useState(0);
   const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const [plan, setPlan] = useState<AccountStatus | null>(null);
+  const [product, setProduct] = useState<'pages' | 'seo'>('pages'); // only matters with BOTH products
   const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
   const [singlePagePrice, setSinglePagePrice] = useState(249);
   const [showPlans, setShowPlans] = useState(false);
@@ -757,10 +761,21 @@ export default function Dashboard() {
 
   // Shared nav item definitions — desktop sidebar and mobile drawer both drive
   // the same `activeTab` state via these, so there is only ever one nav model.
+  // Product entitlements (Stage 5.5.1). An account that holds ONLY the Google-promotion
+  // product (seo_autopilot, no Pagey page) must not be pushed into page creation; an
+  // account with BOTH gets one dashboard with a clear product switch. Until the plan has
+  // loaded (or if it failed) hasSeo is false and the dashboard is exactly what it was.
+  const hasSeo = plan?.entitlements?.seo_autopilot === true;
+  const seoOnly = hasSeo && !dataLoading && !dataError && pages.length === 0;
+  const bothProducts = hasSeo && pages.length > 0;
+  const seoView = activeTab !== 'settings' && (seoOnly || (bothProducts && product === 'seo'));
+
   const navItems: { icon: ReactNode; label: string; tab: ActiveTab }[] = [
     { icon: <LayoutDashboard size={17} />, label: 'סקירה כללית', tab: 'pages' },
-    { icon: <Globe size={17} />, label: 'הדפים שלי', tab: 'pages' },
-    { icon: <Users size={17} />, label: 'לידים', tab: 'leads' },
+    ...(seoOnly ? [] : [
+      { icon: <Globe size={17} />, label: 'הדפים שלי', tab: 'pages' as ActiveTab },
+      { icon: <Users size={17} />, label: 'לידים', tab: 'leads' as ActiveTab },
+    ]),
     { icon: <Settings size={17} />, label: 'הגדרות', tab: 'settings' },
   ];
 
@@ -789,8 +804,8 @@ export default function Dashboard() {
               doubles as the dashboard's overview (stats + plan + pages grid), so this
               item is just another way in to the same 'pages' tab. */}
           <NavItem icon={<LayoutDashboard size={17} />} label="סקירה כללית" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
-          <NavItem icon={<Globe size={17} />} label="הדפים שלי" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
-          <NavItem icon={<Users size={17} />} label="לידים" active={activeTab === 'leads'} onClick={() => setActiveTab('leads')} />
+          {!seoOnly && <NavItem icon={<Globe size={17} />} label="הדפים שלי" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />}
+          {!seoOnly && <NavItem icon={<Users size={17} />} label="לידים" active={activeTab === 'leads'} onClick={() => setActiveTab('leads')} />}
           <NavItem icon={<Settings size={17} />} label="הגדרות" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
 
@@ -1106,12 +1121,14 @@ export default function Dashboard() {
           <motion.div {...fadeIn}>
             <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">{user.email}</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-              {activeTab === 'settings' ? 'הגדרות וחיוב' : 'סקירה כללית'}
+              {activeTab === 'settings' ? 'הגדרות וחיוב' : seoView ? 'קידום בגוגל' : 'סקירה כללית'}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {activeTab === 'settings'
                 ? 'היתרה, החבילות והקרדיטים שלך — במקום אחד.'
-                : 'הדפים, היתרה והלידים שלך — במבט אחד.'}
+                : seoView
+                  ? 'הקידום של העסק שלך בגוגל — במקום אחד.'
+                  : 'הדפים, היתרה והלידים שלך — במבט אחד.'}
             </p>
           </motion.div>
 
@@ -1222,8 +1239,16 @@ export default function Dashboard() {
                 </button>
               </div>
             </motion.div>
+          ) : seoOnly ? (
+            /* ── seo_autopilot only: no Pagey page, no page-creation prompts ── */
+            <>
+              <SeoProductPanel />
+              <SetPasswordCard />
+            </>
           ) : (
             <>
+              {bothProducts && <ProductSwitch value={product} onChange={setProduct} />}
+              {bothProducts && product === 'seo' ? <SeoProductPanel /> : (<>
               {/* Stats */}
               <motion.div
                 {...fadeIn}
@@ -1309,6 +1334,7 @@ export default function Dashboard() {
                   </motion.div>
                 </AnimatePresence>
               </div>
+              </>)}
             </>
           )}
 
