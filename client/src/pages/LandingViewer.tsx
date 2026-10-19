@@ -1431,12 +1431,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   const phone = ai_content.contact?.phone || phone_number;
   const ctaEmail = ai_content.contact?.email || '';
-  // The WhatsApp opener names the page the visitor came from, so the owner can see
-  // which page produced the inquiry. "דרך גוגל" is only said when the visitor really
-  // arrived from Google (a QR/WhatsApp-shared link must not claim it).
-  const waPageTitle = page.parent_id ? (ai_content.hero?.title || business_name) : business_name;
-  const waViaGoogle = typeof document !== 'undefined' && /(^|\.)google\./i.test(document.referrer);
-  const waMessage = `היי, הגעתי אליכם ${waViaGoogle ? 'דרך גוגל ' : ''}(עמוד ${waPageTitle}) ואשמח לפרטים.`;
+  // The owner's chosen WhatsApp text is never overridden. Only a CHILD (SEO) page gets
+  // a suffix naming the page, so the owner can see which page produced the inquiry.
+  const waBaseMessage = ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`;
+  const waMessage = page.parent_id
+    ? `${waBaseMessage} (עמוד: ${ai_content.hero?.title || business_name})`
+    : waBaseMessage;
   const waUrl = buildWhatsAppUrl(phone, waMessage);
 
   // Primary CTA target chosen by the user (whatsapp/email/phone/link). Falls back to
