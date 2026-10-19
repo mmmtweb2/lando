@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from '../config/supabase';
+import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendDraftReminder, DraftReminderKind } from './draft.mailer';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -47,6 +48,7 @@ async function sendDueDraftReminders(now: Date): Promise<number> {
       .from('landing_pages')
       .select('id, business_name, owner_email, draft_reminder_1d_at, draft_reminder_7d_at, draft_warning_30d_at')
       .eq('status', 'draft')
+      .is('parent_id', null)
       .is(column, null)
       .lte('draft_clock_at', threshold.toISOString())
       .limit(BATCH_LIMIT);
@@ -98,6 +100,7 @@ async function deleteAbandonedDrafts(now: Date): Promise<number> {
     .from('landing_pages')
     .select('id, slug, owner_email')
     .eq('status', 'draft')
+    .is('parent_id', null)
     .lte('draft_clock_at', cutoff.toISOString())
     .limit(BATCH_LIMIT);
 
@@ -109,9 +112,9 @@ async function deleteAbandonedDrafts(now: Date): Promise<number> {
   let deleted = 0;
   for (const row of (data ?? []) as { id: string; slug: string; owner_email: string | null }[]) {
     // Leads first — leads_landing_page_id_fkey has no ON DELETE clause.
-    const { error: leadsErr } = await supabase.from('leads').delete().eq('landing_page_id', row.id);
+    const leadsErr = await deleteLeadsForPageTree(row.id);
     if (leadsErr) {
-      console.error('[DRAFTS] leads delete failed — draft kept, retry next sweep', { id: row.id, error: leadsErr.message });
+      console.error('[DRAFTS] leads delete failed — draft kept, retry next sweep', { id: row.id, error: leadsErr });
       continue;
     }
 

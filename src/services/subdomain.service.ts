@@ -49,8 +49,25 @@ export function subdomainFromHost(hostname: string | undefined): string | null {
   return isUsableSubdomain(label) ? label : null;
 }
 
-export function publicPageUrl(slug: string, subdomain?: string | null): string {
+/** Where a page is SHARED (QR, dashboard, emails): its own subdomain, else /p/<slug>. */
+export function shareUrl(slug: string, subdomain?: string | null): string {
   return subdomain ? `https://${subdomain}.${ROOT_DOMAIN}` : `https://${ROOT_DOMAIN}/p/${slug}`;
+}
+
+/**
+ * The CANONICAL (indexed) URL: pagey.co.il/b/<subdomain> for a parent,
+ * pagey.co.il/b/<parentSubdomain>/<sub_slug> for a child page, and the always-valid
+ * /p/<slug> when there is no subdomain to hang the path on.
+ */
+export function canonicalUrl(
+  page: { slug: string; subdomain?: string | null; sub_slug?: string | null },
+  parentSubdomain?: string | null,
+): string {
+  if (page.sub_slug && parentSubdomain) {
+    return `https://${ROOT_DOMAIN}/b/${parentSubdomain}/${encodeURIComponent(page.sub_slug)}`;
+  }
+  if (page.subdomain) return `https://${ROOT_DOMAIN}/b/${page.subdomain}`;
+  return `https://${ROOT_DOMAIN}/p/${page.slug}`;
 }
 
 // ─── Name generation ─────────────────────────────────────────────────────────
@@ -190,4 +207,30 @@ export async function backfillSubdomains(limit = 40): Promise<number> {
   }
   if (done) console.log('[SUBDOMAIN] backfilled', done, 'pages');
   return done;
+}
+
+/**
+ * /b/<subdomain> and /b/<subdomain>/<sub_slug> → the slug of the page to serve.
+ * A child is resolved through its parent's subdomain + its own sub_slug.
+ */
+export async function resolveBPage(subdomain: string, subSlug?: string): Promise<{ slug: string } | null> {
+  const sub = subdomain.trim().toLowerCase();
+  if (!isUsableSubdomain(sub)) return null;
+  const { data: parent, error } = await supabase
+    .from('landing_pages')
+    .select('id, slug')
+    .eq('subdomain', sub)
+    .is('parent_id', null)
+    .maybeSingle();
+  if (error || !parent) return null;
+  if (!subSlug) return { slug: (parent as { slug: string }).slug };
+
+  const { data: child, error: childErr } = await supabase
+    .from('landing_pages')
+    .select('slug')
+    .eq('parent_id', (parent as { id: string }).id)
+    .eq('sub_slug', subSlug)
+    .maybeSingle();
+  if (childErr || !child) return null;
+  return { slug: (child as { slug: string }).slug };
 }

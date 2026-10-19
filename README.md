@@ -456,3 +456,47 @@ Every published page now gets a readable subdomain. `/p/<slug>` keeps working fo
 `tsc` clean both sides. Not verifiable end-to-end until the wildcard DNS + Traefik host rule are live.
 
 Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now show/link the page's subdomain URL (via `publicPageUrl`); the renewal sweep queries select `subdomain` and pass it through. Draft emails link to the dashboard and need no change. Traefik wildcard routing (Cloudflare proxied `*` record, SSL mode Full, a catch-all `HostRegexp` router in Coolify) is documented in the chat hand-off, not in the repo.
+
+### חלק 36 – תוספת: ניתוב תת-דומיינים בתשתית (אוקטובר 2026)
+- DNS מנוהל ב-Cloudflare (אזור pagey.co.il; NS: alec/raquel). רשומות apex ו-www ו-TXT(SPF) במצב DNS only (ענן אפור) כדי ש-Let's Encrypt של Coolify ימשיך לעבוד; רשומת `*` A → 167.235.133.128 במצב Proxied. מצב SSL/TLS ב-Cloudflare: Full (לא strict).
+- Coolify (האפליקציה lando:main): נוספו Container Labels מותאמים (Readonly labels כבוי): נתבי Traefik `http-wild-<appid>` ו-`https-wild-<appid>` עם `HostRegexp(^[a-z0-9-]+[.]pagey[.]co[.]il$) && !Host(www.pagey.co.il)`, שירות קיים בפורט 3000, TLS בלי certresolver (התעודה למבקרים מסופקת על ידי Cloudflare).
+- אימות: `page-owad.pagey.co.il` מגיש את הדף; תת-דומיין לא קיים מפנה ל-pagey.co.il; ‏www אינו מנותב לאפליקציה (כך היה גם קודם).
+
+## חלק 37 – Pagey SEO, Sprint 1 – שלב 2: דפי-בן (מיגרציה 025)
+- branch: `feature/seo-sprint1` (לא ב-main). מיגרציה `025_child_pages.sql`: עמודות `parent_id` (FK עם ON DELETE CASCADE), `target_keyword`, `sub_slug`, אינדקס ייחודי (parent_id, sub_slug), CHECK שמחייב sub_slug לילד בלבד. **סדר פריסה: קודם ה-SQL ב-Supabase, אחר כך מיזוג** (הקוד מסנן `parent_id IS NULL`, ובלי העמודה השאילתות ייכשלו).
+- דפי-בן לא נספרים במכסה (`countActivePages`), לא מופיעים ב-`getMyPages`, לא נכללים ב-sweep של חידושים/הקפאה/מחיקה (4 שאילתות ב-renewal.service) ולא ב-sweep של טיוטות נטושות (2 שאילתות), ולא בספירות admin (`listUsers`). `getMyLeads` לא שונה (כולל ילדים לפי owner_email).
+- `checkRenewEligibility` מחזיר `not_found` לדף-בן; `startPayment` (publish) דוחה דף-בן (סטייה קטנה מהמסמך: אי אפשר לשלם פרסום על דף-בן).
+- `deleteLeadsForPageTree(pageId)` (src/services/pageTree.service.ts) מוחק לידים של הדף ושל ילדיו; בשימוש ב-deleteLandingPage, deleteAbandonedDrafts ו-hardDeleteFrozenPages. אם נכשל — הדף לא נמחק. מחיקת חשבון (user.controller) לא שונתה: היא מוחקת לפי כל ה-ids של owner_email, וילדים נושאים את אותו owner_email.
+- ירושת סטטוס/תפוגה מהאב נעשית בקריאה (שלב 3), בלי סנכרון.
+
+## חלק 38 – Pagey SEO, Sprint 1 – שלב 3: SEO בשרת
+- **כתובות:** `shareUrl` (שיתוף/QR/דשבורד/מיילים = תת-דומיין, או `/p/<slug>`) נפרד מ-`canonicalUrl` (אינדוקס = `pagey.co.il/b/<subdomain>`, לילד `/b/<subdomain>/<sub_slug>`, בלי תת-דומיין: `/p/<slug>`). `publicPageUrl` שונה ל-`shareUrl` (שרת: subdomain.service.ts, לקוח: lib/pageUrl.ts). השרת מחזיר `canonical_url` ב-`GET /api/landing/:slug`, והלקוח משתמש בו ב-`<link rel=canonical>`.
+- **נתיבים:** `GET /b/:subdomain` ו-`/b/:subdomain/:subSlug` (og.controller `serveBPage` + `resolveBPage`; ילד נשלף לפי subdomain של האב + sub_slug). נתיב לא קיים מחזיר 404 אמיתי. ב-React Router שני נתיבים מקבילים; ה-slug מוזרק ל-`window.__PAGEY_SLUG__`. `/p/:slug` ותת-דומיין ממשיכים לעבוד; ה-canonical שלהם עכשיו `/b/`.
+- **SSR קל:** `src/services/seoRender.ts` — `renderSeoBody` מזריק ל-`<div id="root">` את h1 (hero.title), h2+טקסט (about/services/benefits), FAQ וכתובת/טלפון; כל התוכן עובר escape; סעיפים מוסתרים (`hidden_sections`) לא מוזרקים. הלקוח עובד עם createRoot ומחליף את התוכן.
+- **JSON-LD:** LocalBusiness + FAQPage (מתוך `ai_content.faq`) רק בשרת (`buildJsonLdScripts`); הייצור בצד הלקוח (LandingViewer) הוסר.
+- **ירושה בקריאה (בלי סנכרון):** דף-בן מוצג רק אם האב published — og.controller, `getLandingPage` (draft/frozen → 404/410 לפי סטטוס האב, והתשובה מחזירה את סטטוס האב) ו-`submitLead`.
+- **sitemap:** דפי-אב published עם כתובות `/b/` קנוניות, ודפי-בן של אבות published (`/b/<sub>/<sub_slug>`).
+
+## חלק 39 – Pagey SEO, Sprint 1 – שלב 4: lead_events (מיגרציה 026)
+- **מיגרציה `026_lead_events.sql`:** טבלה `lead_events` (landing_page_id → ON DELETE CASCADE, `event_type` ∈ whatsapp/call/form, source_url, referrer, created_at), אינדקס (landing_page_id, created_at DESC), RLS ENABLE + **FORCE** ללא policies (כמו site_visits/funnel_events; גישה רק דרך service-role). `form` מותר ב-CHECK אך לא בשימוש (טפסים כבר ב-`leads`, למניעת ספירה כפולה).
+- **`POST /api/landing/:slug/event`** `{event_type: 'whatsapp'|'call', source_url?, referrer?}`: event_type לא תקין → 400; אחרת תמיד 204 (בלי חשיפת קיום/סטטוס). רושם שורה ב-`lead_events` **ובנוסף** מגדיל את `cta_click_count` האטומי (`trackPageCtaClick`). רק לדף published (ילד — לפי סטטוס האב). rate limit = `trackLimiter` (40/דקה), כמו שאר נקודות המעקב הציבוריות. (`src/services/leadEvents.service.ts`)
+- **לקוח (LandingViewer):** לחיצה על CTA שמוביל ל-`wa.me` או `tel:` (כולל כפתור ה-WhatsApp המשני) שולחת `navigator.sendBeacon` (fallback: fetch עם keepalive) ולא חוסמת את הפתיחה; CTA של אימייל/קישור חיצוני נשארים עם `track-cta-click` הקיים (בלי ספירה כפולה). לא נספר בעריכה של הבעלים.
+- **הודעת וואטסאפ:** `היי, הגעתי אליכם [דרך גוגל ](עמוד <שם העמוד>) ואשמח לפרטים.` — שם העמוד = שם העסק, ולדף-בן הכותרת (hero.title). "דרך גוגל" מופיע רק כשה-`document.referrer` הוא באמת גוגל (סטייה מהמסמך: קישור שהגיע מ-QR/וואטסאפ לא טוען שהגיע מגוגל).
+
+## חלק 40 – Pagey SEO, Sprint 1 – שלב 5: פיד לידים מאוחד, smoke test (+ עדכוני שלב 4 לפי איציק)
+- **מיגרציה 026 עודכנה (טרם הורצה לפני העדכון):** `event_type` ∈ whatsapp / call / **email / link** / form. `whatsapp|call|email` = פנייה (נספרת כליד); `link` = מעבר לקישור חיצוני (תרומה/רכישה) — לא פנייה, מוצג בכרטיס נפרד רק אם > 0. ה-CHECK מוחלף בצורה idempotent (DROP IF EXISTS + ADD), כך שהסקריפט בטוח גם אם גרסה קודמת רצה.
+- **סימון smoke:** אירוע עם `source_url = 'smoke-test'` נשמר, אך (א) לא מקדם את `cta_click_count`, (ב) מסונן בשרת מהפיד ומכל ספירה (`getMyLeads`). אין שינוי סכמה.
+- **כפילויות:** השרת שומר כל לחיצה (נתון גולמי). הלקוח מונע כפילויות לפי מבקר: מפתח `sessionStorage` לכל דף+סוג, 5 דקות בין אירועים זהים; כל גישה ל-storage ב-try/catch (חסום → שולחים כרגיל). כל סוגי ה-CTA (wa.me/tel:/mailto:/קישור) עוברים עכשיו דרך `/event` (השרת מקדם את המונה) — `track-cta-click` נשאר בקוד אך אינו בשימוש בלקוח.
+- **`GET /api/landing/my-leads`** מחזיר עכשיו `{ items, summary }` (שינוי צורת תשובה; הצרכן היחיד הוא Dashboard): פיד ממוין של טפסים (`leads`) + וואטסאפ/שיחה/אימייל (`lead_events`), לכל דפי המשתמש כולל דפי-בן, עם שם העמוד (לדף-בן: כותרת ה-hero), עד 500 פריטים. `summary` (ספירות אמיתיות, לא מוגבלות ל-500): `month_total` = טפסים+וואטסאפ+שיחות+אימייל, לפי חודש קלנדרי בשעון ישראל (Asia/Jerusalem, בדיקת DST), בלי `link`.
+- **UI:** `LeadsTable` — כרטיסי סיכום (לידים החודש, וואטסאפ, שיחות, טפסים; אימייל וקישור רק אם > 0), טקסט עזר עם ההגדרה, ופיד עם אייקון/סוג, תאריך, שעה ושם עמוד. ייצוא CSV כולל סוג ושעה. בדשבורד: כרטיס וספירת הטאב = "לידים החודש".
+- **smoke-test.mjs:** דף canary `page-owad` (override: `CANARY_SUBDOMAIN`/`CANARY_SLUG`): `/b/<sub>` מחזיר 200, canonical ל-`/b/`, h1 בתוך `#root` בלי JS, JSON-LD יחיד של LocalBusiness (ו-FAQ ב-HTML כשיש FAQPage), `/b/` לא קיים → 404 אמיתי, ה-sitemap כולל את ה-URL הקנוני, ו-`POST /event` (204 לתקין, 400 ללא תקין). בדיקת האירוע כותבת שורה אחת אמיתית מסומנת `smoke-test`; לדילוג: `--no-event` או `SMOKE_SKIP_EVENT=1`.
+
+### חלק 40 – תיקון (התאמה להחלטות איציק במסמך המשותף)
+- **הערך `form` הוסר מה-CHECK של `lead_events`:** סוגי האירוע הם `whatsapp / call / email / link` בלבד (טפסים נשמרים ב-`leads`). המיגרציה הרצה-חוזרת (`DROP CONSTRAINT IF EXISTS` + `ADD`), ולכן מי שכבר הריץ 026 מריץ אותה שוב.
+- **הודעת וואטסאפ:** נוסח שבעל העסק בחר לא נדרס. רק דף-בן מקבל סיומת `(עמוד: <כותרת>)`; לדף-אב אין שינוי. הוסרה הלוגיקה "דרך גוגל" לפי referrer.
+
+## חלק 41 – תיקון build של הלקוח (TS18047)
+
+- בעקבות סקירת איציק: `npm run build` בלקוח מריץ `tsc -b`, ושם נכשלו `shouldSendEvent`/`sendLeadEvent` ב-`LandingViewer.tsx` (`page` יכול להיות null). הבדיקה הקודמת שלי (`tsc -p .`) לא בדקה כלום ב-client.
+- התיקון: ה-slug מועבר כפרמטר מ-`handleCtaClick` (שכבר בודק `page`). אימות: `cd client && npx tsc -b` נקי, ו-tsc של השרת נקי.
+- מהיום בודקים לקוח רק עם `npx tsc -b`.

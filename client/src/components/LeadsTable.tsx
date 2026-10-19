@@ -1,27 +1,65 @@
-import { Download, Inbox } from 'lucide-react';
+import type { ReactElement } from 'react';
+import { Download, Inbox, FileText, MessageCircle, Phone, Mail } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface LeadRow {
+export type LeadKind = 'form' | 'whatsapp' | 'call' | 'email';
+
+/** One inquiry in the unified feed: a contact-form lead or a WhatsApp/call/email click. */
+export interface LeadFeedItem {
   id: string;
-  name: string;
-  phone: string;
-  email: string | null;
-  message: string | null;
+  kind: LeadKind;
   created_at: string;
   landing_page_id: string;
-  landing_pages: { business_name: string; slug: string } | null;
+  page_name: string | null;
+  page_slug: string | null;
+  // Only a form lead carries these.
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  message: string | null;
+}
+
+/** Month = calendar month, Israel time. Computed server-side (smoke-test events excluded). */
+export interface LeadsSummary {
+  month_total: number;
+  month_whatsapp: number;
+  month_call: number;
+  month_form: number;
+  month_email: number;
+  month_link: number;
 }
 
 interface LeadsTableProps {
-  leads: LeadRow[];
+  items: LeadFeedItem[];
+  summary: LeadsSummary;
 }
+
+const KIND_LABEL: Record<LeadKind, string> = {
+  form: 'טופס',
+  whatsapp: 'וואטסאפ',
+  call: 'שיחה',
+  email: 'אימייל',
+};
+
+const KIND_ICON: Record<LeadKind, ReactElement> = {
+  form: <FileText size={13} />,
+  whatsapp: <MessageCircle size={13} />,
+  call: <Phone size={13} />,
+  email: <Mail size={13} />,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('he-IL', {
-    day: 'numeric', month: 'short', year: 'numeric',
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jerusalem',
+  });
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('he-IL', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem',
   });
 }
 
@@ -31,15 +69,17 @@ function toWhatsAppHref(phone: string): string {
   return `https://wa.me/${intl}`;
 }
 
-function exportToCSV(leads: LeadRow[]) {
-  const headers = ['שם', 'טלפון', 'אימייל', 'הודעה', 'תאריך', 'מקור'];
-  const rows = leads.map((l) => [
-    l.name,
-    l.phone,
+function exportToCSV(items: LeadFeedItem[]) {
+  const headers = ['סוג', 'שם', 'טלפון', 'אימייל', 'הודעה', 'תאריך', 'שעה', 'עמוד'];
+  const rows = items.map((l) => [
+    KIND_LABEL[l.kind],
+    l.name ?? '',
+    l.phone ?? '',
     l.email ?? '',
     l.message ?? '',
     formatDate(l.created_at),
-    l.landing_pages?.business_name ?? l.landing_page_id,
+    formatTime(l.created_at),
+    l.page_name ?? l.landing_page_id,
   ]);
 
   const csvContent = [headers, ...rows]
@@ -49,7 +89,7 @@ function exportToCSV(leads: LeadRow[]) {
     .join('\n');
 
   // BOM ensures Excel opens Hebrew UTF-8 correctly
-  const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -78,32 +118,66 @@ function WhatsAppButton({ phone }: { phone: string }) {
   );
 }
 
+function SummaryCard({ label, value, hint, accent }: { label: string; value: number; hint?: string; accent?: boolean }) {
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${accent ? 'border-[#2E63F6]/30 bg-[#2E63F6]/5' : 'border-slate-200 bg-white'}`}>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
+      {hint && <p className="mt-1 text-[11px] leading-snug text-slate-400">{hint}</p>}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function LeadsTable({ leads }: LeadsTableProps) {
-  if (leads.length === 0) {
+export default function LeadsTable({ items, summary }: LeadsTableProps) {
+  const cards = (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SummaryCard accent label="לידים החודש" value={summary.month_total} />
+        <SummaryCard label="וואטסאפ" value={summary.month_whatsapp} />
+        <SummaryCard label="שיחות" value={summary.month_call} />
+        <SummaryCard label="טפסים" value={summary.month_form} />
+        {summary.month_email > 0 && <SummaryCard label="אימייל" value={summary.month_email} />}
+        {summary.month_link > 0 && (
+          <SummaryCard label="מעבר לקישור חיצוני" value={summary.month_link} hint="לא נספר כליד" />
+        )}
+      </div>
+      <p className="text-xs text-slate-400 leading-relaxed">
+        "לידים החודש" הוא סכום הפניות החודש (לפי חודש קלנדרי, שעון ישראל): טפסים, וואטסאפ, שיחות ואימייל.
+        מעבר לקישור חיצוני (למשל תרומה או רכישה) אינו פנייה ולכן לא נספר.
+      </p>
+    </div>
+  );
+
+  if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white py-16 px-8 flex flex-col items-center gap-3 text-center">
-        <span className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-          <Inbox size={18} className="text-slate-400" />
-        </span>
-        <p className="text-sm font-semibold text-slate-900">אין עדיין לידים</p>
-        <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-          כל פנייה שתתקבל מטופס באחד הדפים שלך תופיע כאן, עם אפשרות לייצוא.
-        </p>
+      <div className="flex flex-col gap-4">
+        {cards}
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white py-16 px-8 flex flex-col items-center gap-3 text-center">
+          <span className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
+            <Inbox size={18} className="text-slate-400" />
+          </span>
+          <p className="text-sm font-semibold text-slate-900">אין עדיין פניות</p>
+          <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+            כל פנייה מהדפים שלך תופיע כאן: טופס, לחיצה על וואטסאפ, שיחה או אימייל, עם אפשרות לייצוא.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      {cards}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          <span className="font-semibold text-slate-900 tabular-nums">{leads.length}</span> לידים
+          <span className="font-semibold text-slate-900 tabular-nums">{items.length}</span> פניות אחרונות
         </p>
         <button
-          onClick={() => exportToCSV(leads)}
+          onClick={() => exportToCSV(items)}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
         >
           <Download size={14} className="text-slate-400" />
@@ -111,13 +185,13 @@ export default function LeadsTable({ leads }: LeadsTableProps) {
         </button>
       </div>
 
-      {/* Table */}
+      {/* Feed */}
       <div className="rounded-xl bg-white border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-right" dir="rtl">
+          <table className="w-full min-w-[560px] border-collapse text-right" dir="rtl">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                {['שם', 'טלפון', 'אימייל', 'הודעה', 'תאריך', 'מקור (דף)'].map((col) => (
+                {['סוג', 'פרטי הפונה', 'תאריך', 'שעה', 'עמוד'].map((col) => (
                   <th
                     key={col}
                     className="px-4 py-2.5 text-[11px] font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap"
@@ -128,65 +202,63 @@ export default function LeadsTable({ leads }: LeadsTableProps) {
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead, i) => (
+              {items.map((lead, i) => (
                 <tr
-                  key={lead.id}
+                  key={`${lead.kind}-${lead.id}`}
                   className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${
-                    i === leads.length - 1 ? 'border-b-0' : ''
+                    i === items.length - 1 ? 'border-b-0' : ''
                   }`}
                 >
-                  {/* Name */}
-                  <td className="px-4 py-3">
-                    <span className="text-sm font-medium text-slate-900">{lead.name}</span>
+                  {/* Type */}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                      <span className="text-slate-400">{KIND_ICON[lead.kind]}</span>
+                      {KIND_LABEL[lead.kind]}
+                    </span>
                   </td>
 
-                  {/* Phone + WA button */}
+                  {/* Details: only a form lead has them */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-700 font-mono tabular-nums" dir="ltr">{lead.phone}</span>
-                      <WhatsAppButton phone={lead.phone} />
-                    </div>
-                  </td>
-
-                  {/* Email */}
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    {lead.email ? (
-                      <a
-                        href={`mailto:${lead.email}`}
-                        className="text-sm text-[#2E63F6] hover:text-[#1E4FD6] hover:underline transition font-mono"
-                        dir="ltr"
-                      >
-                        {lead.email}
-                      </a>
+                    {lead.kind === 'form' ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-slate-900">{lead.name}</span>
+                        <div className="flex items-center gap-2">
+                          {lead.phone && (
+                            <>
+                              <span className="text-sm text-slate-700 font-mono tabular-nums" dir="ltr">{lead.phone}</span>
+                              <WhatsAppButton phone={lead.phone} />
+                            </>
+                          )}
+                          {lead.email && (
+                            <a href={`mailto:${lead.email}`} className="text-sm text-[#2E63F6] hover:underline font-mono" dir="ltr">
+                              {lead.email}
+                            </a>
+                          )}
+                        </div>
+                        {lead.message && (
+                          <span className="text-sm text-slate-600 line-clamp-2 leading-relaxed max-w-[320px]" title={lead.message}>
+                            {lead.message}
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <span className="text-slate-300 text-sm">—</span>
+                      <span className="text-sm text-slate-400">לחיצה על כפתור ה{KIND_LABEL[lead.kind]} בדף</span>
                     )}
                   </td>
 
-                  {/* Message */}
-                  <td className="px-4 py-3 hidden md:table-cell max-w-[200px]">
-                    {lead.message ? (
-                      <span
-                        className="text-sm text-slate-600 line-clamp-2 leading-relaxed"
-                        title={lead.message}
-                      >
-                        {lead.message}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300 text-sm">—</span>
-                    )}
-                  </td>
-
-                  {/* Date */}
+                  {/* Date / time */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="text-xs text-slate-500 tabular-nums">{formatDate(lead.created_at)}</span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className="text-xs text-slate-500 tabular-nums">{formatTime(lead.created_at)}</span>
                   </td>
 
                   {/* Source page */}
                   <td className="px-4 py-3">
-                    {lead.landing_pages ? (
+                    {lead.page_name ? (
                       <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 whitespace-nowrap">
-                        {lead.landing_pages.business_name}
+                        {lead.page_name}
                       </span>
                     ) : (
                       <span className="text-slate-300 text-xs font-mono">{lead.landing_page_id.slice(0, 8)}</span>

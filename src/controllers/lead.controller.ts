@@ -124,7 +124,7 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
   // The rule is now enforced server-side: only a published page accepts leads.
   const { data: page, error: pageErr } = await supabase
     .from('landing_pages')
-    .select('owner_email, business_name, page_goal, status, enable_form')
+    .select('owner_email, business_name, page_goal, status, enable_form, parent_id')
     .eq('id', id)
     .single();
 
@@ -136,7 +136,17 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
   // A FROZEN page is covered by the same rule and needs no extra branch — it is
   // not 'published', so it stops here. Only the wording changes: telling the
   // owner of a lapsed page that it is "still a draft" would be simply false.
-  const leadPageStatus = (page as { status?: string }).status;
+  // A child (SEO) page has no lifecycle of its own: its status is its parent's.
+  let leadPageStatus = (page as { status?: string }).status;
+  const leadParentId = (page as { parent_id?: string | null }).parent_id;
+  if (leadParentId) {
+    const { data: parentRow } = await supabase
+      .from('landing_pages')
+      .select('status')
+      .eq('id', leadParentId)
+      .maybeSingle();
+    leadPageStatus = (parentRow as { status?: string } | null)?.status;
+  }
   if (leadPageStatus !== 'published') {
     res.status(403).json({
       error: leadPageStatus === 'frozen'

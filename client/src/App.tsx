@@ -193,6 +193,10 @@ export default function App() {
             <Route path="/login"     element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />
+            {/* Canonical, indexed URLs. The server resolves the page (a child via its
+                parent subdomain + sub_slug) and injects its slug; no slug = unknown path. */}
+            <Route path="/b/:subdomain"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <Navigate to="/" replace />} />
+            <Route path="/b/:subdomain/:subSlug" element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <Navigate to="/" replace />} />
 
             {/* Public legal pages — linked from every footer, and referenced
                 from the checkout disclosures. Deliberately unauthenticated. */}

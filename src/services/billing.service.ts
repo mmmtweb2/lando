@@ -108,6 +108,7 @@ export async function countActivePages(email: string): Promise<number> {
     .from('landing_pages')
     .select('id', { count: 'exact', head: true })
     .eq('owner_email', normalized)
+    .is('parent_id', null) // child SEO pages never count toward the quota
     .eq('status', 'published')
     .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
   return count ?? 0;

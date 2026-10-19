@@ -8,13 +8,13 @@ import {
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
-import { publicPageUrl, publicPageLabel } from '../lib/pageUrl';
+import { shareUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
 import { LandoMark, LandoBot } from '../components/Lando';
 import RefundAck from '../components/RefundAck';
-import LeadsTable, { type LeadRow } from '../components/LeadsTable';
+import LeadsTable, { type LeadFeedItem, type LeadsSummary } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
@@ -419,7 +419,7 @@ function PageGrid({
               </Link>
               {p.status === 'published' && (
                 <button
-                  onClick={() => sharePage(publicPageUrl(p.slug, p.subdomain), p.business_name, () => {
+                  onClick={() => sharePage(shareUrl(p.slug, p.subdomain), p.business_name, () => {
                     setCopiedId(p.id);
                     setTimeout(() => setCopiedId((cur) => (cur === p.id ? null : cur)), 2000);
                   })}
@@ -431,7 +431,7 @@ function PageGrid({
               )}
               {p.status === 'published' && (
                 <button
-                  onClick={() => setQrPage({ url: publicPageUrl(p.slug, p.subdomain), name: p.business_name })}
+                  onClick={() => setQrPage({ url: shareUrl(p.slug, p.subdomain), name: p.business_name })}
                   className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#2E63F6] transition-colors flex-shrink-0"
                 >
                   <QrCode size={12} />
@@ -485,7 +485,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const [pages, setPages]             = useState<PageRow[]>([]);
-  const [leads, setLeads]             = useState<LeadRow[]>([]);
+  const [leads, setLeads]             = useState<LeadFeedItem[]>([]);
+  const [leadsSummary, setLeadsSummary] = useState<LeadsSummary>({ month_total: 0, month_whatsapp: 0, month_call: 0, month_form: 0, month_email: 0, month_link: 0 });
   const [dataLoading, setDataLoading] = useState(true);
   // 2026-09-14: distinguishes "genuinely no pages yet" from "the fetch
   // failed" — without this, a network blip/expired-token/500 rendered the
@@ -632,7 +633,10 @@ export default function Dashboard() {
           const leadsRes = await authFetch('/api/landing/my-leads');
           if (!leadsRes.ok) throw new Error('failed to load leads');
           const leadsData = await leadsRes.json();
-          if (!cancelled) setLeads((leadsData ?? []) as unknown as LeadRow[]);
+          if (!cancelled && leadsData) {
+            setLeads((leadsData.items ?? []) as LeadFeedItem[]);
+            if (leadsData.summary) setLeadsSummary(leadsData.summary as LeadsSummary);
+          }
         }
       } catch (err) {
         console.error('[Dashboard] data fetch failed:', err);
@@ -1236,8 +1240,8 @@ export default function Dashboard() {
                   icon={<CheckCircle size={14} />}
                 />
                 <StatCard
-                  label="לידים שהתקבלו"
-                  value={dataLoading ? '—' : String(leads.length)}
+                  label="לידים החודש"
+                  value={dataLoading ? '—' : String(leadsSummary.month_total)}
                   icon={<Users size={14} />}
                 />
               </motion.div>
@@ -1258,7 +1262,7 @@ export default function Dashboard() {
                     active={activeTab}
                     onChange={setActiveTab}
                     pageCount={pages.length}
-                    leadCount={leads.length}
+                    leadCount={leadsSummary.month_total}
                   />
                   {activeTab === 'pages' && (
                     <Link to="/create" className={btnPrimary}>
@@ -1299,7 +1303,7 @@ export default function Dashboard() {
                           <Loader2 size={22} className="animate-spin text-slate-300" />
                         </div>
                       ) : (
-                        <LeadsTable leads={leads} />
+                        <LeadsTable items={leads} summary={leadsSummary} />
                       )
                     )}
                   </motion.div>

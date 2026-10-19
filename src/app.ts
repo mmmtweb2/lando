@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import path from 'path';
 import { supabaseSession } from './utils/supabase/middleware';
 import router from './routes';
-import { servePageWithOgTags } from './controllers/og.controller';
+import { servePageWithOgTags, serveBPage } from './controllers/og.controller';
 import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
@@ -72,6 +72,8 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   });
 });
 app.get('/p/:slug', ogPageLimiter, servePageWithOgTags);
+app.get('/b/:subdomain', ogPageLimiter, serveBPage);
+app.get('/b/:subdomain/:subSlug', ogPageLimiter, serveBPage);
 
 // Generated sitemap — real published pages, not the old static homepage-only
 // file. Must be registered before static middleware so it isn't shadowed by

@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { publicPageUrl } from '../lib/pageUrl';
+import { shareUrl } from '../lib/pageUrl';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2 } from 'lucide-react';
@@ -114,6 +114,8 @@ interface AiImageStore {
 }
 
 interface LandingPage {
+  canonical_url?: string; // server-computed indexed URL (/b/...)
+  parent_id?: string | null; // set on a child (SEO) page
   id: string;
   subdomain?: string | null;
   slug: string;
@@ -1429,7 +1431,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   const phone = ai_content.contact?.phone || phone_number;
   const ctaEmail = ai_content.contact?.email || '';
-  const waUrl = buildWhatsAppUrl(phone, ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`);
+  // The owner's chosen WhatsApp text is never overridden. Only a CHILD (SEO) page gets
+  // a suffix naming the page, so the owner can see which page produced the inquiry.
+  const waBaseMessage = ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`;
+  const waMessage = page.parent_id
+    ? `${waBaseMessage} (עמוד: ${ai_content.hero?.title || business_name})`
+    : waBaseMessage;
+  const waUrl = buildWhatsAppUrl(phone, waMessage);
 
   // Primary CTA target chosen by the user (whatsapp/email/phone/link). Falls back to
   // legacy behavior (external link for donation/direct_sale, else WhatsApp).
@@ -1456,10 +1464,44 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // Fire-and-forget alongside the CTA's own href navigation (`target="_blank"`,
   // so nothing here needs to block/await/preventDefault it) — never counted
   // for the owner's own edit-mode clicks, same reasoning as the view tracker.
-  function handleCtaClick() {
+  //
+  // Every CTA click is logged as a lead_event (migration 026; the server also bumps
+  // the page's cta_click_count) via sendBeacon, so it survives the navigation and
+  // never delays opening WhatsApp / the dialer / the mail app:
+  //   wa.me → whatsapp · tel: → call · mailto: → email · anything else → link
+  // Duplicates are suppressed HERE, per visitor (sessionStorage, per page + type,
+  // 5 minutes) — the server deliberately stores every click it receives. Storage
+  // access is wrapped in try/catch; when it is blocked the event is sent normally.
+  const EVENT_DEDUPE_MS = 5 * 60 * 1000;
+  function shouldSendEvent(slug: string, type: string): boolean {
+    try {
+      const key = `pagey_ev_${slug}_${type}`;
+      const last = Number(window.sessionStorage.getItem(key) ?? 0);
+      if (last && Date.now() - last < EVENT_DEDUPE_MS) return false;
+      window.sessionStorage.setItem(key, String(Date.now()));
+    } catch { /* storage blocked — send normally */ }
+    return true;
+  }
+
+  function sendLeadEvent(slug: string, type: 'whatsapp' | 'call' | 'email' | 'link') {
+    if (!shouldSendEvent(slug, type)) return;
+    const url = `/api/landing/${slug}/event`;
+    const body = JSON.stringify({ event_type: type, source_url: window.location.href, referrer: document.referrer || null });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))) return;
+    } catch { /* fall through to fetch */ }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  }
+
+  // Never counted for the owner's own edit-mode clicks, same reasoning as the view tracker.
+  function handleCtaClick(href: string = primaryCtaHref) {
     if (canEdit) return;
     if (!page || !page.slug || page.status !== 'published') return;
-    fetch(`/api/landing/${page.slug}/track-cta-click`, { method: 'POST' }).catch(() => {});
+    const slug = page.slug;
+    if (href.startsWith('https://wa.me/')) sendLeadEvent(slug, 'whatsapp');
+    else if (href.startsWith('tel:')) sendLeadEvent(slug, 'call');
+    else if (href.startsWith('mailto:')) sendLeadEvent(slug, 'email');
+    else sendLeadEvent(slug, 'link');
   }
 
   const btnR = vibe === 'luxury' ? '2px' : vibe === 'tech' ? '8px' : '14px';
@@ -1486,7 +1528,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   function ghostCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, background: onPrimary === '#ffffff' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)', border: `2px solid ${onPrimary === '#ffffff' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.2)'}`, color: onPrimary, ...extra }}>
         {ctaIcon}{ctaText}
@@ -1496,7 +1538,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   function solidCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, backgroundColor: primary, color: textOnColor(primary), ...extra }}>
         {ctaIcon}{ctaText}
@@ -2971,7 +3013,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
             {/* Prominent white button */}
             <motion.a
-              href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+              href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
               whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
               className="inline-flex items-center gap-3 px-10 py-4 font-extrabold text-lg transition-shadow"
               style={{
@@ -3410,28 +3452,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     ai_content.about?.content?.slice(0, 150) ||
     'דף נחיתה מקצועי';
 
-  // schema.org LocalBusiness structured data (2026-10-06, part 35) — lets
-  // Google understand this is a local business (name/phone/address) and show
-  // rich results. Published pages only: a draft is noindex and has no public
-  // URL worth describing. Opening hours are deliberately omitted — they are
-  // free text shown verbatim, and mapping them onto openingHoursSpecification
-  // would mean guessing; a wrong machine-readable schedule is worse than none.
-  // `<` is escaped so a business name can never close the script tag.
-  const structuredData = isDraft ? null : JSON.stringify({
-    '@context': 'https://schema.org',
-    '@type': 'LocalBusiness',
-    name: business_name,
-    url: publicPageUrl(page.slug, page.subdomain),
-    description: ai_content.seo_description ?? ogDescription,
-    image: heroImageUrl || logo_url || undefined,
-    logo: logo_url || undefined,
-    telephone: phone || undefined,
-    email: ctaEmail || undefined,
-    address: ai_content.contact?.address
-      ? { '@type': 'PostalAddress', streetAddress: ai_content.contact.address, addressCountry: 'IL' }
-      : undefined,
-    sameAs: [facebook_url, instagram_url].filter(Boolean),
-  }).replace(/</g, '\\u003c');
+  // JSON-LD (LocalBusiness + FAQPage) is emitted by the server only
+  // (og.controller.ts) — emitting it here too would duplicate it.
 
   const toolbarVisible = !!canEdit;
   const fabBottom = toolbarVisible ? 'bottom-20' : 'bottom-6';
@@ -3452,7 +3474,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             (Two independent passes today hit this same bug — logic below is
             the merged, equivalent fix.) */}
         <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
-        <link rel="canonical" href={publicPageUrl(page.slug, page.subdomain)} />
+        <link rel="canonical" href={page.canonical_url ?? shareUrl(page.slug, page.subdomain)} />
         <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
@@ -3464,13 +3486,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         <meta name="twitter:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta name="twitter:description" content={ai_content.seo_description ?? ogDescription} />
         {heroImageUrl && <meta name="twitter:image" content={heroImageUrl} />}
-        {structuredData && <script type="application/ld+json">{structuredData}</script>}
       </Helmet>
 
       {/* Sticky glassmorphism header */}
       <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
             className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
             style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
@@ -3562,7 +3583,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             </div>
           )}
 
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
             className="flex items-center gap-3 w-full max-w-xs justify-center py-4 text-white font-bold shadow-lg transition active:scale-95 mt-2"
             style={{ backgroundColor: useExternalLink ? primary : '#25D366', borderRadius: '16px' }}>
             {ctaIcon}{ctaText}
@@ -3593,7 +3614,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       )}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
         className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
         style={{ backgroundColor: useExternalLink ? primary : '#25D366' }}>
@@ -3604,7 +3625,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
       {/* Secondary WhatsApp FAB — only shown on external-link pages as a contact fallback, and only when a real WhatsApp number exists */}
       {useExternalLink && waUrl && (
-        <a href={waUrl} target="_blank" rel="noopener noreferrer"
+        <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick(waUrl)}
           aria-label="פתח שיחת WhatsApp"
           className={`fixed ${fabBottom} left-24 z-50 flex items-center justify-center w-12 h-12 rounded-full text-white shadow-lg transition-all duration-300`}
           style={{ backgroundColor: '#25D366' }}>
@@ -3850,7 +3871,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <div className="w-full flex flex-col gap-2.5">
                 <button
                   onClick={async () => {
-                    const url = publicPageUrl(page.slug, page.subdomain);
+                    const url = shareUrl(page.slug, page.subdomain);
                     // Native share sheet when available (WhatsApp, Messages,
                     // etc. — this is exactly the moment a business owner wants
                     // to send the fresh link to someone), clipboard as the
