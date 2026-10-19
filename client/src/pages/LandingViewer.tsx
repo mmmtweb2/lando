@@ -1465,10 +1465,26 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // so nothing here needs to block/await/preventDefault it) — never counted
   // for the owner's own edit-mode clicks, same reasoning as the view tracker.
   //
-  // A WhatsApp or call target also logs a lead_event (migration 026, which bumps the
-  // same counter server-side) via sendBeacon, so it survives the navigation and never
-  // delays opening WhatsApp/the dialer. Email/link CTAs keep the plain counter.
-  function sendLeadEvent(type: 'whatsapp' | 'call') {
+  // Every CTA click is logged as a lead_event (migration 026; the server also bumps
+  // the page's cta_click_count) via sendBeacon, so it survives the navigation and
+  // never delays opening WhatsApp / the dialer / the mail app:
+  //   wa.me → whatsapp · tel: → call · mailto: → email · anything else → link
+  // Duplicates are suppressed HERE, per visitor (sessionStorage, per page + type,
+  // 5 minutes) — the server deliberately stores every click it receives. Storage
+  // access is wrapped in try/catch; when it is blocked the event is sent normally.
+  const EVENT_DEDUPE_MS = 5 * 60 * 1000;
+  function shouldSendEvent(type: string): boolean {
+    try {
+      const key = `pagey_ev_${page.slug}_${type}`;
+      const last = Number(window.sessionStorage.getItem(key) ?? 0);
+      if (last && Date.now() - last < EVENT_DEDUPE_MS) return false;
+      window.sessionStorage.setItem(key, String(Date.now()));
+    } catch { /* storage blocked — send normally */ }
+    return true;
+  }
+
+  function sendLeadEvent(type: 'whatsapp' | 'call' | 'email' | 'link') {
+    if (!shouldSendEvent(type)) return;
     const url = `/api/landing/${page.slug}/event`;
     const body = JSON.stringify({ event_type: type, source_url: window.location.href, referrer: document.referrer || null });
     try {
@@ -1477,12 +1493,14 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
   }
 
+  // Never counted for the owner's own edit-mode clicks, same reasoning as the view tracker.
   function handleCtaClick(href: string = primaryCtaHref) {
     if (canEdit) return;
     if (!page || !page.slug || page.status !== 'published') return;
-    if (href.startsWith('https://wa.me/')) { sendLeadEvent('whatsapp'); return; }
-    if (href.startsWith('tel:')) { sendLeadEvent('call'); return; }
-    fetch(`/api/landing/${page.slug}/track-cta-click`, { method: 'POST' }).catch(() => {});
+    if (href.startsWith('https://wa.me/')) sendLeadEvent('whatsapp');
+    else if (href.startsWith('tel:')) sendLeadEvent('call');
+    else if (href.startsWith('mailto:')) sendLeadEvent('email');
+    else sendLeadEvent('link');
   }
 
   const btnR = vibe === 'luxury' ? '2px' : vibe === 'tech' ? '8px' : '14px';

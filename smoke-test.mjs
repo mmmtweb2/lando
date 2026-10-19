@@ -24,6 +24,16 @@ const SAMPLE_PAGE_SLUGS = [
   'lhzvd6z',
 ];
 
+// Canary page for the /b/ (canonical SEO URL) and lead-event checks: a real published
+// page that has a subdomain. Override with CANARY_SUBDOMAIN / CANARY_SLUG.
+const CANARY_SUBDOMAIN = process.env.CANARY_SUBDOMAIN || 'page-owad';
+const CANARY_SLUG = process.env.CANARY_SLUG || 'h5n9nb6';
+const CANONICAL_ROOT = 'https://pagey.co.il';
+// The event check writes one real lead_events row per run, marked 'smoke-test'
+// (stored, but excluded server-side from the leads feed and every lead count, and it
+// does not bump the page's CTA counter). Skip it with --no-event or SMOKE_SKIP_EVENT=1.
+const SKIP_EVENT = process.argv.includes('--no-event') || process.env.SMOKE_SKIP_EVENT === '1';
+
 const OLD_BRAND_STRINGS = ['Tirnoer Digital', 'Tirnoer'];
 
 // ── tiny test harness ───────────────────────────────────────────────────────
@@ -152,6 +162,66 @@ async function checkImagesHaveAlt(path, label) {
   );
 }
 
+// ── SEO sprint 1: canonical /b/ pages, server-rendered content, JSON-LD, events ──
+
+function jsonLdTypes(html) {
+  const types = [];
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+    try { types.push(JSON.parse(m[1])['@type']); } catch { types.push('INVALID_JSON'); }
+  }
+  return types;
+}
+
+async function checkBPage() {
+  const path = `/b/${CANARY_SUBDOMAIN}`;
+  const { res, text } = await fetchText(path);
+  record(`GET ${path} returns 200`, res.status === 200, `status ${res.status}`);
+
+  const canonical = (text.match(/<link rel="canonical" href="([^"]*)"/) || [])[1];
+  record(
+    `${path} canonical points at /b/`,
+    canonical === `${CANONICAL_ROOT}/b/${CANARY_SUBDOMAIN}`,
+    `canonical: ${canonical ?? '(none)'}`
+  );
+
+  // The initial HTML (no JS run) must already contain the page content inside #root.
+  record(`${path} has an <h1> inside #root in the initial HTML (no JS)`, /<div id="root"><main[^>]*>[\s\S]*?<h1>[^<]+<\/h1>/.test(text), undefined);
+
+  const types = jsonLdTypes(text);
+  record(
+    `${path} has exactly one LocalBusiness JSON-LD (no duplicate)`,
+    types.filter((t) => t === 'LocalBusiness').length === 1 && !types.includes('INVALID_JSON'),
+    `JSON-LD types: ${types.join(', ') || '(none)'}`
+  );
+
+  if (types.includes('FAQPage')) {
+    record(`${path} FAQ is in the initial HTML (matches FAQPage JSON-LD)`, /<h2>[^<]*<\/h2>\s*<article><h3>/.test(text), undefined);
+  } else {
+    record(`${path} FAQ check`, true, 'canary page has no FAQ (skipped)');
+  }
+}
+
+async function checkBPageUnknown() {
+  const { res } = await fetchText('/b/smoke-no-such-page-xyz');
+  record('Unknown /b/ path returns a real 404', res.status === 404, `status ${res.status}`);
+}
+
+async function checkSitemapHasCanonical() {
+  const { text } = await fetchText('/sitemap.xml');
+  const loc = `${CANONICAL_ROOT}/b/${CANARY_SUBDOMAIN}`;
+  record('sitemap.xml lists the canary page at its /b/ URL', text.includes(`<loc>${loc}</loc>`), `expected ${loc}`);
+}
+
+async function checkLeadEvent() {
+  if (SKIP_EVENT) { record('Lead event endpoint', true, 'skipped (--no-event)'); return; }
+  const url = `${BASE_URL}/api/landing/${CANARY_SLUG}/event`;
+  const post = (body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const ok = await post({ event_type: 'whatsapp', source_url: 'smoke-test', referrer: null });
+  record('POST /api/landing/:slug/event accepts a smoke event (204)', ok.status === 204, `status ${ok.status}`);
+  const bad = await post({ event_type: 'not-a-type', source_url: 'smoke-test' });
+  record('POST /api/landing/:slug/event rejects an invalid event_type (400)', bad.status === 400, `status ${bad.status}`);
+}
+
 // ── run everything ──────────────────────────────────────────────────────────
 
 async function runAll() {
@@ -171,6 +241,11 @@ async function runAll() {
   await safe(() => checkRobotsTxt());
   await safe(() => checkSitemapXml());
   await safe(() => checkHomepageMeta());
+
+  await safe(() => checkBPage());
+  await safe(() => checkBPageUnknown());
+  await safe(() => checkSitemapHasCanonical());
+  await safe(() => checkLeadEvent());
 
   for (const slug of SAMPLE_PAGE_SLUGS) {
     const path = `/p/${slug}`;

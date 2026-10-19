@@ -1,7 +1,10 @@
 import { supabase } from '../config/supabase';
 import { trackPageCtaClick } from './analytics.service';
 
-export const LEAD_EVENT_TYPES = ['whatsapp', 'call'] as const;
+export const LEAD_EVENT_TYPES = ['whatsapp', 'call', 'email', 'link'] as const;
+
+/** source_url marking a post-deploy smoke-test event: stored, never counted or shown. */
+export const SMOKE_SOURCE = 'smoke-test';
 export type LeadEventType = (typeof LEAD_EVENT_TYPES)[number];
 
 export function isLeadEventType(v: unknown): v is LeadEventType {
@@ -39,13 +42,15 @@ export async function recordLeadEvent(
   }
   if (status !== 'published') return;
 
+  const source = clip(sourceUrl);
   const { error } = await supabase.from('lead_events').insert({
     landing_page_id: row.id,
     event_type: type,
-    source_url: clip(sourceUrl),
+    source_url: source,
     referrer: clip(referrer),
   });
   if (error) console.error('[LEAD_EVENTS] insert failed:', error.message);
 
-  await trackPageCtaClick(slug);
+  // A smoke-test event keeps its row but must not move the page's real CTA counter.
+  if (source !== SMOKE_SOURCE) await trackPageCtaClick(slug);
 }

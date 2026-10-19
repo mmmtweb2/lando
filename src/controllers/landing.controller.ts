@@ -15,7 +15,7 @@ import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
 import { assignSubdomain, canonicalUrl } from '../services/subdomain.service';
 import { deleteLeadsForPageTree } from '../services/pageTree.service';
-import { isLeadEventType, recordLeadEvent } from '../services/leadEvents.service';
+import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -59,6 +59,30 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
 
 // Leads for all pages owned by the authenticated user. Routed through the backend
 // (service-role) so the browser never needs direct DB access to the leads table.
+// ── Leads feed (SEO sprint 1, stage 5) ───────────────────────────────────────
+// One feed of every inquiry across all the user's pages, children included:
+// contact-form leads (`leads`) + WhatsApp / call / email clicks (`lead_events`).
+// 'link' events (external links: donation, purchase) are NOT inquiries — they are
+// only counted, in their own card. Smoke-test events (source_url = 'smoke-test')
+// are excluded here, from the feed AND from every count.
+const FEED_LIMIT = 500;
+const NOT_SMOKE = `source_url.is.null,source_url.neq.${SMOKE_SOURCE}`;
+
+type FeedKind = 'form' | 'whatsapp' | 'call' | 'email';
+
+/** UTC instant of 00:00 on the 1st of the current calendar month in Israel time. */
+function israelMonthStart(now: Date): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit' }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === 'year')?.value);
+  const m = Number(parts.find((p) => p.type === 'month')?.value);
+  const guess = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', timeZoneName: 'longOffset' })
+    .formatToParts(guess).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+02:00';
+  const mm = /GMT([+-])(\d{2}):(\d{2})/.exec(off);
+  const minutes = mm ? (mm[1] === '-' ? -1 : 1) * (Number(mm[2]) * 60 + Number(mm[3])) : 120;
+  return new Date(guess.getTime() - minutes * 60_000);
+}
+
 export async function getMyLeads(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) {
@@ -68,30 +92,73 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
 
   const { data: pages, error: pagesErr } = await supabase
     .from('landing_pages')
-    .select('id')
+    .select('id, slug, business_name, parent_id, hero_title:ai_content->hero->>title')
     .eq('owner_email', email);
   if (pagesErr) {
     res.status(500).json({ error: pagesErr.message });
     return;
   }
 
-  const ids = (pages ?? []).map((p) => (p as { id: string }).id);
+  type PageInfo = { id: string; slug: string; business_name: string | null; parent_id: string | null; hero_title: string | null };
+  const pageMap = new Map<string, PageInfo>(((pages ?? []) as unknown as PageInfo[]).map((p) => [p.id, p]));
+  const ids = [...pageMap.keys()];
+  const emptySummary = { month_total: 0, month_whatsapp: 0, month_call: 0, month_form: 0, month_email: 0, month_link: 0 };
   if (ids.length === 0) {
-    res.json([]);
+    res.json({ items: [], summary: emptySummary });
     return;
   }
 
-  const { data: leads, error } = await supabase
-    .from('leads')
-    .select('id, name, phone, email, message, created_at, landing_page_id, landing_pages(business_name, slug)')
-    .in('landing_page_id', ids)
-    .order('created_at', { ascending: false });
-  if (error) {
-    res.status(500).json({ error: error.message });
+  const monthStart = israelMonthStart(new Date()).toISOString();
+  const countEvents = (type: string) =>
+    supabase.from('lead_events').select('id', { count: 'exact', head: true })
+      .in('landing_page_id', ids).eq('event_type', type).gte('created_at', monthStart).or(NOT_SMOKE);
+
+  const [formsRes, eventsRes, cForm, cWa, cCall, cEmail, cLink] = await Promise.all([
+    supabase.from('leads')
+      .select('id, name, phone, email, message, created_at, landing_page_id')
+      .in('landing_page_id', ids).order('created_at', { ascending: false }).limit(FEED_LIMIT),
+    supabase.from('lead_events')
+      .select('id, event_type, created_at, landing_page_id')
+      .in('landing_page_id', ids).in('event_type', ['whatsapp', 'call', 'email']).or(NOT_SMOKE)
+      .order('created_at', { ascending: false }).limit(FEED_LIMIT),
+    supabase.from('leads').select('id', { count: 'exact', head: true }).in('landing_page_id', ids).gte('created_at', monthStart),
+    countEvents('whatsapp'), countEvents('call'), countEvents('email'), countEvents('link'),
+  ]);
+
+  const failed = [formsRes, eventsRes, cForm, cWa, cCall, cEmail, cLink].find((r) => r.error);
+  if (failed?.error) {
+    res.status(500).json({ error: failed.error.message });
     return;
   }
 
-  res.json(leads ?? []);
+  const pageName = (id: string) => {
+    const p = pageMap.get(id);
+    if (!p) return null;
+    return p.parent_id ? (p.hero_title || p.business_name) : p.business_name;
+  };
+
+  const items = [
+    ...((formsRes.data ?? []) as { id: string; name: string; phone: string; email: string | null; message: string | null; created_at: string; landing_page_id: string }[])
+      .map((l) => ({ ...l, kind: 'form' as FeedKind })),
+    ...((eventsRes.data ?? []) as { id: string; event_type: string; created_at: string; landing_page_id: string }[])
+      .map((e) => ({ id: e.id, kind: e.event_type as FeedKind, created_at: e.created_at, landing_page_id: e.landing_page_id, name: null, phone: null, email: null, message: null })),
+  ]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .slice(0, FEED_LIMIT)
+    .map((i) => ({ ...i, page_name: pageName(i.landing_page_id), page_slug: pageMap.get(i.landing_page_id)?.slug ?? null }));
+
+  const month_form = cForm.count ?? 0;
+  const month_whatsapp = cWa.count ?? 0;
+  const month_call = cCall.count ?? 0;
+  const month_email = cEmail.count ?? 0;
+  res.json({
+    items,
+    summary: {
+      month_total: month_form + month_whatsapp + month_call + month_email, // 'link' is not an inquiry
+      month_whatsapp, month_call, month_form, month_email,
+      month_link: cLink.count ?? 0,
+    },
+  });
 }
 
 export async function updateLandingPage(req: Request, res: Response): Promise<void> {
@@ -289,7 +356,7 @@ export async function trackView(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * POST /api/landing/:slug/event  { event_type: 'whatsapp' | 'call', source_url?, referrer? }
+ * POST /api/landing/:slug/event  { event_type: 'whatsapp' | 'call' | 'email' | 'link', source_url?, referrer? }
  * Public, fire-and-forget (sendBeacon) — records a lead_events row and bumps the
  * CTA counter. Invalid event_type is a 400; everything else answers 204 whatever
  * the outcome (no signal about slug existence or publish state).
@@ -298,7 +365,7 @@ export async function trackLeadEvent(req: Request, res: Response): Promise<void>
   const { slug } = req.params;
   const body = (req.body ?? {}) as { event_type?: unknown; source_url?: unknown; referrer?: unknown };
   if (!isLeadEventType(body.event_type)) {
-    res.status(400).json({ error: 'event_type must be whatsapp or call' });
+    res.status(400).json({ error: 'event_type must be whatsapp, call, email or link' });
     return;
   }
   res.status(204).send();
