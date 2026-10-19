@@ -15,6 +15,7 @@ import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
 import { assignSubdomain, canonicalUrl } from '../services/subdomain.service';
 import { deleteLeadsForPageTree } from '../services/pageTree.service';
+import { isLeadEventType, recordLeadEvent } from '../services/leadEvents.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -284,6 +285,26 @@ export async function trackView(req: Request, res: Response): Promise<void> {
   res.status(204).send();
   if (slug) {
     trackPageView(slug).catch((e) => console.error('[ANALYTICS] trackPageView failed:', e));
+  }
+}
+
+/**
+ * POST /api/landing/:slug/event  { event_type: 'whatsapp' | 'call', source_url?, referrer? }
+ * Public, fire-and-forget (sendBeacon) — records a lead_events row and bumps the
+ * CTA counter. Invalid event_type is a 400; everything else answers 204 whatever
+ * the outcome (no signal about slug existence or publish state).
+ */
+export async function trackLeadEvent(req: Request, res: Response): Promise<void> {
+  const { slug } = req.params;
+  const body = (req.body ?? {}) as { event_type?: unknown; source_url?: unknown; referrer?: unknown };
+  if (!isLeadEventType(body.event_type)) {
+    res.status(400).json({ error: 'event_type must be whatsapp or call' });
+    return;
+  }
+  res.status(204).send();
+  if (slug) {
+    recordLeadEvent(slug, body.event_type, body.source_url, body.referrer)
+      .catch((e) => console.error('[LEAD_EVENTS] recordLeadEvent failed:', e));
   }
 }
 

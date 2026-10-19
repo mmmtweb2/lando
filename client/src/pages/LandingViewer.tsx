@@ -115,6 +115,7 @@ interface AiImageStore {
 
 interface LandingPage {
   canonical_url?: string; // server-computed indexed URL (/b/...)
+  parent_id?: string | null; // set on a child (SEO) page
   id: string;
   subdomain?: string | null;
   slug: string;
@@ -1430,7 +1431,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   const phone = ai_content.contact?.phone || phone_number;
   const ctaEmail = ai_content.contact?.email || '';
-  const waUrl = buildWhatsAppUrl(phone, ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`);
+  // The WhatsApp opener names the page the visitor came from, so the owner can see
+  // which page produced the inquiry. "דרך גוגל" is only said when the visitor really
+  // arrived from Google (a QR/WhatsApp-shared link must not claim it).
+  const waPageTitle = page.parent_id ? (ai_content.hero?.title || business_name) : business_name;
+  const waViaGoogle = typeof document !== 'undefined' && /(^|\.)google\./i.test(document.referrer);
+  const waMessage = `היי, הגעתי אליכם ${waViaGoogle ? 'דרך גוגל ' : ''}(עמוד ${waPageTitle}) ואשמח לפרטים.`;
+  const waUrl = buildWhatsAppUrl(phone, waMessage);
 
   // Primary CTA target chosen by the user (whatsapp/email/phone/link). Falls back to
   // legacy behavior (external link for donation/direct_sale, else WhatsApp).
@@ -1457,9 +1464,24 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // Fire-and-forget alongside the CTA's own href navigation (`target="_blank"`,
   // so nothing here needs to block/await/preventDefault it) — never counted
   // for the owner's own edit-mode clicks, same reasoning as the view tracker.
-  function handleCtaClick() {
+  //
+  // A WhatsApp or call target also logs a lead_event (migration 026, which bumps the
+  // same counter server-side) via sendBeacon, so it survives the navigation and never
+  // delays opening WhatsApp/the dialer. Email/link CTAs keep the plain counter.
+  function sendLeadEvent(type: 'whatsapp' | 'call') {
+    const url = `/api/landing/${page.slug}/event`;
+    const body = JSON.stringify({ event_type: type, source_url: window.location.href, referrer: document.referrer || null });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))) return;
+    } catch { /* fall through to fetch */ }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  }
+
+  function handleCtaClick(href: string = primaryCtaHref) {
     if (canEdit) return;
     if (!page || !page.slug || page.status !== 'published') return;
+    if (href.startsWith('https://wa.me/')) { sendLeadEvent('whatsapp'); return; }
+    if (href.startsWith('tel:')) { sendLeadEvent('call'); return; }
     fetch(`/api/landing/${page.slug}/track-cta-click`, { method: 'POST' }).catch(() => {});
   }
 
@@ -1487,7 +1509,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   function ghostCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, background: onPrimary === '#ffffff' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)', border: `2px solid ${onPrimary === '#ffffff' ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.2)'}`, color: onPrimary, ...extra }}>
         {ctaIcon}{ctaText}
@@ -1497,7 +1519,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   function solidCta(extra?: React.CSSProperties) {
     return (
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         className="inline-flex items-center gap-2.5 px-7 py-3.5 font-bold shadow-lg transition active:scale-95"
         style={{ borderRadius: btnR, backgroundColor: primary, color: textOnColor(primary), ...extra }}>
         {ctaIcon}{ctaText}
@@ -2972,7 +2994,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
             {/* Prominent white button */}
             <motion.a
-              href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+              href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
               whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}
               className="inline-flex items-center gap-3 px-10 py-4 font-extrabold text-lg transition-shadow"
               style={{
@@ -3450,7 +3472,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       {/* Sticky glassmorphism header */}
       <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
             className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
             style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
@@ -3542,7 +3564,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             </div>
           )}
 
-          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+          <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
             className="flex items-center gap-3 w-full max-w-xs justify-center py-4 text-white font-bold shadow-lg transition active:scale-95 mt-2"
             style={{ backgroundColor: useExternalLink ? primary : '#25D366', borderRadius: '16px' }}>
             {ctaIcon}{ctaText}
@@ -3573,7 +3595,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       )}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
-      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={handleCtaClick}
+      <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
         className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
         style={{ backgroundColor: useExternalLink ? primary : '#25D366' }}>
@@ -3584,7 +3606,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
       {/* Secondary WhatsApp FAB — only shown on external-link pages as a contact fallback, and only when a real WhatsApp number exists */}
       {useExternalLink && waUrl && (
-        <a href={waUrl} target="_blank" rel="noopener noreferrer"
+        <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick(waUrl)}
           aria-label="פתח שיחת WhatsApp"
           className={`fixed ${fabBottom} left-24 z-50 flex items-center justify-center w-12 h-12 rounded-full text-white shadow-lg transition-all duration-300`}
           style={{ backgroundColor: '#25D366' }}>

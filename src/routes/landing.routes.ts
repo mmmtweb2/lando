@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -67,6 +67,7 @@ router.get('/:slug', pageViewLimiter, optionalAuth, getLandingPage);  // public 
 // public :slug route for readability).
 router.post('/:slug/track-view', trackLimiter, trackView);
 router.post('/:slug/track-cta-click', trackLimiter, trackCtaClick);
+router.post('/:slug/event', trackLimiter, trackLeadEvent); // WhatsApp / call click → lead_events (migration 026)
 
 // ── Destructive / owner-only actions ──────────────────────────────────────────
 // requireAuth verifies the caller's identity from a real Supabase token;

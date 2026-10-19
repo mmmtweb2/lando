@@ -476,3 +476,9 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 - **JSON-LD:** LocalBusiness + FAQPage (מתוך `ai_content.faq`) רק בשרת (`buildJsonLdScripts`); הייצור בצד הלקוח (LandingViewer) הוסר.
 - **ירושה בקריאה (בלי סנכרון):** דף-בן מוצג רק אם האב published — og.controller, `getLandingPage` (draft/frozen → 404/410 לפי סטטוס האב, והתשובה מחזירה את סטטוס האב) ו-`submitLead`.
 - **sitemap:** דפי-אב published עם כתובות `/b/` קנוניות, ודפי-בן של אבות published (`/b/<sub>/<sub_slug>`).
+
+## חלק 39 – Pagey SEO, Sprint 1 – שלב 4: lead_events (מיגרציה 026)
+- **מיגרציה `026_lead_events.sql`:** טבלה `lead_events` (landing_page_id → ON DELETE CASCADE, `event_type` ∈ whatsapp/call/form, source_url, referrer, created_at), אינדקס (landing_page_id, created_at DESC), RLS ENABLE + **FORCE** ללא policies (כמו site_visits/funnel_events; גישה רק דרך service-role). `form` מותר ב-CHECK אך לא בשימוש (טפסים כבר ב-`leads`, למניעת ספירה כפולה).
+- **`POST /api/landing/:slug/event`** `{event_type: 'whatsapp'|'call', source_url?, referrer?}`: event_type לא תקין → 400; אחרת תמיד 204 (בלי חשיפת קיום/סטטוס). רושם שורה ב-`lead_events` **ובנוסף** מגדיל את `cta_click_count` האטומי (`trackPageCtaClick`). רק לדף published (ילד — לפי סטטוס האב). rate limit = `trackLimiter` (40/דקה), כמו שאר נקודות המעקב הציבוריות. (`src/services/leadEvents.service.ts`)
+- **לקוח (LandingViewer):** לחיצה על CTA שמוביל ל-`wa.me` או `tel:` (כולל כפתור ה-WhatsApp המשני) שולחת `navigator.sendBeacon` (fallback: fetch עם keepalive) ולא חוסמת את הפתיחה; CTA של אימייל/קישור חיצוני נשארים עם `track-cta-click` הקיים (בלי ספירה כפולה). לא נספר בעריכה של הבעלים.
+- **הודעת וואטסאפ:** `היי, הגעתי אליכם [דרך גוגל ](עמוד <שם העמוד>) ואשמח לפרטים.` — שם העמוד = שם העסק, ולדף-בן הכותרת (hero.title). "דרך גוגל" מופיע רק כשה-`document.referrer` הוא באמת גוגל (סטייה מהמסמך: קישור שהגיע מ-QR/וואטסאפ לא טוען שהגיע מגוגל).
