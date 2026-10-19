@@ -1473,9 +1473,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // 5 minutes) — the server deliberately stores every click it receives. Storage
   // access is wrapped in try/catch; when it is blocked the event is sent normally.
   const EVENT_DEDUPE_MS = 5 * 60 * 1000;
-  function shouldSendEvent(type: string): boolean {
+  function shouldSendEvent(slug: string, type: string): boolean {
     try {
-      const key = `pagey_ev_${page.slug}_${type}`;
+      const key = `pagey_ev_${slug}_${type}`;
       const last = Number(window.sessionStorage.getItem(key) ?? 0);
       if (last && Date.now() - last < EVENT_DEDUPE_MS) return false;
       window.sessionStorage.setItem(key, String(Date.now()));
@@ -1483,9 +1483,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     return true;
   }
 
-  function sendLeadEvent(type: 'whatsapp' | 'call' | 'email' | 'link') {
-    if (!shouldSendEvent(type)) return;
-    const url = `/api/landing/${page.slug}/event`;
+  function sendLeadEvent(slug: string, type: 'whatsapp' | 'call' | 'email' | 'link') {
+    if (!shouldSendEvent(slug, type)) return;
+    const url = `/api/landing/${slug}/event`;
     const body = JSON.stringify({ event_type: type, source_url: window.location.href, referrer: document.referrer || null });
     try {
       if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))) return;
@@ -1497,10 +1497,11 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   function handleCtaClick(href: string = primaryCtaHref) {
     if (canEdit) return;
     if (!page || !page.slug || page.status !== 'published') return;
-    if (href.startsWith('https://wa.me/')) sendLeadEvent('whatsapp');
-    else if (href.startsWith('tel:')) sendLeadEvent('call');
-    else if (href.startsWith('mailto:')) sendLeadEvent('email');
-    else sendLeadEvent('link');
+    const slug = page.slug;
+    if (href.startsWith('https://wa.me/')) sendLeadEvent(slug, 'whatsapp');
+    else if (href.startsWith('tel:')) sendLeadEvent(slug, 'call');
+    else if (href.startsWith('mailto:')) sendLeadEvent(slug, 'email');
+    else sendLeadEvent(slug, 'link');
   }
 
   const btnR = vibe === 'luxury' ? '2px' : vibe === 'tech' ? '8px' : '14px';

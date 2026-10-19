@@ -494,3 +494,9 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 ### חלק 40 – תיקון (התאמה להחלטות איציק במסמך המשותף)
 - **הערך `form` הוסר מה-CHECK של `lead_events`:** סוגי האירוע הם `whatsapp / call / email / link` בלבד (טפסים נשמרים ב-`leads`). המיגרציה הרצה-חוזרת (`DROP CONSTRAINT IF EXISTS` + `ADD`), ולכן מי שכבר הריץ 026 מריץ אותה שוב.
 - **הודעת וואטסאפ:** נוסח שבעל העסק בחר לא נדרס. רק דף-בן מקבל סיומת `(עמוד: <כותרת>)`; לדף-אב אין שינוי. הוסרה הלוגיקה "דרך גוגל" לפי referrer.
+
+## חלק 41 – תיקון build של הלקוח (TS18047)
+
+- בעקבות סקירת איציק: `npm run build` בלקוח מריץ `tsc -b`, ושם נכשלו `shouldSendEvent`/`sendLeadEvent` ב-`LandingViewer.tsx` (`page` יכול להיות null). הבדיקה הקודמת שלי (`tsc -p .`) לא בדקה כלום ב-client.
+- התיקון: ה-slug מועבר כפרמטר מ-`handleCtaClick` (שכבר בודק `page`). אימות: `cd client && npx tsc -b` נקי, ו-tsc של השרת נקי.
+- מהיום בודקים לקוח רק עם `npx tsc -b`.
