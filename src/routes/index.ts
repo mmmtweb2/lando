@@ -5,6 +5,7 @@ import adminRouter from './admin.routes';
 import userRouter from './user.routes';
 import paymentRouter from './payment.routes';
 import siteRouter from './site.routes';
+import seoRouter from './seo.routes';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/admin', adminRouter);
 router.use('/users', userRouter);
 router.use('/payments', paymentRouter);
 router.use('/site', siteRouter);
+router.use('/seo', seoRouter);
 
 export default router;

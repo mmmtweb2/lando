@@ -513,3 +513,19 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 - **לקוח (מינימלי):** `components/SeoProductPanel.tsx` (פאנל זמני + `ProductSwitch`). ב-Dashboard: חשבון עם `seo_autopilot` **ובלי דפים** רואה רק פאנל "קידום בגוגל" (בלי כרטיסי דפים, "דף חדש" או ניווט "הדפים שלי"/"לידים"); חשבון עם **שני** המוצרים רואה בורר "Pagey – דפי נחיתה | קידום בגוגל". הגדרות וחיוב לא השתנו. עד שה-plan נטען (או אם נכשל) הדשבורד זהה למה שהיה.
 - **כדי ליצור משתמש בדיקה** (אחרי הרצת 027, ב-Supabase SQL editor; מחליפים את האימייל):
   `INSERT INTO user_products (email, product, status, source) VALUES ('<email>', 'seo_autopilot', 'active', 'manual') ON CONFLICT (email, product) DO UPDATE SET status = 'active';`
+
+
+## Part 43 — Stage 5.5.2: business search + live Audit (Google Places API (New))
+
+Env: `GOOGLE_PLACES_API_KEY` (server only; never a Build variable). Without it the
+`/api/seo/places/*` routes answer 503 `places_not_configured` and the UI says the search
+is coming soon. Restrict the key to "Places API (New)" in Google Cloud and set a daily
+quota cap there.
+
+- `POST /api/seo/places/autocomplete` `{ input, sessionToken? }` → `{ suggestions }`
+- `GET  /api/seo/places/:placeId/audit` → `{ audit }` (score 0–100, items, tips)
+- Auth required (not product-gated: the Audit is the on-ramp). Cost guards: 40 req/min/IP and
+  200 calls/day/account (in-memory, single instance).
+- Places returns at most 10 photos and 5 reviews, so the photo count is a lower bound
+  ("10+") until the GBP API is approved. Nothing is persisted yet (Stage 6.1 saves `place_id`).
+- Checks: `npx ts-node --transpile-only scripts/test-places.ts` and `scripts/test-seo-controller.ts`.

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
+import BusinessAuditCard from './BusinessAuditCard';
 
 /**
  * Placeholder surface for the Google-promotion product (seo_autopilot, Stage 5.5.1).
@@ -9,25 +10,21 @@ import { Search } from 'lucide-react';
  */
 export default function SeoProductPanel({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-8 flex flex-col items-center gap-3 text-center">
-      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-        <Search size={22} />
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-900">קידום העסק בגוגל</p>
-        <p className="mt-1 text-sm text-slate-500 max-w-md">
-          המוצר פעיל בחשבון שלכם. כאן יופיעו העסקים שלכם והקידום שלהם בגוגל.
-          החיבור לעסק הראשון יתווסף בקרוב.
+    <div className="flex flex-col gap-4">
+      <BusinessAuditCard />
+      <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col items-center gap-3 text-center">
+        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+          <Search size={20} />
+        </div>
+        <p className="text-sm text-slate-500 max-w-md">
+          המוצר פעיל בחשבון שלכם. חיבור העסק לקידום, ביקורות ולידים יתווספו כאן בקרוב.
         </p>
+        {showPageUpsell && (
+          <Link to="/create" className="text-sm font-medium text-[#2E63F6] hover:underline">
+            רוצים גם דף נחיתה לעסק? יצירת דף ב-Pagey
+          </Link>
+        )}
       </div>
-      {showPageUpsell && (
-        <Link
-          to="/create"
-          className="text-sm font-medium text-[#2E63F6] hover:underline"
-        >
-          רוצים גם דף נחיתה לעסק? יצירת דף ב-Pagey
-        </Link>
-      )}
     </div>
   );
 }
