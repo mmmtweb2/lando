@@ -24,14 +24,25 @@ export interface UserProductRow {
   current_period_end: string | null;
 }
 
+/** Days a 'past_due' account keeps access after its period ended (Moshe, 2026-10-21). */
+export const PAST_DUE_GRACE_DAYS = 7;
+
 /**
- * Is this user_products row currently entitling? 'active' and 'trialing' do;
- * 'canceled' and 'past_due' do not. A row whose current_period_end has passed does
- * not either, whatever its status says (a stale 'active' must not grant access).
+ * Is this user_products row currently entitling?
+ *  - 'active' / 'trialing': yes, unless current_period_end has passed (a stale 'active'
+ *    must not grant access).
+ *  - 'past_due': yes during a grace window of PAST_DUE_GRACE_DAYS after current_period_end
+ *    (a failed charge must not cut a customer off on day one).
+ *  - 'canceled' (or anything else): no.
  */
 export function isEntitled(row: Pick<UserProductRow, 'status' | 'current_period_end'>, now = new Date()): boolean {
+  const end = row.current_period_end ? new Date(row.current_period_end).getTime() : null;
+  if (row.status === 'past_due') {
+    if (end === null) return true;
+    return now.getTime() < end + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+  }
   if (row.status !== 'active' && row.status !== 'trialing') return false;
-  if (row.current_period_end && new Date(row.current_period_end).getTime() <= now.getTime()) return false;
+  if (end !== null && end <= now.getTime()) return false;
   return true;
 }
 

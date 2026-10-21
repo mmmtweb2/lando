@@ -1141,6 +1141,9 @@ export default function Dashboard() {
               transition={{ duration: 0.18 }}
               className="flex flex-col gap-4"
             >
+              {/* Page balance, AI credits and the white-label add-on only concern Pagey pages;
+                  an account holding ONLY seo_autopilot does not see them (Moshe, 2026-10-21). */}
+              {!seoOnly && (<>
               {plan ? (
                 <BalanceCard plan={plan} onBuyBundle={() => { setBundleAck(false); setShowPlans(true); }} />
               ) : (
@@ -1189,6 +1192,7 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+              </>)}
 
               {/* Contact/support card (2026-09-14) — visible in a spot every user
                   passes through, encouraging reach-out for any issue rather
@@ -1242,7 +1246,7 @@ export default function Dashboard() {
           ) : seoOnly ? (
             /* ── seo_autopilot only: no Pagey page, no page-creation prompts ── */
             <>
-              <SeoProductPanel />
+              <SeoProductPanel showPageUpsell />
               <SetPasswordCard />
             </>
           ) : (

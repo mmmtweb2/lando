@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 /**
@@ -6,7 +7,7 @@ import { Search } from 'lucide-react';
  * the customer's eyes. The real screens (business connection, audit, recommendations)
  * arrive in Stage 5.5.2+ and the full branding pass later.
  */
-export default function SeoProductPanel() {
+export default function SeoProductPanel({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-8 flex flex-col items-center gap-3 text-center">
       <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
@@ -19,6 +20,14 @@ export default function SeoProductPanel() {
           החיבור לעסק הראשון יתווסף בקרוב.
         </p>
       </div>
+      {showPageUpsell && (
+        <Link
+          to="/create"
+          className="text-sm font-medium text-[#2E63F6] hover:underline"
+        >
+          רוצים גם דף נחיתה לעסק? יצירת דף ב-Pagey
+        </Link>
+      )}
     </div>
   );
 }
