@@ -70,7 +70,7 @@ const mockPlace = (p: any) => { globalThis.fetch = (async () => new Response(JSO
   r = res(); await saveBusiness(req({ body: { placeId: 'ChIJ_firstplace01', name: 'EVIL' } }), r);
   assert.equal(r.code, 201);
   assert.equal(r.body.business.name, 'first', 'name must come from Google, not from the client body');
-  assert.equal(r.body.business.website_url, 'https://first.co.il');
+  assert.equal(r.body.business.website_url, null, 'Places content other than place_id/name is not stored');
   const firstId = r.body.business.id;
 
   r = res(); await saveBusiness(req({ body: { placeId: 'ChIJ_firstplace01' } }), r);

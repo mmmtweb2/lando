@@ -311,6 +311,15 @@ export default function BusinessAuditCard() {
             </ul>
           </div>
 
+          <p className="text-[11px] text-slate-400">
+            מקור הנתונים: Google Maps.{' '}
+            {audit.mapsUrl && (
+              <a href={audit.mapsUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">
+                צפייה בפרופיל במפות
+              </a>
+            )}
+          </p>
+
           <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex flex-col gap-2">
             {isSaved ? (
               <p className="flex items-center gap-2 text-sm text-emerald-700">

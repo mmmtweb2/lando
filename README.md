@@ -544,6 +544,6 @@ quota cap there.
 
 ### Stage 6.1 — saved businesses (2026-10-23)
 - `GET/POST /api/seo/businesses`, `DELETE /api/seo/businesses/:id` — gated by `requireProduct('seo_autopilot')`,
-  max 3 per account, idempotent per (owner, place). Name/website are read from Google on save, never taken from the client.
+  max 3 per account, idempotent per (owner, place). Only `place_id` and the customer-confirmed business name are stored (Places terms forbid storing other Places content); the name is read from Google on save, never taken from the client.
 - UI: "העסקים שלי" list (re-run Audit / remove) and a "connect this business" button under each Audit.
 - Check: `npx ts-node --transpile-only scripts/test-seo-businesses.ts`.

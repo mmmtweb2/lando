@@ -96,7 +96,12 @@ export async function getBusinesses(req: Request, res: Response): Promise<void> 
   }
 }
 
-/** POST /api/seo/businesses { placeId } — name/website are read from Google, never trusted from the client. */
+/**
+ * POST /api/seo/businesses { placeId } — the name is read from Google (never trusted from
+ * the client). Places terms forbid storing Places content other than place_id, so only the
+ * business name the customer just confirmed ("this is my business") is kept, and NOT the
+ * website or anything else; everything else is fetched live when shown.
+ */
 export async function saveBusiness(req: Request, res: Response): Promise<void> {
   const email = req.authEmail!;
   const placeId = req.body?.placeId;
@@ -114,7 +119,7 @@ export async function saveBusiness(req: Request, res: Response): Promise<void> {
     const r = await addBusiness(email, {
       placeId: place.id,
       name: place.displayName?.text ?? '',
-      websiteUrl: place.websiteUri ?? null,
+      websiteUrl: null,
     });
     if (!r.ok) {
       res.status(409).json({
