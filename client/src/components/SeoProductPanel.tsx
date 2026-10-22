@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import BusinessAuditCard from './BusinessAuditCard';
+import { RoleTag } from './RoleTag';
 
 /**
  * Placeholder surface for the Google-promotion product (seo_autopilot, Stage 5.5.1).
@@ -8,23 +9,39 @@ import BusinessAuditCard from './BusinessAuditCard';
  * the customer's eyes. The real screens (business connection, audit, recommendations)
  * arrive in Stage 5.5.2+ and the full branding pass later.
  */
+const HOW_IT_WORKS: { who: 'we' | 'you'; soon?: boolean; text: string }[] = [
+  { who: 'you', text: 'מחפשים את העסק שלכם בגוגל מפות, או פותחים פרופיל אם עדיין אין.' },
+  { who: 'we', text: 'בודקים את הפרופיל מול עסקים דומים באזור, ובונים לכם תוכנית חיזוק ברורה.' },
+  { who: 'you', text: 'מבצעים את מה שרק בעל העסק יכול לעשות, כמו עדכון פרטים בפרופיל, והאימות.' },
+  { who: 'we', soon: true, text: 'מבקשים ביקורות מלקוחות, מעלים תמונות, בונים דפים לחיפושים ספציפיים ומראים כמה פניות הגיעו.' },
+];
+
 export default function SeoProductPanel({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
   return (
     <div className="flex flex-col gap-4">
-      <BusinessAuditCard />
-      <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col items-center gap-3 text-center">
-        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-          <Search size={20} />
+      <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <Search size={16} />
+          </span>
+          <h3 className="text-base font-semibold text-slate-900">קידום העסק בגוגל, מי עושה מה</h3>
         </div>
-        <p className="text-sm text-slate-500 max-w-md">
-          המוצר פעיל בחשבון שלכם. חיבור העסק לקידום, ביקורות ולידים יתווספו כאן בקרוב.
-        </p>
-        {showPageUpsell && (
+        <ul className="flex flex-col gap-2">
+          {HOW_IT_WORKS.map((r, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+              <RoleTag who={r.who} soon={r.soon} /> <span>{r.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <BusinessAuditCard />
+      {showPageUpsell && (
+        <div className="text-center">
           <Link to="/create" className="text-sm font-medium text-[#2E63F6] hover:underline">
             רוצים גם דף נחיתה לעסק? יצירת דף ב-Pagey
           </Link>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
