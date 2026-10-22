@@ -293,7 +293,13 @@ export default function BusinessAuditCard() {
                     <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
                       <span className={`h-2 w-2 rounded-full ${LEVEL_STYLE[i.level].dot}`} /> {i.label}
                     </span>
-                    <span className={`text-sm font-semibold ${LEVEL_STYLE[i.level].text}`}>{i.value}</span>
+                    <span
+                      className={`text-sm font-semibold ${LEVEL_STYLE[i.level].text}`}
+                      // Numeric values like "10+" must keep their order inside the RTL page ("+10" otherwise).
+                      dir={/^[\d.+★\s]+$/.test(i.value) ? 'ltr' : undefined}
+                    >
+                      {i.value}
+                    </span>
                   </div>
                   {i.tip && <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{i.tip}</p>}
                   <div className="mt-2 flex flex-col gap-1.5">
