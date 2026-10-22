@@ -5,7 +5,9 @@
 //   • Field masks are explicit and minimal: Places bills by the fields requested.
 //   • Never logs the key or full upstream bodies.
 
-import { buildAudit, type BusinessAudit, type PlaceSnapshot } from './placesAudit';
+import {
+  buildAudit, buildBenchmark, type Benchmark, type BusinessAudit, type CompetitorSnapshot, type PlaceSnapshot,
+} from './placesAudit';
 
 const BASE = 'https://places.googleapis.com/v1';
 const TIMEOUT_MS = 8000;
@@ -14,8 +16,12 @@ const TIMEOUT_MS = 8000;
 export const PLACE_FIELD_MASK = [
   'id', 'displayName', 'formattedAddress', 'rating', 'userRatingCount',
   'nationalPhoneNumber', 'websiteUri', 'googleMapsUri', 'businessStatus',
-  'primaryTypeDisplayName', 'photos',
+  'primaryType', 'primaryTypeDisplayName', 'regularOpeningHours', 'location', 'photos',
 ].join(',');
+
+/** Competitor search radius and size (SearchNearby returns up to 20; we ask for 10). */
+const COMPETITOR_RADIUS_M = 5000;
+const COMPETITOR_COUNT = 10;
 
 export class PlacesError extends Error {
   constructor(public readonly code: 'not_configured' | 'bad_request' | 'not_found' | 'upstream', message: string) {
@@ -119,6 +125,41 @@ export async function fetchPlace(placeId: string): Promise<PlaceSnapshot> {
   return json as PlaceSnapshot;
 }
 
+/**
+ * Top same-type businesses around this place, for the relative score. Best effort: any
+ * failure (or too little data) returns null and the Audit falls back to fixed targets.
+ */
+export async function fetchCompetitors(place: PlaceSnapshot): Promise<CompetitorSnapshot[]> {
+  const lat = place.location?.latitude;
+  const lng = place.location?.longitude;
+  if (!place.primaryType || typeof lat !== 'number' || typeof lng !== 'number') return [];
+  const json = (await call(`${BASE}/places:searchNearby`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey(),
+      'X-Goog-FieldMask': 'places.id,places.rating,places.userRatingCount',
+    },
+    body: JSON.stringify({
+      includedPrimaryTypes: [place.primaryType],
+      maxResultCount: COMPETITOR_COUNT,
+      rankPreference: 'POPULARITY',
+      languageCode: 'he',
+      regionCode: 'IL',
+      locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: COMPETITOR_RADIUS_M } },
+    }),
+  })) as { places?: CompetitorSnapshot[] };
+  return json.places ?? [];
+}
+
 export async function auditPlace(placeId: string): Promise<BusinessAudit> {
-  return buildAudit(await fetchPlace(placeId));
+  const place = await fetchPlace(placeId);
+  let benchmark: Benchmark | null = null;
+  try {
+    benchmark = buildBenchmark(place.id, await fetchCompetitors(place));
+  } catch (e) {
+    if (e instanceof PlacesError && e.code === 'not_configured') throw e;
+    console.error('[PLACES] benchmark unavailable, using fixed targets');
+  }
+  return buildAudit(place, benchmark);
 }
