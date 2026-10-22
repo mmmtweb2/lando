@@ -2,6 +2,8 @@
 //
 // v2 (Moshe, 2026-10-23): the score is RELATIVE — it compares the business to its top
 // local competitors (same primary type, ~5 km) — and it covers EVERY parameter we check
+// v2.1: the bar is the TOP 3 most-reviewed competitors (what it takes to reach the map's
+// top three), not the median — the median made a below-average profile look "strong".
 // and offer an upgrade for. Every item also says plainly who does what:
 //   weDo  — what the product does for the customer (with an honest availability flag)
 //   youDo — what the customer has to do themselves
@@ -17,6 +19,8 @@ export const FALLBACK_TARGETS = { rating: 4.5, reviews: 50 } as const;
 export const PHOTO_GOAL = 100; // product goal; measurable only once the GBP API is approved
 export const PLACES_PHOTO_CAP = 10; // Places returns at most this many photo references
 export const MIN_COMPETITORS = 3;
+/** How many leading competitors set the bar. */
+export const TOP_N = 3;
 
 export interface PlaceSnapshot {
   id: string;
@@ -42,6 +46,8 @@ export interface Benchmark {
   count: number;
   medianRating: number;
   medianReviews: number;
+  /** Reviews of the TOP_N-th most-reviewed competitor: the bar to join the top three. */
+  topReviews: number;
   /** Targets this business is measured against. */
   ratingTarget: number;
   reviewsTarget: number;
@@ -99,13 +105,18 @@ export function buildBenchmark(selfId: string, competitors: CompetitorSnapshot[]
   if (usable.length < MIN_COMPETITORS) return null;
   const medianRating = median(usable.map(c => c.rating as number));
   const medianReviews = median(usable.map(c => c.userRatingCount as number));
+  // The bar comes from the leaders: the TOP_N most-reviewed competitors.
+  const leaders = [...usable].sort((x, y) => (y.userRatingCount as number) - (x.userRatingCount as number)).slice(0, TOP_N);
+  const topReviews = leaders[leaders.length - 1].userRatingCount as number;
+  const leadersRating = median(leaders.map(c => c.rating as number));
   return {
     count: usable.length,
     medianRating: Math.round(medianRating * 10) / 10,
     medianReviews: Math.round(medianReviews),
+    topReviews: Math.round(topReviews),
     // Ratings cluster in 4.3–4.8 everywhere; keep the bar meaningful and reachable.
-    ratingTarget: Math.round(Math.max(4.3, Math.min(4.8, medianRating)) * 10) / 10,
-    reviewsTarget: Math.max(20, Math.round(medianReviews)),
+    ratingTarget: Math.round(Math.max(4.3, Math.min(4.8, leadersRating)) * 10) / 10,
+    reviewsTarget: Math.max(20, Math.round(topReviews)),
   };
 }
 
@@ -123,7 +134,7 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
   const ratingTarget = benchmark?.ratingTarget ?? FALLBACK_TARGETS.rating;
   const reviewsTarget = benchmark?.reviewsTarget ?? FALLBACK_TARGETS.reviews;
   const reviewsMissing = Math.max(0, reviewsTarget - reviewCount);
-  const vs = benchmark ? `המתחרים באזור (חציון של ${benchmark.count} עסקים דומים)` : 'יעד כללי';
+  const vs = benchmark ? `שלושת העסקים המובילים באזור` : 'יעד כללי';
 
   const ratingLevel: AuditLevel =
     rating === null ? 'weak' : rating >= ratingTarget ? 'good' : rating >= ratingTarget - 0.4 ? 'ok' : 'weak';
@@ -225,9 +236,10 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
   ];
 
   // Weights sum to 100. Rating/reviews are relative to the local benchmark; reviews use a
-  // log scale because review counts are heavy-tailed (1,000 vs 50 must not zero the score).
+  // square-root scale: review counts are heavy-tailed (a 2,000-review leader must not zero
+  // the score of a 60-review business) but a gap to the leaders must still cost points.
   const ratingPart = rating === null ? 0 : clamp01((rating - 3) / (ratingTarget - 3));
-  const reviewsPart = clamp01(Math.log1p(reviewCount) / Math.log1p(reviewsTarget));
+  const reviewsPart = clamp01(Math.sqrt(reviewCount / reviewsTarget));
   const score = Math.round(
     25 * ratingPart +
       25 * reviewsPart +

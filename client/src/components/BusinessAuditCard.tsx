@@ -14,7 +14,11 @@ interface AuditItem {
   key: string; label: string; level: Level; value: string; tip: string;
   weDo: string; weDoAvailability: 'now' | 'soon'; youDo: string;
 }
-interface Benchmark { count: number; medianRating: number; medianReviews: number }
+interface Benchmark {
+  count: number; medianRating: number; medianReviews: number;
+  topReviews: number; ratingTarget: number; reviewsTarget: number;
+}
+interface SavedBusiness { id: string; name: string; google_place_id: string | null }
 interface Audit {
   placeId: string; name: string; address: string | null; category: string | null;
   mapsUrl: string | null; rating: number | null; reviewCount: number;
@@ -27,8 +31,11 @@ const LEVEL_STYLE: Record<Level, { dot: string; text: string }> = {
   weak: { dot: 'bg-rose-500', text: 'text-rose-700' },
 };
 
-function scoreStyle(score: number): { ring: string; label: string } {
-  if (score >= 75) return { ring: 'border-emerald-500 text-emerald-700', label: 'פרופיל חזק' };
+// "Strong" is reserved for a profile with a high score AND nothing left to improve: a
+// 5.0 with fewer reviews than the local leaders is good, not strong.
+function scoreStyle(score: number, hasGaps: boolean): { ring: string; label: string } {
+  if (score >= 90 && !hasGaps) return { ring: 'border-emerald-500 text-emerald-700', label: 'פרופיל חזק' };
+  if (score >= 75) return { ring: 'border-emerald-500 text-emerald-700', label: 'פרופיל טוב, יש עוד מה לחזק' };
   if (score >= 45) return { ring: 'border-amber-500 text-amber-700', label: 'יש פוטנציאל לשיפור' };
   return { ring: 'border-rose-500 text-rose-700', label: 'יש הרבה מה לחזק' };
 }
@@ -45,6 +52,9 @@ export default function BusinessAuditCard() {
   const [audit, setAudit] = useState<Audit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noProfile, setNoProfile] = useState(false);
+  const [saved, setSaved] = useState<SavedBusiness[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const sessionRef = useRef(newSessionToken());
   const seq = useRef(0);
@@ -85,16 +95,29 @@ export default function BusinessAuditCard() {
     return () => clearTimeout(t);
   }, [query]);
 
-  async function pick(s: Suggestion) {
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await authFetch('/api/seo/businesses');
+        if (!r.ok) return;
+        const body = await r.json().catch(() => ({}));
+        setSaved(body.businesses ?? []);
+      } catch { /* the saved list is a convenience; the search still works without it */ }
+    })();
+  }, []);
+
+  async function runAudit(placeId: string, name: string) {
     pickedRef.current = true;
     seq.current++; // drop any in-flight search
-    setQuery(s.name);
+    setQuery(name);
     setSuggestions([]);
     setAudit(null);
     setError(null);
+    setSaveMsg(null);
+    setNoProfile(false);
     setAuditing(true);
     try {
-      const r = await authFetch(`/api/seo/places/${encodeURIComponent(s.placeId)}/audit`);
+      const r = await authFetch(`/api/seo/places/${encodeURIComponent(placeId)}/audit`);
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
       setAudit(body.audit as Audit);
@@ -106,7 +129,39 @@ export default function BusinessAuditCard() {
     }
   }
 
-  const sc = audit ? scoreStyle(audit.score) : null;
+  const pick = (s: Suggestion) => runAudit(s.placeId, s.name);
+
+  async function saveCurrent() {
+    if (!audit) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const r = await authFetch('/api/seo/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId: audit.placeId }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setSaveMsg(body.error ?? 'השמירה נכשלה. נסו שוב.'); return; }
+      setSaved(prev => prev.some(x => x.id === body.business.id) ? prev : [...prev, body.business]);
+    } catch {
+      setSaveMsg('השמירה נכשלה. בדקו את החיבור ונסו שוב.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeSaved(id: string) {
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (r.ok) setSaved(prev => prev.filter(x => x.id !== id));
+    } catch { /* leave the list as it was */ }
+  }
+
+  const isSaved = !!audit && saved.some(x => x.google_place_id === audit.placeId);
+  const hasGaps = !!audit && audit.items.some(i => i.tip);
+
+  const sc = audit ? scoreStyle(audit.score, hasGaps) : null;
   const noResults = searched && !searching && !auditing && !audit && suggestions.length === 0 && query.trim().length >= 2 && !error;
 
   return (
@@ -117,6 +172,32 @@ export default function BusinessAuditCard() {
           הקלידו את שם העסק והעיר, ונראה איך הפרופיל שלכם נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
         </p>
       </div>
+
+      {saved.length > 0 && !noProfile && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-semibold text-slate-900">העסקים שלי</p>
+          <ul className="flex flex-col gap-2">
+            {saved.map(b => (
+              <li key={b.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                <span className="flex min-w-0 items-center gap-2 text-sm text-slate-900">
+                  <CheckCircle2 size={14} className="flex-shrink-0 text-emerald-600" />
+                  <span className="truncate">{b.name}</span>
+                </span>
+                <span className="flex flex-shrink-0 items-center gap-3 text-xs">
+                  {b.google_place_id && (
+                    <button type="button" onClick={() => runAudit(b.google_place_id!, b.name)} className="font-medium text-[#2E63F6] hover:underline">
+                      בדיקה מחדש
+                    </button>
+                  )}
+                  <button type="button" onClick={() => removeSaved(b.id)} className="text-slate-400 hover:text-rose-600">
+                    הסרה
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {noProfile ? (
         <NoProfileGuide onBack={() => setNoProfile(false)} />
@@ -199,7 +280,7 @@ export default function BusinessAuditCard() {
 
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
             {audit.benchmark
-              ? `הציון נמדד ביחס ל-${audit.benchmark.count} עסקים דומים באזור (חציון: ${audit.benchmark.medianReviews} ביקורות, דירוג ${audit.benchmark.medianRating.toFixed(1)}).`
+              ? `הציון נמדד מול שלושת העסקים המובילים מתוך ${audit.benchmark.count} עסקים דומים באזור (יעד: ${audit.benchmark.reviewsTarget} ביקורות ודירוג ${audit.benchmark.ratingTarget.toFixed(1)}; חציון האזור: ${audit.benchmark.medianReviews} ביקורות).`
               : 'לא מצאנו מספיק עסקים דומים באזור להשוואה, ולכן הציון נמדד מול יעדים כלליים.'}
           </p>
 
@@ -228,6 +309,30 @@ export default function BusinessAuditCard() {
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex flex-col gap-2">
+            {isSaved ? (
+              <p className="flex items-center gap-2 text-sm text-emerald-700">
+                <CheckCircle2 size={15} /> העסק מחובר לחשבון שלכם.
+              </p>
+            ) : (
+              <>
+                <p className="flex items-start gap-2 text-sm text-slate-700">
+                  <RoleTag who="you" />
+                  <span>זה העסק שלכם? חברו אותו לחשבון, כדי שנוכל לעקוב אחריו ולהמשיך לחזק אותו.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={saveCurrent}
+                  disabled={saving}
+                  className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-60"
+                >
+                  {saving ? 'מחברים…' : 'זה העסק שלי, חברו אותו'}
+                </button>
+              </>
+            )}
+            {saveMsg && <p className="text-sm text-rose-700" role="alert">{saveMsg}</p>}
           </div>
 
           {audit.items.every(i => !i.tip) && (

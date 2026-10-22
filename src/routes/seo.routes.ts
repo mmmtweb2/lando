@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware';
 import { rateLimit } from '../middleware/rateLimit';
-import { placeAudit, placesAutocomplete } from '../controllers/seo.controller';
+import { requireProduct } from '../middleware/product.middleware';
+import {
+  deleteBusiness, getBusinesses, placeAudit, placesAutocomplete, saveBusiness,
+} from '../controllers/seo.controller';
 
 const router = Router();
 
@@ -16,5 +19,10 @@ const placesLimiter = rateLimit({
 
 router.post('/places/autocomplete', placesLimiter, requireAuth, placesAutocomplete);
 router.get('/places/:placeId/audit', placesLimiter, requireAuth, placeAudit);
+
+// Saved businesses belong to the paid product, so these ARE gated by requireProduct.
+router.get('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinesses);
+router.post('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), saveBusiness);
+router.delete('/businesses/:id', placesLimiter, requireAuth, requireProduct('seo_autopilot'), deleteBusiness);
 
 export default router;
