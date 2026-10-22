@@ -500,3 +500,16 @@ Part 36 addendum (2026-10-11): renewal reminder emails (`renewal.mailer.ts`) now
 - בעקבות סקירת איציק: `npm run build` בלקוח מריץ `tsc -b`, ושם נכשלו `shouldSendEvent`/`sendLeadEvent` ב-`LandingViewer.tsx` (`page` יכול להיות null). הבדיקה הקודמת שלי (`tsc -p .`) לא בדקה כלום ב-client.
 - התיקון: ה-slug מועבר כפרמטר מ-`handleCtaClick` (שכבר בודק `page`). אימות: `cd client && npx tsc -b` נקי, ו-tsc של השרת נקי.
 - מהיום בודקים לקוח רק עם `npx tsc -b`.
+
+## חלק 42 – שלב 5.5.1: שכבת זכאות לפי מוצר (מיגרציה 027)
+ענף `feature/seo-entitlements` (מ-main). **לקוחות Pagey קיימים: אין שינוי** — כל משתמש נחשב אוטומטית בעל `pagey_pages` בלי שורה בטבלה (אין backfill), ומכסות/תשלומים/חידושים לא נגעו.
+- **מיגרציה `027_product_entitlements.sql`** (אידמפוטנטית, RLS ENABLE + FORCE ללא policies, כמו 026):
+  - `user_products` (PK `(email, product)`; email → `user_profiles(email)` **ON DELETE CASCADE**; `product` ∈ `seo_autopilot`; `status` ∈ active/trialing/canceled/past_due; `started_at`, `current_period_end` nullable, `source`, `created_at`).
+  - `seo_businesses` (`id`, `owner_email` → user_profiles CASCADE, `name`, `google_place_id` nullable (ייחודי לבעלים כשקיים), `website_url` nullable, `landing_page_id` nullable → landing_pages **ON DELETE SET NULL** — מחיקת דף לא מוחקת את העסק).
+  - `lead_events`: `landing_page_id` נהיה nullable, נוסף `business_id` (→ seo_businesses CASCADE), ו-CHECK `lead_events_target_check` שמחייב **בדיוק אחד** מהשניים. השורות הקיימות כולן עם landing_page_id ולכן עוברות את ה-CHECK. כל השליפות והכתיבות הקיימות (`getMyLeads`, `recordLeadEvent`) מסננות/כותבות לפי landing_page_id ולכן לא הושפעו.
+- **מחיקת חשבון:** `deleteAccount` מוחק את `user_profiles` → ה-CASCADE מנקה user_products ו-seo_businesses (ומהם lead_events לפי business_id). אין שינוי קוד.
+- **שרת:** `src/services/entitlements.service.ts` (`getEntitlements`, `hasProduct`, `isEntitled`): זכאי = status `active`/`trialing` ו-`current_period_end` ריק או עתידי; `canceled`/`past_due` או תקופה שעברה = לא זכאי. **Fail-safe:** שגיאת שליפה (למשל פריסה לפני הרצת 027) מחזירה `seo_autopilot:false` בלי לזרוק, כך שזרימות Pagey לא נשברות. `getAccountStatus(email, { entitlements: true })` מוסיף `entitlements: { pagey_pages: true, seo_autopilot }`; רק `GET /api/users/plan` מבקש זאת (getAccountStatus רץ גם בעת רינדור דפים ציבוריים ובמסלולי תשלום, ואין סיבה להוסיף להם שאילתה). `src/middleware/product.middleware.ts`: `requireProduct('seo_autopilot')` (401 ללא התחברות, 403 `code: product_required`), לא מחובר לשום נתיב קיים.
+- **הרשמה:** כבר היום משתמש נוצר ב-`user_profiles` (authUser / ensureUserProfile) והרשמה מובילה ל-`/dashboard` בלי לדרוש יצירת דף — לא נדרש שינוי.
+- **לקוח (מינימלי):** `components/SeoProductPanel.tsx` (פאנל זמני + `ProductSwitch`). ב-Dashboard: חשבון עם `seo_autopilot` **ובלי דפים** רואה רק פאנל "קידום בגוגל" (בלי כרטיסי דפים, "דף חדש" או ניווט "הדפים שלי"/"לידים"); חשבון עם **שני** המוצרים רואה בורר "Pagey – דפי נחיתה | קידום בגוגל". הגדרות וחיוב לא השתנו. עד שה-plan נטען (או אם נכשל) הדשבורד זהה למה שהיה.
+- **כדי ליצור משתמש בדיקה** (אחרי הרצת 027, ב-Supabase SQL editor; מחליפים את האימייל):
+  `INSERT INTO user_products (email, product, status, source) VALUES ('<email>', 'seo_autopilot', 'active', 'manual') ON CONFLICT (email, product) DO UPDATE SET status = 'active';`

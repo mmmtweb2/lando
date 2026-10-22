@@ -33,6 +33,7 @@
 
 import { supabase } from '../config/supabase';
 import { ensureUserProfile } from './profile.service';
+import { getEntitlements, type Entitlements } from './entitlements.service';
 import {
   BUNDLES, BundleKey, CREATION_ALLOWANCE_MULTIPLIER, FREE_TIER,
   LEGACY_PLAN_CONVERSION, PAID_TIER, SINGLE_PAGE_AI_CREDITS, TierDef,
@@ -53,6 +54,13 @@ export interface AccountStatus {
   monthlyCreate: number; // 0 = unlimited/not enforced
   createdThisPeriod: number;
   whiteLabel: boolean;
+  /**
+   * Which products the account may use (migration 027). Only present when the
+   * caller asked for it (`getAccountStatus(email, { entitlements: true })`):
+   * getAccountStatus also runs on public page renders and payment paths, which
+   * must not pay for an extra query they never read.
+   */
+  entitlements?: Entitlements;
 }
 
 interface BillingRow {
@@ -127,7 +135,10 @@ function creationCapFor(row: BillingRow, tier: TierDef): number {
 }
 
 /** Full balance + usage snapshot for the dashboard and the publish flow. */
-export async function getAccountStatus(email: string): Promise<AccountStatus> {
+export async function getAccountStatus(
+  email: string,
+  opts: { entitlements?: boolean } = {},
+): Promise<AccountStatus> {
   const row = await loadBillingRow(email);
   const tier = tierFor(row);
   const activePages = await countActivePages(email);
@@ -148,6 +159,7 @@ export async function getAccountStatus(email: string): Promise<AccountStatus> {
     monthlyCreate: creationCapFor(row, tier),
     createdThisPeriod,
     whiteLabel: !!row.white_label,
+    ...(opts.entitlements ? { entitlements: await getEntitlements(email) } : {}),
   };
 }
 

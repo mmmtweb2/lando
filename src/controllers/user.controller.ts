@@ -198,7 +198,7 @@ export async function getPlan(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
-  const status = await getAccountStatus(email);
+  const status = await getAccountStatus(email, { entitlements: true });
   res.json({ status, bundles: BUNDLES, singlePagePrice: SINGLE_PAGE_PRICE });
 }
 
