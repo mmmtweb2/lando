@@ -533,10 +533,17 @@ quota cap there.
 ### Audit v2 (Moshe, 2026-10-23)
 - Score is RELATIVE: top ~10 same-type businesses within 5 km (Places SearchNearby, POPULARITY),
   medians of rating/reviews become the targets (floors: reviews>=20, rating 4.3–4.8). Review score is
-  log-scaled. Fewer than 3 usable competitors, or any benchmark failure → fixed fallback targets
+  square-root-scaled; the bar is the 3rd most-reviewed competitor (top three), not the median. Fewer than 3 usable competitors, or any benchmark failure → fixed fallback targets
   (50 reviews, 4.5 ★), and the UI says so.
 - Eight parameters: rating, reviews, photos, phone, website, hours, category, status.
 - Every item carries `weDo` (+ `now`/`soon`) and `youDo`; the UI renders them with RoleTag
   ("אנחנו"/"אתם"). Mark `weDoAvailability: 'now'` only for what the product really does today.
 - Customers with no Google profile are target customers: the search card has an "אין לי פרופיל"
   path (NoProfileGuide) that splits the steps between the customer and the product.
+
+
+### Stage 6.1 — saved businesses (2026-10-23)
+- `GET/POST /api/seo/businesses`, `DELETE /api/seo/businesses/:id` — gated by `requireProduct('seo_autopilot')`,
+  max 3 per account, idempotent per (owner, place). Only `place_id` and the customer-confirmed business name are stored (Places terms forbid storing other Places content); the name is read from Google on save, never taken from the client.
+- UI: "העסקים שלי" list (re-run Audit / remove) and a "connect this business" button under each Audit.
+- Check: `npx ts-node --transpile-only scripts/test-seo-businesses.ts`.

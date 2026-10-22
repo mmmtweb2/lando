@@ -109,6 +109,7 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
     assert.equal((nb.init.headers as Record<string, string>)['X-Goog-FieldMask'], 'places.id,places.rating,places.userRatingCount');
     assert.equal(a.benchmark!.count, 5);
     assert.equal(a.benchmark!.medianReviews, 120);
+    assert.equal(a.benchmark!.topReviews, 120); // leaders: 300/200/120
     assert.equal(a.score, 100);
   });
   await ok('benchmark failure falls back to fixed targets (no throw)', async () => {
@@ -122,7 +123,9 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
     assert.equal(buildBenchmark('me', [{ id: 'me', rating: 5, userRatingCount: 999 }, ...comps([[4.0, 10], [4.2, 30], [4.4, 50]])])!.count, 3);
     const b = buildBenchmark('me', comps([[4.0, 10], [4.2, 30], [4.4, 50], [4.9, 70]]))!;
     assert.equal(b.medianReviews, 40);
-    assert.equal(b.ratingTarget, 4.3); // median 4.3 inside the 4.3–4.8 band
+    assert.equal(b.topReviews, 30); // 3rd most-reviewed of 70/50/30/10
+    assert.equal(b.reviewsTarget, 30);
+    assert.equal(b.ratingTarget, 4.4); // median rating of the 3 leaders (4.9, 4.4, 4.2) = 4.4
     assert.equal(buildBenchmark('me', comps([[3.5, 5], [3.6, 5], [3.7, 5]]))!.reviewsTarget, 20); // floor
   });
   await ok('score is RELATIVE: same business scores lower in a tougher market', () => {
@@ -132,7 +135,16 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
     const sEasy = buildAudit(me, easy).score, sHard = buildAudit(me, hard).score;
     assert.ok(sEasy > sHard, `${sEasy} vs ${sHard}`);
     assert.ok(buildAudit(me, hard).reviewsMissing > 800);
-    assert.ok(buildAudit(me, hard).items.find(i => i.key === 'reviews')!.tip.includes('חציון'));
+    assert.ok(buildAudit(me, hard).items.find(i => i.key === 'reviews')!.tip.includes('המובילים'));
+  });
+  await ok('below-median reviews no longer read as strong (Beer Sheva case: 5.0 / 37 vs median 43, leaders higher)', () => {
+    const me = { ...strong, rating: 5.0, userRatingCount: 37, photos: new Array(10).fill({}) };
+    const b = buildBenchmark('me', comps([[3.9, 43], [4.0, 20], [3.8, 15], [4.6, 120], [4.4, 90], [3.5, 8], [4.1, 60], [3.9, 30], [3.7, 25], [4.2, 70]]))!;
+    assert.equal(b.topReviews, 70); // leaders: 120/90/70
+    const a = buildAudit(me, b);
+    assert.ok(a.score < 96 && a.score > 85, `score ${a.score}`);
+    assert.equal(a.items.find(i => i.key === 'reviews')!.level, 'ok');
+    assert.equal(a.reviewsMissing, 33);
   });
   await ok('every item says who does what', () => {
     const a = buildAudit({ id: 'ChIJ_empty123456' });
