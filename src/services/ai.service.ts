@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // copy — including single-section rewrites — because a business owner reading
 // a fabricated stat, award, or quote on their own page is the single worst
 // failure mode for this product. Keep this wording forceful and specific.
-const NO_FABRICATION_RULE = `NO FABRICATION — THE SINGLE MOST IMPORTANT RULE (this outranks every other instruction below):
+export const NO_FABRICATION_RULE = `NO FABRICATION — THE SINGLE MOST IMPORTANT RULE (this outranks every other instruction below):
 You may ONLY state facts that were explicitly given in the input (business name, niche/description, page goal,
 contact details, and any user-provided marketing text). You must NEVER invent, guess, or "round up":
 - specific numbers: customer/client counts, years in business, percentages, prices, ratings or star counts
@@ -277,7 +277,7 @@ type Step1Output = CoreOutput & TrustOutput;
 // Claude is told to return raw JSON, but occasionally wraps it in ```json fences
 // or adds a sentence around it. Strip fences and extract the outermost {...} so a
 // stray wrapper doesn't trigger a silent fallback to generic content.
-function parseJsonLoose<T>(raw: string): T {
+export function parseJsonLoose<T>(raw: string): T {
   let s = raw.trim();
   if (s.startsWith('```')) {
     s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();

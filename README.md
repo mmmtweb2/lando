@@ -564,3 +564,32 @@ quota cap there.
 - Dashboard: `ReviewsCard` (SEO panel) per saved business: review link (`search.google.com/local/writereview?placeid=`),
   WhatsApp share, QR, embed snippet (iframe) and a live preview. Reviews are requested from every customer, never filtered.
 - Check: `npx ts-node --transpile-only scripts/test-reviews-widget.ts`.
+### Stage 8.1 / 8.2a — content plan + copy-ready kits for external sites (2026-10-23)
+- **Migration 028** (run in Supabase BEFORE relying on it): `seo_businesses.business_type / service_areas[] / long_tail_phrases[] / facts`,
+  and `seo_content_kits` (RLS FORCE, cascade from the business). Deploy order is not critical: the new code never selects the new
+  columns from the existing 6.1 paths, and every new route answers `503 plan_not_migrated` until 028 exists.
+- Routes (all auth + `requireProduct('seo_autopilot')`, owner-scoped): `POST /api/seo/phrases/suggest`,
+  `GET/PUT /api/seo/businesses/:id/plan`, `POST /api/seo/businesses/:id/content-kits`, `DELETE .../content-kits/:kitId`.
+- Phrases are template-built from what the CUSTOMER typed (type + up to 5 areas → up to 5 phrases, interleaved across areas); no LLM,
+  no Places data. Labels are charset-restricted (Hebrew/Latin/digits/few joiners) because they reach prompts and HTML.
+- Kit = inverted pyramid (direct answer → ≤3 sections → ≤4 FAQ). The model gets only type/area/phrase/business name/facts, under the
+  shared NO_FABRICATION rule (exported from ai.service). Enforced in code: any sentence containing a number that was not in the
+  customer's facts/phrase is dropped (`kit.dropped` is shown to the user); output is shape-validated, length-capped, and rendered
+  as escaped HTML + FAQPage JSON-LD (with `<` escaped) and plain text.
+- Cost guards: 10 generations/day/account (`SEO_KIT_DAILY_CAP`), 20 kits per business.
+- Dashboard: `ContentPlanCard` (type, areas, phrase suggestions, facts, save, generate, copy text/HTML).
+- Check: `npx ts-node --transpile-only scripts/test-seo-content.ts`.
+
+### Stage 8.2b — SEO child pages for customers with a Pagey page (2026-10-23)
+- Routes (auth + `requireProduct('seo_autopilot')`, owner-scoped): `PUT /api/seo/businesses/:id/landing-page {pageId|null}`
+  (links a saved business to one of the owner's PARENT pages; `seo_businesses.landing_page_id` already existed in 027),
+  `GET/POST /api/seo/businesses/:id/child-pages`, `DELETE .../child-pages/:pageId`.
+- A child (`parent_id` + `sub_slug`, migration 025) is created `published`, with `target_keyword` = the phrase, `slug` = `<parent slug>-<sub_slug>`
+  (sub_slug = transliterated phrase; a 4-char suffix is added on a unique-index collision). It copies the parent's look, contact and images
+  and replaces only hero, about, FAQ and meta tags. It shows only while the parent is published (inherited at read time).
+- Same no-fabrication guarantees as the kits: the model sees only the parent's own copy + the customer's facts; sentences with unsupported numbers
+  are dropped in code. (A real bug found by the tests: the `dropped` counter was read before the fields that increment it were evaluated.)
+- Limits: 5 child pages per parent, one per phrase, 10 generations/day/account (shared with kits). A child that has leads cannot be deleted
+  (`leads.landing_page_id` has no ON DELETE clause, and a customer must never lose an inquiry); the parent is never deletable through these routes.
+- Dashboard: the "תוכן לחיפושים ספציפיים" card gains a page section (pick the page, create/view/delete per phrase).
+- Check: `npx ts-node --transpile-only scripts/test-seo-child.ts`.

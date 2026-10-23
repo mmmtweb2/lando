@@ -5,6 +5,8 @@ import { requireProduct } from '../middleware/product.middleware';
 import {
   deleteBusiness, getBusinesses, placeAudit, placesAutocomplete, saveBusiness,
 } from '../controllers/seo.controller';
+import { createChildPage, getChildPages, linkPage, removeChildPage } from '../controllers/seoChild.controller';
+import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 
 const router = Router();
 
@@ -24,5 +26,19 @@ router.get('/places/:placeId/audit', placesLimiter, requireAuth, placeAudit);
 router.get('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinesses);
 router.post('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), saveBusiness);
 router.delete('/businesses/:id', placesLimiter, requireAuth, requireProduct('seo_autopilot'), deleteBusiness);
+
+// Content plan + copy-ready kits for external sites (Stage 8). Same gating as saved businesses.
+const gated = [placesLimiter, requireAuth, requireProduct('seo_autopilot')];
+router.post('/phrases/suggest', ...gated, suggest);
+router.get('/businesses/:id/plan', ...gated, getPlan);
+router.put('/businesses/:id/plan', ...gated, savePlan);
+router.post('/businesses/:id/content-kits', ...gated, createKit);
+router.delete('/businesses/:id/content-kits/:kitId', ...gated, deleteKit);
+
+// SEO child pages for businesses linked to a Pagey page (Stage 8.2b).
+router.put('/businesses/:id/landing-page', ...gated, linkPage);
+router.get('/businesses/:id/child-pages', ...gated, getChildPages);
+router.post('/businesses/:id/child-pages', ...gated, createChildPage);
+router.delete('/businesses/:id/child-pages/:pageId', ...gated, removeChildPage);
 
 export default router;
