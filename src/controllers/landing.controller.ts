@@ -15,6 +15,7 @@ import { logFunnelEvent } from '../services/funnel.service';
 import { touchDraft } from '../services/draftCleanup.service';
 import { assignSubdomain, canonicalUrl } from '../services/subdomain.service';
 import { deleteLeadsForPageTree } from '../services/pageTree.service';
+import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
@@ -103,12 +104,24 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
   const pageMap = new Map<string, PageInfo>(((pages ?? []) as unknown as PageInfo[]).map((p) => [p.id, p]));
   const ids = [...pageMap.keys()];
   const emptySummary = { month_total: 0, month_whatsapp: 0, month_call: 0, month_form: 0, month_email: 0, month_link: 0 };
+
+  const monthStart = israelMonthStart(new Date()).toISOString();
+  // Inquiries from the customer's own (non-Pagey) website, reported by the tracking snippet.
+  // Never throws: without them the feed below is exactly what it always was.
+  const ext = await getExternalLeads(email, monthStart);
   if (ids.length === 0) {
-    res.json({ items: [], summary: emptySummary });
+    if (ext.items.length === 0) { res.json({ items: [], summary: emptySummary }); return; }
+    res.json({
+      items: ext.items.slice(0, FEED_LIMIT),
+      summary: {
+        ...emptySummary,
+        month_total: ext.month.whatsapp + ext.month.call + ext.month.email,
+        month_whatsapp: ext.month.whatsapp, month_call: ext.month.call, month_email: ext.month.email,
+      },
+    });
     return;
   }
 
-  const monthStart = israelMonthStart(new Date()).toISOString();
   const countEvents = (type: string) =>
     supabase.from('lead_events').select('id', { count: 'exact', head: true })
       .in('landing_page_id', ids).eq('event_type', type).gte('created_at', monthStart).or(NOT_SMOKE);
@@ -146,13 +159,16 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     .slice(0, FEED_LIMIT)
     .map((i) => ({ ...i, page_name: pageName(i.landing_page_id), page_slug: pageMap.get(i.landing_page_id)?.slug ?? null }));
+  const allItems = ext.items.length
+    ? [...items, ...ext.items].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, FEED_LIMIT)
+    : items;
 
   const month_form = cForm.count ?? 0;
-  const month_whatsapp = cWa.count ?? 0;
-  const month_call = cCall.count ?? 0;
-  const month_email = cEmail.count ?? 0;
+  const month_whatsapp = (cWa.count ?? 0) + ext.month.whatsapp;
+  const month_call = (cCall.count ?? 0) + ext.month.call;
+  const month_email = (cEmail.count ?? 0) + ext.month.email;
   res.json({
-    items,
+    items: allItems,
     summary: {
       month_total: month_form + month_whatsapp + month_call + month_email, // 'link' is not an inquiry
       month_whatsapp, month_call, month_form, month_email,

@@ -593,3 +593,12 @@ quota cap there.
   (`leads.landing_page_id` has no ON DELETE clause, and a customer must never lose an inquiry); the parent is never deletable through these routes.
 - Dashboard: the "תוכן לחיפושים ספציפיים" card gains a page section (pick the page, create/view/delete per phrase).
 - Check: `npx ts-node --transpile-only scripts/test-seo-child.ts`.
+
+## Part 46 — Stage 9: page-tree check + lead tracking for customers' own websites
+
+- `scripts/test-page-tree.ts` (unit) and `scripts/verify-9-1.sql` (live DB, wrapped in BEGIN…ROLLBACK, prints three PASS/FAIL notices) verify that parent/child landing pages and `business_id` leads behave as designed.
+- External-site tracking: one line on the customer's site — `<script src="https://pagey.co.il/w/track.js" data-b="BUSINESS_ID" async></script>`. The snippet (ES5, no cookies, no personal data) listens for clicks on `tel:`, `mailto:` and WhatsApp links and sends only: type, page URL, referrer.
+- `POST /api/seo/track/:businessId` is public, always answers 204 (no information leak), has an IP limiter plus a per-business daily cap (`SEO_TRACK_DAILY_CAP`, default 2000), and only records when the business exists and its owner holds `seo_autopilot`.
+- Events are stored in `lead_events` with `business_id` and appear in `GET /api/landing/my-leads` next to the Pagey-page leads. They count clicks, not actual conversations.
+- Dashboard: `ExternalSiteCard` shows the snippet with a copy button per saved business.
+- Tests: `scripts/test-external-leads.ts`.
