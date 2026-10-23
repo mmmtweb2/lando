@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import BusinessAuditCard from './BusinessAuditCard';
+import ReviewsCard from './ReviewsCard';
 import { RoleTag } from './RoleTag';
 
 /**
@@ -13,7 +14,8 @@ const HOW_IT_WORKS: { who: 'we' | 'you'; soon?: boolean; text: string }[] = [
   { who: 'you', text: 'מחפשים את העסק שלכם בגוגל מפות, או פותחים פרופיל אם עדיין אין.' },
   { who: 'we', text: 'בודקים את הפרופיל מול עסקים דומים באזור, ובונים לכם תוכנית חיזוק ברורה.' },
   { who: 'you', text: 'מבצעים את מה שרק בעל העסק יכול לעשות, כמו עדכון פרטים בפרופיל, והאימות.' },
-  { who: 'we', soon: true, text: 'מבקשים ביקורות מלקוחות, מעלים תמונות, בונים דפים לחיפושים ספציפיים ומראים כמה פניות הגיעו.' },
+  { who: 'we', text: "נותנים לכם קישור לביקורת ללקוחות, ווידג'ט ביקורות לאתר שלכם." },
+  { who: 'we', soon: true, text: 'מעלים תמונות, בונים דפים לחיפושים ספציפיים ומראים כמה פניות הגיעו.' },
 ];
 
 export default function SeoProductPanel({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
@@ -35,6 +37,7 @@ export default function SeoProductPanel({ showPageUpsell = false }: { showPageUp
         </ul>
       </div>
       <BusinessAuditCard />
+      <ReviewsCard />
       {showPageUpsell && (
         <div className="text-center">
           <Link to="/create" className="text-sm font-medium text-[#2E63F6] hover:underline">

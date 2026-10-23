@@ -70,3 +70,16 @@ export async function removeBusiness(email: string, id: string): Promise<boolean
   if (error) throw new Error(`removeBusiness: ${error.message}`);
   return (data ?? []).length > 0;
 }
+
+/** What the public reviews widget needs to resolve a business id. No other fields are exposed. */
+export interface WidgetBusiness { id: string; owner_email: string; google_place_id: string | null }
+
+export async function getBusinessForWidget(id: string): Promise<WidgetBusiness | null> {
+  const { data, error } = await supabase
+    .from('seo_businesses')
+    .select('id, owner_email, google_place_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`getBusinessForWidget: ${error.message}`);
+  return (data as WidgetBusiness | null) ?? null;
+}

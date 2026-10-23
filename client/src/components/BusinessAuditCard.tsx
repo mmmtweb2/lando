@@ -144,6 +144,7 @@ export default function BusinessAuditCard() {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setSaveMsg(body.error ?? 'השמירה נכשלה. נסו שוב.'); return; }
       setSaved(prev => prev.some(x => x.id === body.business.id) ? prev : [...prev, body.business]);
+      window.dispatchEvent(new Event('seo-businesses-changed'));
     } catch {
       setSaveMsg('השמירה נכשלה. בדקו את החיבור ונסו שוב.');
     } finally {
@@ -154,7 +155,10 @@ export default function BusinessAuditCard() {
   async function removeSaved(id: string) {
     try {
       const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      if (r.ok) setSaved(prev => prev.filter(x => x.id !== id));
+      if (r.ok) {
+        setSaved(prev => prev.filter(x => x.id !== id));
+        window.dispatchEvent(new Event('seo-businesses-changed'));
+      }
     } catch { /* leave the list as it was */ }
   }
 
