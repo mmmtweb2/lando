@@ -91,6 +91,12 @@ export function slugifyBase(raw: string): string {
     .replace(/-+$/g, '');
 }
 
+/** URL-safe sub_slug for a child page, e.g. "אינסטלטור בחיפה" -> "ansttlvr-bhyph". Never empty. */
+export function subSlugFromPhrase(phrase: string): string {
+  const base = slugifyBase(transliterate(phrase)).slice(0, 40).replace(/-+$/g, '');
+  return base.length >= 3 ? base : `page-${randomSuffix()}`;
+}
+
 async function aiBase(businessName: string): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;

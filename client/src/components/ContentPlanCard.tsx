@@ -13,6 +13,8 @@ interface Kit {
   id: string; phrase: string; created_at: string; html: string; text: string;
   kit: { title: string; metaDescription: string; dropped: number };
 }
+interface MyPage { id: string; business_name: string; status: string | null }
+interface ChildPage { id: string; phrase: string | null; title: string | null; url: string }
 interface Settings { businessType: string; serviceAreas: string[]; phrases: string[]; facts: string }
 
 const MAX_AREAS = 5;
@@ -46,6 +48,71 @@ function BusinessPlan({ b }: { b: Saved }) {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [myPages, setMyPages] = useState<MyPage[]>([]);
+  const [parent, setParent] = useState<{ id: string; name: string; status: string | null } | null>(null);
+  const [children, setChildren] = useState<ChildPage[]>([]);
+  const [maxChildren, setMaxChildren] = useState(5);
+  const [pickPage, setPickPage] = useState('');
+  const [pageMsg, setPageMsg] = useState<string | null>(null);
+
+  const loadChildren = useCallback(async () => {
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/child-pages`);
+      if (!r.ok) return;
+      const body = await r.json().catch(() => ({}));
+      setParent(body.parent ?? null); setChildren(body.pages ?? []); setMaxChildren(body.max ?? 5);
+    } catch { /* the page section simply stays empty */ }
+  }, [b.id]);
+
+  useEffect(() => {
+    loadChildren();
+    (async () => {
+      try {
+        const r = await authFetch('/api/landing/my-pages');
+        if (!r.ok) return;
+        const rows = await r.json().catch(() => []);
+        setMyPages(Array.isArray(rows) ? rows : []);
+      } catch { /* no pages list: the external-site kit still works */ }
+    })();
+  }, [loadChildren]);
+
+  async function linkPage(pageId: string | null) {
+    setBusy('link'); setPageMsg(null);
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/landing-page`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pageId }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setPageMsg(body.error ?? 'החיבור נכשל.'); return; }
+      setPickPage(''); await loadChildren();
+    } catch { setPageMsg('החיבור נכשל. בדקו את החיבור.'); }
+    finally { setBusy(null); }
+  }
+
+  async function createPage(phrase: string) {
+    setBusy(`page:${phrase}`); setPageMsg(null);
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/child-pages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phrase }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setPageMsg(body.error ?? 'היצירה נכשלה.'); return; }
+      if (body.dropped > 0) setPageMsg(`הוסרו ${body.dropped} משפטים שהכילו מספרים שלא מסרתם.`);
+      else if (!body.parentPublished) setPageMsg('הדף נוצר. הוא יוצג ברגע שהדף הראשי יפורסם.');
+      await loadChildren();
+    } catch { setPageMsg('היצירה נכשלה. בדקו את החיבור.'); }
+    finally { setBusy(null); }
+  }
+
+  async function removePage(id: string) {
+    setPageMsg(null);
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/child-pages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { setPageMsg(body.error ?? 'המחיקה נכשלה.'); return; }
+      await loadChildren();
+    } catch { setPageMsg('המחיקה נכשלה. בדקו את החיבור.'); }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -200,10 +267,73 @@ function BusinessPlan({ b }: { b: Saved }) {
         </div>
       </div>
 
+      {myPages.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+            <RoleTag who="we" /> דפים נוספים בדף ה-Pagey שלכם, אחד לכל ביטוי
+          </div>
+          {!parent ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
+                value={pickPage} onChange={e => setPickPage(e.target.value)}
+              >
+                <option value="">בחרו את הדף של העסק</option>
+                {myPages.map(p => <option key={p.id} value={p.id}>{p.business_name}</option>)}
+              </select>
+              <button
+                type="button" disabled={!pickPage || busy !== null} onClick={() => linkPage(pickPage)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                חיבור הדף
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                <span>מחובר לדף: <strong>{parent.name}</strong></span>
+                <button type="button" onClick={() => linkPage(null)} className="text-xs text-slate-500 hover:underline">ניתוק</button>
+              </div>
+              {phrases.length > 0 && !dirty ? (
+                <ul className="flex flex-col gap-2">
+                  {phrases.map(p => {
+                    const made = children.find(c => c.phrase === p);
+                    return (
+                      <li key={p} className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                        <span>{p}</span>
+                        {made ? (
+                          <span className="flex items-center gap-3">
+                            <a href={made.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#2E63F6] hover:underline">צפייה בדף</a>
+                            <button type="button" aria-label={`מחיקת הדף ${p}`} onClick={() => removePage(made.id)} className="text-rose-700"><Trash2 size={14} /></button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button" disabled={busy !== null || children.length >= maxChildren} onClick={() => createPage(p)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            {busy === `page:${p}` ? <><Loader2 size={14} className="animate-spin" /> יוצרים…</> : 'יצירת דף'}
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500">שמרו ביטויים למעלה כדי ליצור להם דפים.</p>
+              )}
+              <p className="text-xs text-slate-500">
+                כל דף מקבל את העיצוב ופרטי הקשר של הדף הראשי, וטקסט משלו שנכתב רק ממה שמסרתם ומתוכן הדף. עד {maxChildren} דפים. דף שהגיעו אליו פניות לא ניתן למחיקה.
+              </p>
+            </>
+          )}
+          {pageMsg && <p className="text-xs text-slate-600">{pageMsg}</p>}
+        </div>
+      )}
+
       {phrases.length > 0 && !dirty && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
-            <RoleTag who="we" /> כותבים תוכן מוכן להעתקה לאתר שלכם
+            <RoleTag who="we" /> כותבים תוכן מוכן להעתקה לאתר חיצוני (אם יש לכם אחד)
           </div>
           <p className="text-xs text-slate-500">
             התוכן נכתב רק ממה שמסרתם. בדקו אותו לפני פרסום. מספרים שלא מסרתם מוסרים אוטומטית.

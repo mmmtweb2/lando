@@ -579,3 +579,17 @@ quota cap there.
 - Cost guards: 10 generations/day/account (`SEO_KIT_DAILY_CAP`), 20 kits per business.
 - Dashboard: `ContentPlanCard` (type, areas, phrase suggestions, facts, save, generate, copy text/HTML).
 - Check: `npx ts-node --transpile-only scripts/test-seo-content.ts`.
+
+### Stage 8.2b — SEO child pages for customers with a Pagey page (2026-10-23)
+- Routes (auth + `requireProduct('seo_autopilot')`, owner-scoped): `PUT /api/seo/businesses/:id/landing-page {pageId|null}`
+  (links a saved business to one of the owner's PARENT pages; `seo_businesses.landing_page_id` already existed in 027),
+  `GET/POST /api/seo/businesses/:id/child-pages`, `DELETE .../child-pages/:pageId`.
+- A child (`parent_id` + `sub_slug`, migration 025) is created `published`, with `target_keyword` = the phrase, `slug` = `<parent slug>-<sub_slug>`
+  (sub_slug = transliterated phrase; a 4-char suffix is added on a unique-index collision). It copies the parent's look, contact and images
+  and replaces only hero, about, FAQ and meta tags. It shows only while the parent is published (inherited at read time).
+- Same no-fabrication guarantees as the kits: the model sees only the parent's own copy + the customer's facts; sentences with unsupported numbers
+  are dropped in code. (A real bug found by the tests: the `dropped` counter was read before the fields that increment it were evaluated.)
+- Limits: 5 child pages per parent, one per phrase, 10 generations/day/account (shared with kits). A child that has leads cannot be deleted
+  (`leads.landing_page_id` has no ON DELETE clause, and a customer must never lose an inquiry); the parent is never deletable through these routes.
+- Dashboard: the "תוכן לחיפושים ספציפיים" card gains a page section (pick the page, create/view/delete per phrase).
+- Check: `npx ts-node --transpile-only scripts/test-seo-child.ts`.
