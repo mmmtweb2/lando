@@ -547,3 +547,19 @@ quota cap there.
   max 3 per account, idempotent per (owner, place). Only `place_id` and the customer-confirmed business name are stored (Places terms forbid storing other Places content); the name is read from Google on save, never taken from the client.
 - UI: "העסקים שלי" list (re-run Audit / remove) and a "connect this business" button under each Audit.
 - Check: `npx ts-node --transpile-only scripts/test-seo-businesses.ts`.
+
+### Stage 8.1 / 8.2a — content plan + copy-ready kits for external sites (2026-10-23)
+- **Migration 028** (run in Supabase BEFORE relying on it): `seo_businesses.business_type / service_areas[] / long_tail_phrases[] / facts`,
+  and `seo_content_kits` (RLS FORCE, cascade from the business). Deploy order is not critical: the new code never selects the new
+  columns from the existing 6.1 paths, and every new route answers `503 plan_not_migrated` until 028 exists.
+- Routes (all auth + `requireProduct('seo_autopilot')`, owner-scoped): `POST /api/seo/phrases/suggest`,
+  `GET/PUT /api/seo/businesses/:id/plan`, `POST /api/seo/businesses/:id/content-kits`, `DELETE .../content-kits/:kitId`.
+- Phrases are template-built from what the CUSTOMER typed (type + up to 5 areas → up to 5 phrases, interleaved across areas); no LLM,
+  no Places data. Labels are charset-restricted (Hebrew/Latin/digits/few joiners) because they reach prompts and HTML.
+- Kit = inverted pyramid (direct answer → ≤3 sections → ≤4 FAQ). The model gets only type/area/phrase/business name/facts, under the
+  shared NO_FABRICATION rule (exported from ai.service). Enforced in code: any sentence containing a number that was not in the
+  customer's facts/phrase is dropped (`kit.dropped` is shown to the user); output is shape-validated, length-capped, and rendered
+  as escaped HTML + FAQPage JSON-LD (with `<` escaped) and plain text.
+- Cost guards: 10 generations/day/account (`SEO_KIT_DAILY_CAP`), 20 kits per business.
+- Dashboard: `ContentPlanCard` (type, areas, phrase suggestions, facts, save, generate, copy text/HTML).
+- Check: `npx ts-node --transpile-only scripts/test-seo-content.ts`.
