@@ -19,6 +19,14 @@ export const PLACE_FIELD_MASK = [
   'primaryType', 'primaryTypeDisplayName', 'regularOpeningHours', 'location', 'photos',
 ].join(',');
 
+/**
+ * Fields for the live reviews widget (Stage 6.2). `reviews` is billed at the Atmosphere
+ * tier, which is why this is a separate, narrow call and never part of the Audit.
+ */
+export const REVIEWS_FIELD_MASK = [
+  'id', 'displayName', 'rating', 'userRatingCount', 'googleMapsUri', 'reviews',
+].join(',');
+
 /** Competitor search radius and size (SearchNearby returns up to 20; we ask for 10). */
 const COMPETITOR_RADIUS_M = 5000;
 const COMPETITOR_COUNT = 10;
@@ -162,4 +170,37 @@ export async function auditPlace(placeId: string): Promise<BusinessAudit> {
     console.error('[PLACES] benchmark unavailable, using fixed targets');
   }
   return buildAudit(place, benchmark);
+}
+
+/** Raw review as returned by Places (New). Everything optional: Google omits fields freely. */
+export interface RawReview {
+  rating?: number;
+  relativePublishTimeDescription?: string;
+  text?: { text?: string; languageCode?: string };
+  originalText?: { text?: string; languageCode?: string };
+  authorAttribution?: { displayName?: string; uri?: string; photoUri?: string };
+  googleMapsUri?: string;
+  flagContentUri?: string;
+}
+
+export interface PlaceReviewsSnapshot {
+  id: string;
+  displayName?: { text?: string };
+  rating?: number;
+  userRatingCount?: number;
+  googleMapsUri?: string;
+  reviews?: RawReview[];
+}
+
+/**
+ * LIVE reviews for one place. Places terms forbid storing or caching anything but the
+ * place_id, so callers must not keep this result: it is fetched per view and rendered.
+ */
+export async function fetchPlaceReviews(placeId: string): Promise<PlaceReviewsSnapshot> {
+  if (!isValidPlaceId(placeId)) throw new PlacesError('bad_request', 'invalid place id');
+  const json = await call(`${BASE}/places/${encodeURIComponent(placeId)}?languageCode=he&regionCode=IL`, {
+    method: 'GET',
+    headers: { 'X-Goog-Api-Key': apiKey(), 'X-Goog-FieldMask': REVIEWS_FIELD_MASK },
+  });
+  return json as PlaceReviewsSnapshot;
 }
