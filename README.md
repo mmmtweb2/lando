@@ -548,6 +548,22 @@ quota cap there.
 - UI: "העסקים שלי" list (re-run Audit / remove) and a "connect this business" button under each Audit.
 - Check: `npx ts-node --transpile-only scripts/test-seo-businesses.ts`.
 
+### Stage 6.2 — Google reviews widget + review link (2026-10-23)
+- `GET /w/reviews/:businessId` — public, iframe-able HTML. Resolves a saved business by its UUID (never a raw
+  place id, so it cannot be used as an open Places proxy), requires the owner to hold `seo_autopilot`, then reads
+  `reviews` LIVE from Places on every view. Nothing from Places is stored or cached (Places terms: only `place_id`
+  may be kept); responses are `Cache-Control: no-store`, `X-Robots-Tag: noindex` (crawlers must not trigger billable fetches).
+- Policy elements rendered: author avatar + name + profile link, link to the original review (`googleMapsUri`),
+  "Google Maps" text attribution (`translate="no"`) inside the same bordered container, ordering note, translation flag,
+  "Google does not verify reviews" note + `flagContentUri`. No `aggregateRating` / JSON-LD. TODO: swap the text
+  attribution for the official Google Maps logo asset.
+- Cost guards: 60 req/min/IP; per-business daily cap `REVIEWS_WIDGET_DAILY_CAP` (default 300) and total daily cap
+  `REVIEWS_WIDGET_TOTAL_DAILY_CAP` (default 2000), in-memory. Over the cap, or if Google fails, the page degrades to
+  only a "write a review" button (built from the stored place_id, no Google content). `reviews` is billed at the
+  Places Atmosphere tier — watch the Google bill once real sites embed it.
+- Dashboard: `ReviewsCard` (SEO panel) per saved business: review link (`search.google.com/local/writereview?placeid=`),
+  WhatsApp share, QR, embed snippet (iframe) and a live preview. Reviews are requested from every customer, never filtered.
+- Check: `npx ts-node --transpile-only scripts/test-reviews-widget.ts`.
 ### Stage 8.1 / 8.2a — content plan + copy-ready kits for external sites (2026-10-23)
 - **Migration 028** (run in Supabase BEFORE relying on it): `seo_businesses.business_type / service_areas[] / long_tail_phrases[] / facts`,
   and `seo_content_kits` (RLS FORCE, cascade from the business). Deploy order is not critical: the new code never selects the new

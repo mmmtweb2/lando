@@ -7,6 +7,7 @@ import router from './routes';
 import { servePageWithOgTags, serveBPage } from './controllers/og.controller';
 import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
+import { serveReviewsWidget } from './controllers/reviewsWidget.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
 
 const app = express();
@@ -72,6 +73,14 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   });
 });
 app.get('/p/:slug', ogPageLimiter, servePageWithOgTags);
+// Embeddable Google-reviews widget (Stage 6.2). Public + iframe-able; cost guards live in the
+// controller (per-business and total daily caps), this is the per-IP burst limit.
+const reviewsWidgetLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: 'יותר מדי בקשות. נסו שוב בעוד דקה.',
+});
+app.get('/w/reviews/:businessId', reviewsWidgetLimiter, serveReviewsWidget);
 app.get('/b/:subdomain', ogPageLimiter, serveBPage);
 app.get('/b/:subdomain/:subSlug', ogPageLimiter, serveBPage);
 
