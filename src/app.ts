@@ -8,6 +8,7 @@ import { servePageWithOgTags, serveBPage } from './controllers/og.controller';
 import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
 import { serveReviewsWidget } from './controllers/reviewsWidget.controller';
+import { serveTrackScript } from './controllers/seoTrack.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
 
 const app = express();
@@ -81,6 +82,7 @@ const reviewsWidgetLimiter = rateLimit({
   message: 'יותר מדי בקשות. נסו שוב בעוד דקה.',
 });
 app.get('/w/reviews/:businessId', reviewsWidgetLimiter, serveReviewsWidget);
+app.get('/w/track.js', serveTrackScript);
 app.get('/b/:subdomain', ogPageLimiter, serveBPage);
 app.get('/b/:subdomain/:subSlug', ogPageLimiter, serveBPage);
 

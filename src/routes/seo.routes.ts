@@ -6,9 +6,15 @@ import {
   deleteBusiness, getBusinesses, placeAudit, placesAutocomplete, saveBusiness,
 } from '../controllers/seo.controller';
 import { createChildPage, getChildPages, linkPage, removeChildPage } from '../controllers/seoChild.controller';
+import { trackExternalEvent, trackPreflight } from '../controllers/seoTrack.controller';
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 
 const router = Router();
+
+// PUBLIC: called by the tracking snippet on a customer's own website. Always 204; see the controller.
+const trackLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'יותר מדי בקשות.' });
+router.options('/track/:businessId', trackPreflight);
+router.post('/track/:businessId', trackLimiter, trackExternalEvent);
 
 // Any signed-in account may run the Audit (it is the on-ramp to the product), so these
 // routes are NOT gated by requireProduct. Cost control: per-IP burst limit here plus a
