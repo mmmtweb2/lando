@@ -5,6 +5,7 @@ import './env';
 import app from './app';
 import { supabase } from './config/supabase';
 import { startRenewalSweep } from './services/renewal.service';
+import { startSubscriptionSweep } from './services/seoSubscription.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -25,6 +26,8 @@ async function start() {
   // this deployment, so the sweep is an interval owned by the web process —
   // see src/services/renewal.service.ts for why 6h and why that is safe.
   startRenewalSweep();
+  // Monthly SEO subscription housekeeping (period ends, grace window). No-op without migration 030.
+  startSubscriptionSweep();
 }
 
 start().catch((err) => {

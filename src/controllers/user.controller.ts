@@ -1,3 +1,4 @@
+import { cancelSubscription } from '../services/seoSubscription.service';
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
@@ -301,6 +302,11 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
     res.status(403).json({ error: 'לא ניתן למחוק חשבון מנהל מערכת דרך מסך זה. יש להסיר קודם את הרשאת הניהול.' });
     return;
   }
+
+  // Stop any monthly SEO standing order before the account (and our record of it) disappears,
+  // otherwise SUMIT would keep charging a customer who no longer exists here. Best effort:
+  // "no subscription" and "feature not set up" both land in the catch and change nothing.
+  try { await cancelSubscription(email); } catch { /* none */ }
 
   const { data: ownedPages, error: pagesReadError } = await supabase
     .from('landing_pages')

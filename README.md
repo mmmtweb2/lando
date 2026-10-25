@@ -602,3 +602,13 @@ quota cap there.
 - Events are stored in `lead_events` with `business_id` and appear in `GET /api/landing/my-leads` next to the Pagey-page leads. They count clicks, not actual conversations.
 - Dashboard: `ExternalSiteCard` shows the snippet with a copy button per saved business.
 - Tests: `scripts/test-external-leads.ts`.
+
+## Part 47 — Stage 9.2: monthly subscription for the Google-promotion product (OFF by default)
+
+- **Nothing is charged until** `SEO_SUBSCRIPTION_ENABLED=true` **and** `SEO_PLAN_PRICE` (₪/month, VAT incl.) are set; `SEO_PLAN_NAME` is the name the customer sees. `SEO_SUBSCRIPTION_WEBHOOK_SECRET` protects the SUMIT trigger endpoint.
+- Migration `030_seo_subscriptions.sql`: `seo_subscriptions` (state, one row per account) and `seo_subscription_events` (UNIQUE `sumit_payment_id`: one SUMIT payment can move a subscription once, ever). The entitlement stays in `user_products` (`source='sumit'`); a manual grant is never overwritten. Without the migration every endpoint answers "not enabled" and the sweep is a no-op.
+- State machine (`services/subscriptionState.ts`, pure and unit-tested): pending → active (charge ok, +1 month from the later of now / period end) → past_due (charge failed; access continues for the 7-day grace) → canceled. Cancelling stops the SUMIT standing order and keeps access to the end of the paid period. A 6-hour sweep applies the time-driven transitions.
+- Flow: `POST /api/seo/subscription/start` opens SUMIT's hosted page (monthly item) → browser returns to `GET /api/seo/subscription/return` → the payment is re-read from SUMIT server-to-server (`getPayment`) and must cover the plan price before anything is activated. `POST /api/seo/subscription/webhook?secret=…` (SUMIT trigger) is only a pointer: the same server-side verification applies. `POST /api/seo/subscription/cancel`, `GET /api/seo/subscription` (card data, no internal ids).
+- Deleting an account first cancels its standing order. If SUMIT's cancel call fails, `needs_manual_cancel` is set and a `MANUAL ACTION` line is logged: a human must stop it in the SUMIT dashboard.
+- **Before switching it on:** the recurring field names in `services/sumitRecurring.ts` are marked UNVERIFIED (taken from a third-party description of SUMIT's API). Do one real, small test charge (set `SEO_PLAN_PRICE=1`), confirm the standing order appears in SUMIT and renews, and confirm a trigger can be pointed at the webhook. Israeli ongoing-transaction rules (cancellation rights, disclosure, invoices) need a lawyer/accountant sign-off before real customers.
+- Tests: `scripts/test-subscription-state.ts`, `scripts/test-seo-subscription.ts`.
