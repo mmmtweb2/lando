@@ -103,3 +103,17 @@ export async function getPayment(paymentId: number | string): Promise<VerifiedPa
     return null;
   }
 }
+
+/**
+ * Generic authenticated POST to SUMIT, for the endpoints that live outside the one-time
+ * payment flow above (recurring billing, Stage 9.2). Returns the raw envelope; never throws
+ * on a SUMIT-side error, only on a network failure.
+ */
+export async function summitCall<T = unknown>(path: string, body: Record<string, unknown>): Promise<SumitEnvelope<T>> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ Credentials: credentials(), ...body }),
+  });
+  return (await r.json()) as SumitEnvelope<T>;
+}

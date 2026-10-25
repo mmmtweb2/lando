@@ -2,6 +2,9 @@ import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import BusinessAuditCard from './BusinessAuditCard';
 import ReviewsCard from './ReviewsCard';
+import ContentPlanCard from './ContentPlanCard';
+import ExternalSiteCard from './ExternalSiteCard';
+import SeoSubscriptionCard from './SeoSubscriptionCard';
 import { RoleTag } from './RoleTag';
 
 /**
@@ -36,8 +39,11 @@ export default function SeoProductPanel({ showPageUpsell = false }: { showPageUp
           ))}
         </ul>
       </div>
+      <SeoSubscriptionCard />
       <BusinessAuditCard />
       <ReviewsCard />
+      <ContentPlanCard />
+      <ExternalSiteCard />
       {showPageUpsell && (
         <div className="text-center">
           <Link to="/create" className="text-sm font-medium text-[#2E63F6] hover:underline">
