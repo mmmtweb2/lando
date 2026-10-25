@@ -5,9 +5,9 @@
 BEGIN;
 
 INSERT INTO landing_pages (id, slug, business_name, phone_number, image_source, ai_content, owner_email, status)
-VALUES ('aaaaaaaa-0000-4000-8000-000000000001', 'verify-9-1-parent', 'verify parent', '0500000000', 'text_only', '{}'::jsonb, 'verify-9-1@example.com', 'published');
+VALUES ('aaaaaaaa-0000-4000-8000-000000000001', 'verify-9-1-parent', 'verify parent', '0500000000', 'none', '{}'::jsonb, 'verify-9-1@example.com', 'published');
 INSERT INTO landing_pages (id, slug, business_name, phone_number, image_source, ai_content, owner_email, status, parent_id, sub_slug)
-VALUES ('aaaaaaaa-0000-4000-8000-000000000002', 'verify-9-1-child', 'verify parent', '0500000000', 'text_only', '{}'::jsonb, 'verify-9-1@example.com', 'published', 'aaaaaaaa-0000-4000-8000-000000000001', 'child');
+VALUES ('aaaaaaaa-0000-4000-8000-000000000002', 'verify-9-1-child', 'verify parent', '0500000000', 'none', '{}'::jsonb, 'verify-9-1@example.com', 'published', 'aaaaaaaa-0000-4000-8000-000000000001', 'child');
 INSERT INTO leads (landing_page_id, name, phone) VALUES ('aaaaaaaa-0000-4000-8000-000000000002', 'verify lead', '0500000000');
 INSERT INTO lead_events (landing_page_id, event_type, source_url) VALUES ('aaaaaaaa-0000-4000-8000-000000000002', 'whatsapp', 'smoke-test');
 
