@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { RoleTag } from './RoleTag';
+import ConciergeButton from './ConciergeButton';
 
 // Counting inquiries that happen on the customer's OWN website. One <script> line on their
 // site; it only reads clicks on phone, email and WhatsApp links and reports them to us, and
@@ -65,6 +66,7 @@ export default function ExternalSiteCard() {
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
             />
             <div><CopyBtn text={snippet} /></div>
+            <ConciergeButton location="embed" businessName={b.name} />
             <p className="text-xs text-slate-500">
               הקוד לא אוסף פרטים אישיים: הוא שולח רק את סוג הלחיצה, כתובת העמוד ומאיפה הגיעו אליו. אנחנו סופרים לחיצות, לא שיחות או הודעות שנשלחו בפועל.
             </p>

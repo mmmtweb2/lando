@@ -394,6 +394,7 @@ export default function AdminDashboard() {
     loadRevenue();
     loadTraffic();
     loadFunnel();
+    loadAuditLeads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, denied, adminPw]);
 
@@ -457,6 +458,27 @@ export default function AdminDashboard() {
   const [funnel, setFunnel] = useState<FunnelStats | null>(null);
   const [funnelLoading, setFunnelLoading] = useState(true);
   const [funnelError, setFunnelError] = useState<string | null>(null);
+
+  // ── Leads from the public Audit page (/audit) ─────────────────────────────
+  interface AuditLeadRow {
+    id: string; name: string; phone: string; place_id: string; business_name: string | null;
+    score: number | null; consent_at: string; utm_source: string | null; utm_campaign: string | null; created_at: string;
+  }
+  const [auditLeads, setAuditLeads] = useState<AuditLeadRow[]>([]);
+  const [auditLeadsNote, setAuditLeadsNote] = useState<string | null>(null);
+
+  function loadAuditLeads() {
+    adminFetch('/api/admin/audit-leads')
+      .then((r) => {
+        if (!r.ok) throw new Error('טעינת הפניות מה-Audit נכשלה');
+        return r.json() as Promise<{ leads: AuditLeadRow[]; notMigrated?: boolean }>;
+      })
+      .then((b) => {
+        setAuditLeads(b.leads ?? []);
+        setAuditLeadsNote(b.notMigrated ? 'הטבלה עדיין לא נוצרה (מיגרציה 031).' : null);
+      })
+      .catch((e: Error) => setAuditLeadsNote(e.message));
+  }
 
   function loadFunnel() {
     setFunnelLoading(true);
@@ -878,6 +900,46 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Leads from the public Audit page ──────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-700 text-sm">פניות מה-Audit הציבורי</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {auditLeadsNote ?? `${auditLeads.length} פניות. כולן אישרו קבלת הודעה בוואטסאפ. שליחה ידנית עד שלב 7.`}
+              </p>
+            </div>
+            {auditLeads.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                      <th className="px-4 py-2.5 font-medium">שם</th>
+                      <th className="px-4 py-2.5 font-medium">נייד</th>
+                      <th className="px-4 py-2.5 font-medium">עסק</th>
+                      <th className="px-4 py-2.5 font-medium">ציון</th>
+                      <th className="px-4 py-2.5 font-medium">מקור</th>
+                      <th className="px-4 py-2.5 font-medium">הסכמה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLeads.map((l) => (
+                      <tr key={l.id} className="border-b border-slate-50 last:border-0">
+                        <td className="px-4 py-3 text-slate-700">{l.name}</td>
+                        <td className="px-4 py-3" dir="ltr">
+                          <a href={`https://wa.me/972${l.phone.replace(/^0/, '')}`} target="_blank" rel="noopener noreferrer" className="text-[#2E63F6] hover:underline">{l.phone}</a>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{l.business_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-slate-700">{l.score ?? '—'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{[l.utm_source, l.utm_campaign].filter(Boolean).join(' / ') || '—'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{new Date(l.consent_at).toLocaleString('he-IL')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

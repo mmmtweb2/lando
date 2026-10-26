@@ -612,3 +612,13 @@ quota cap there.
 - Deleting an account first cancels its standing order. If SUMIT's cancel call fails, `needs_manual_cancel` is set and a `MANUAL ACTION` line is logged: a human must stop it in the SUMIT dashboard.
 - **Before switching it on:** the recurring field names in `services/sumitRecurring.ts` are marked UNVERIFIED (taken from a third-party description of SUMIT's API). Do one real, small test charge (set `SEO_PLAN_PRICE=1`), confirm the standing order appears in SUMIT and renews, and confirm a trigger can be pointed at the webhook. Israeli ongoing-transaction rules (cancellation rights, disclosure, invoices) need a lawyer/accountant sign-off before real customers.
 - Tests: `scripts/test-subscription-state.ts`, `scripts/test-seo-subscription.ts`.
+
+## Part 48 — Public Audit (`/audit`), lead capture, WhatsApp concierge (OFF by default)
+
+- **Public page** `/audit`: anyone searches a business, gets the same Audit score as the dashboard (`autocompleteBusinesses` + `auditPlace`, no login). `?snapshot=1&placeId=…` renders just the 1080×1350 share card.
+- **Switched off until** `PUBLIC_AUDIT_DAILY_CAP` (audits per UTC day, all visitors) is set; unset/0 → `503`. Search cap = cap × 8. Per-IP hourly limits: 10 audits, 30 searches, plus the lead form. `AUDIT_LEAD_DAILY_CAP` (default 300) caps stored leads. These guards exist because every audit costs Google Places calls.
+- **Places policy:** only `place_id` is stored (never Places content), results are not cached, the card shows "Google Maps" attribution. Consequence: every audit is a live Places call — cost control is the daily cap + a Google Cloud budget alert/quota (Moshe, task #6).
+- **Leads** (migration `031_audit_leads.sql`, run it first; without it the endpoint answers "not migrated" and nothing breaks): name, mobile, place_id, business name, score, UTM, hashed IP (`AUDIT_IP_SALT`), plus `consent_at` + the exact `consent_text` shown. The consent box is **unticked by default** and must be `true` — marketing contact is only for people who agreed. Honeypot field `website`; 24h dedupe by phone + place. Admin list: `GET /api/admin/audit-leads`, shown in AdminDashboard.
+- **Concierge button:** `CONCIERGE_WHATSAPP` (digits, 9–15) → a `wa.me` link, shown on the Audit, in the SEO panel and in the external-site card; hidden when unset.
+- **Events** (dataLayer): `Audit_Started`, `Audit_Lead_Captured`, `Snapshot_Downloaded`, `Concierge_Clicked {location}`.
+- Tests: `scripts/test-public-audit.ts`; `smoke-test.mjs` has `checkPublicAudit`. Browser e2e was run manually (PNG 1080×1350 for low/high/no-profile).
