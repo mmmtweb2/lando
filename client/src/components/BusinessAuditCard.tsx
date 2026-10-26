@@ -3,48 +3,30 @@ import { Search, Loader2, Star, MapPin, CheckCircle2, AlertCircle } from 'lucide
 import { authFetch } from '../lib/api';
 import { RoleTag } from './RoleTag';
 import NoProfileGuide from './NoProfileGuide';
+import AuditLeadForm from './AuditLeadForm';
+import ConciergeButton from './ConciergeButton';
+import { SnapshotButton } from './AuditSnapshot';
+import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit } from '../lib/auditShared';
+import { trackEvent } from '../lib/track';
 
 // Stage 5.5.2 — find the customer's business on Google Maps and show a live Audit.
 // All Google calls go through our server (/api/seo/places/*); the API key never
 // reaches the browser. Nothing is saved yet: saving the chosen business is Stage 6.1.
 
 interface Suggestion { placeId: string; name: string; details: string }
-type Level = 'good' | 'ok' | 'weak';
-interface AuditItem {
-  key: string; label: string; level: Level; value: string; tip: string;
-  weDo: string; weDoAvailability: 'now' | 'soon'; youDo: string;
-}
-interface Benchmark {
-  count: number; medianRating: number; medianReviews: number;
-  topReviews: number; ratingTarget: number; reviewsTarget: number;
-}
 interface SavedBusiness { id: string; name: string; google_place_id: string | null }
-interface Audit {
-  placeId: string; name: string; address: string | null; category: string | null;
-  mapsUrl: string | null; rating: number | null; reviewCount: number;
-  score: number; items: AuditItem[]; photosCapped: boolean; benchmark: Benchmark | null;
-}
-
-const LEVEL_STYLE: Record<Level, { dot: string; text: string }> = {
-  good: { dot: 'bg-emerald-500', text: 'text-emerald-700' },
-  ok: { dot: 'bg-amber-500', text: 'text-amber-700' },
-  weak: { dot: 'bg-rose-500', text: 'text-rose-700' },
-};
-
-// "Strong" is reserved for a profile with a high score AND nothing left to improve: a
-// 5.0 with fewer reviews than the local leaders is good, not strong.
-function scoreStyle(score: number, hasGaps: boolean): { ring: string; label: string } {
-  if (score >= 90 && !hasGaps) return { ring: 'border-emerald-500 text-emerald-700', label: 'פרופיל חזק' };
-  if (score >= 75) return { ring: 'border-emerald-500 text-emerald-700', label: 'פרופיל טוב, יש עוד מה לחזק' };
-  if (score >= 45) return { ring: 'border-amber-500 text-amber-700', label: 'יש פוטנציאל לשיפור' };
-  return { ring: 'border-rose-500 text-rose-700', label: 'יש הרבה מה לחזק' };
-}
 
 function newSessionToken(): string {
   try { return crypto.randomUUID(); } catch { return `s${Date.now()}${Math.random().toString(36).slice(2, 10)}`; }
 }
 
-export default function BusinessAuditCard() {
+export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'account' | 'public' }) {
+  // 'public' = the signed-out /audit page: no login, no saved businesses, a lead form instead of
+  // "connect this business to my account". Same card, same score (the server wraps the same code).
+  const isPublic = mode === 'public';
+  const api = isPublic ? fetch : authFetch;
+  const searchUrl = isPublic ? '/api/public/audit/search' : '/api/seo/places/autocomplete';
+  const auditUrl = (id: string) => isPublic ? `/api/public/audit/${encodeURIComponent(id)}` : `/api/seo/places/${encodeURIComponent(id)}/audit`;
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [searching, setSearching] = useState(false);
@@ -70,7 +52,7 @@ export default function BusinessAuditCard() {
       setSearching(true);
       setError(null);
       try {
-        const r = await authFetch('/api/seo/places/autocomplete', {
+        const r = await api(searchUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ input: q, sessionToken: sessionRef.current }),
@@ -79,7 +61,7 @@ export default function BusinessAuditCard() {
         if (mine !== seq.current) return;
         if (!r.ok) {
           setSuggestions([]);
-          setError(body.code === 'places_not_configured'
+          setError(body.code === 'places_not_configured' || body.code === 'public_audit_disabled'
             ? 'חיפוש העסקים יופעל בקרוב.'
             : (body.error ?? 'החיפוש נכשל. נסו שוב.'));
           return;
@@ -96,6 +78,7 @@ export default function BusinessAuditCard() {
   }, [query]);
 
   useEffect(() => {
+    if (isPublic) return;   // a signed-out visitor has no saved businesses
     (async () => {
       try {
         const r = await authFetch('/api/seo/businesses');
@@ -107,7 +90,10 @@ export default function BusinessAuditCard() {
   }, []);
 
   async function runAudit(placeId: string, name: string) {
-    pickedRef.current = true;
+    // Skip the search the programmatic setQuery below would trigger — but only when it WILL change
+    // the query: if the name equals what was typed, React bails out, the effect never runs, and the
+    // flag would stay set and swallow the user's next real search.
+    if (query !== name) pickedRef.current = true;
     seq.current++; // drop any in-flight search
     setQuery(name);
     setSuggestions([]);
@@ -117,7 +103,8 @@ export default function BusinessAuditCard() {
     setNoProfile(false);
     setAuditing(true);
     try {
-      const r = await authFetch(`/api/seo/places/${encodeURIComponent(placeId)}/audit`);
+      trackEvent('Audit_Started', { mode });
+      const r = await api(auditUrl(placeId));
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
       setAudit(body.audit as Audit);
@@ -177,7 +164,7 @@ export default function BusinessAuditCard() {
         </p>
       </div>
 
-      {saved.length > 0 && !noProfile && (
+      {!isPublic && saved.length > 0 && !noProfile && (
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-slate-900">העסקים שלי</p>
           <ul className="flex flex-col gap-2">
@@ -300,7 +287,7 @@ export default function BusinessAuditCard() {
                     <span
                       className={`text-sm font-semibold ${LEVEL_STYLE[i.level].text}`}
                       // Numeric values like "10+" must keep their order inside the RTL page ("+10" otherwise).
-                      dir={/^[\d.+★\s]+$/.test(i.value) ? 'ltr' : undefined}
+                      dir={isNumericValue(i.value) ? 'ltr' : undefined}
                     >
                       {i.value}
                     </span>
@@ -330,28 +317,37 @@ export default function BusinessAuditCard() {
             )}
           </p>
 
-          <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex flex-col gap-2">
-            {isSaved ? (
-              <p className="flex items-center gap-2 text-sm text-emerald-700">
-                <CheckCircle2 size={15} /> העסק מחובר לחשבון שלכם.
-              </p>
-            ) : (
-              <>
-                <p className="flex items-start gap-2 text-sm text-slate-700">
-                  <RoleTag who="you" />
-                  <span>זה העסק שלכם? חברו אותו לחשבון, כדי שנוכל לעקוב אחריו ולהמשיך לחזק אותו.</span>
+          {isPublic ? (
+            <AuditLeadForm placeId={audit.placeId} businessName={audit.name} score={audit.score} />
+          ) : (
+            <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 flex flex-col gap-2">
+              {isSaved ? (
+                <p className="flex items-center gap-2 text-sm text-emerald-700">
+                  <CheckCircle2 size={15} /> העסק מחובר לחשבון שלכם.
                 </p>
-                <button
-                  type="button"
-                  onClick={saveCurrent}
-                  disabled={saving}
-                  className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-60"
-                >
-                  {saving ? 'מחברים…' : 'זה העסק שלי, חברו אותו'}
-                </button>
-              </>
-            )}
-            {saveMsg && <p className="text-sm text-rose-700" role="alert">{saveMsg}</p>}
+              ) : (
+                <>
+                  <p className="flex items-start gap-2 text-sm text-slate-700">
+                    <RoleTag who="you" />
+                    <span>זה העסק שלכם? חברו אותו לחשבון, כדי שנוכל לעקוב אחריו ולהמשיך לחזק אותו.</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={saveCurrent}
+                    disabled={saving}
+                    className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-60"
+                  >
+                    {saving ? 'מחברים…' : 'זה העסק שלי, חברו אותו'}
+                  </button>
+                </>
+              )}
+              {saveMsg && <p className="text-sm text-rose-700" role="alert">{saveMsg}</p>}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-start gap-3">
+            <SnapshotButton audit={audit} />
+            <ConciergeButton location="audit" businessName={audit.name} score={audit.score} />
           </div>
 
           {audit.items.every(i => !i.tip) && (

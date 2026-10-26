@@ -222,6 +222,34 @@ async function checkLeadEvent() {
   record('POST /api/landing/:slug/event rejects an invalid event_type (400)', bad.status === 400, `status ${bad.status}`);
 }
 
+// ── public Audit (/audit, task #1) ──────────────────────────────────────────
+// None of these spend Google Places money: the config endpoint is free, and an invalid
+// place id is rejected before any Places call (or before the feature-off check).
+
+async function checkPublicAudit() {
+  const { res, text } = await fetchText('/audit');
+  record('/audit serves the app (no login)', res.status === 200 && /<div id="root"/.test(text), `status ${res.status}`);
+  await checkNoLocalhost('/audit', '/audit');
+
+  const cfg = await fetch(`${BASE_URL}/api/public/config`);
+  const body = await cfg.json().catch(() => null);
+  record(
+    '/api/public/config answers with the expected keys',
+    cfg.status === 200 && body && typeof body.auditEnabled === 'boolean' && 'concierge' in body && typeof body.consentText === 'string',
+    `status ${cfg.status}`
+  );
+
+  const bad = await fetch(`${BASE_URL}/api/public/audit/not%20a%20place`);
+  record('public audit rejects an invalid place id', bad.status === 400, `status ${bad.status}`);
+
+  const noConsent = await fetch(`${BASE_URL}/api/public/audit/lead`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'smoke', phone: '0501234567', placeId: 'ChIJ_smoke_test_000', consent: false }),
+  });
+  record('a lead without consent is refused (and nothing is stored)', noConsent.status === 400, `status ${noConsent.status}`);
+}
+
 // ── run everything ──────────────────────────────────────────────────────────
 
 async function runAll() {
@@ -246,6 +274,7 @@ async function runAll() {
   await safe(() => checkBPageUnknown());
   await safe(() => checkSitemapHasCanonical());
   await safe(() => checkLeadEvent());
+  await safe(() => checkPublicAudit());
 
   for (const slug of SAMPLE_PAGE_SLUGS) {
     const path = `/p/${slug}`;
