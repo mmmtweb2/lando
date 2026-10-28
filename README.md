@@ -630,3 +630,13 @@ quota cap there.
 - Scope: `https://www.googleapis.com/auth/business.manage` (sensitive; until Google verifies the app it works in testing mode only: up to 100 test users, connection expires after 7 days).
 - `GET /api/admin/gbp-config` (and a section in the admin dashboard) reports ok / warn / missing / bad per setting and the redirect URI in full. It never returns the secret or the key. It catches the usual paste mistakes: trailing newline, quotes, wrong length, `http://`, wrong path.
 - Tests: `scripts/test-gbp-config.ts`.
+
+## Part 50 — Dashboard v2 for the Google-promotion product (behind a flag)
+
+- **Who sees it:** admin accounts by default; anyone else with `?dash=v2` (remembered in that browser; `?dash=v1` turns it off again). Everyone else sees exactly the old dashboard. `GET /api/users/plan` now also returns `isAdmin` (read-only hint; a failed lookup means "not admin").
+- **What it is:** `client/src/dashboard/*` replaces the single stack of six cards with six views — Overview / My profile / Reviews / Content & pages / Inquiries / Plan & settings. The existing cards are reused unchanged inside the views (no logic touched: no billing, auth or Audit code).
+- **Overview:** one plain-language status line, one "next step" card with one button (derived from the account: no business → connect; past-due payment wins), a 6-step journey (done / your turn / we're working / waiting) with who-does-what chips, "what's included" cards with "soon" items marked honestly, and this month's inquiries by channel.
+- **Cost / policy:** the overview reads only existing endpoints (`/api/seo/businesses`, `/plan`, `/child-pages`, `/api/landing/my-leads`, `/api/seo/subscription`); it never calls Google Places. The Audit score is **not stored** (Places terms), so the overview asks the customer to press "בדוק עכשיו" instead of showing a number.
+- **Design:** tokens in `dashboard.css` scoped to `.dv2` (brand navy/blue/shell, Heebo), one accent colour, green/coral only for status, white cards with soft navy shadows, motion respects `prefers-reduced-motion`, 44px targets, visible focus, AA text colours, mobile-first at 375px.
+- **Not in v1 of v2 (stage 2):** a single overview for accounts holding both products (the product switch stays), restyling the old cards and the "my pages" / "leads" / settings tabs, per-business switching when a customer saved several businesses (the overview uses the first).
+- Tests: `scripts/test-dashboard-journey.ts` (run with `npx tsx`, it imports the client ES module).
