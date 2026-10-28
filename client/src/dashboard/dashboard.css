@@ -1,46 +1,70 @@
-/* Dashboard v2 design language (brand tokens from index.css :root + a few derived ones).
-   Scoped to .dv2 so nothing outside the new dashboard changes.
-   One accent (brand blue). Green / coral appear ONLY as status. Text colors are AA on white. */
+/* Dashboard v2 design language: "field notebook". Brand navy outlines, hard offset shadows,
+   graph-paper surface, big numerals, a cyan highlighter. One accent (brand blue); mint / coral
+   only for status. Scoped to .dv2 so nothing outside the new dashboard changes. */
 .dv2 {
-  --dv2-ink: var(--navy);            /* main text */
-  --dv2-muted: var(--muted);         /* secondary text, 5.3:1 on white */
-  --dv2-accent: var(--blue);         /* the only accent */
-  --dv2-accent-strong: var(--blue-600);
-  --dv2-surface: #F5F7FD;            /* soft surface behind cards */
-  --dv2-card: #FFFFFF;
-  --dv2-line: #E3E8F5;
-  --dv2-tint: var(--shell);          /* light blue wash for chips / icon tiles */
-  --dv2-ok-bg: #E3F8EF;  --dv2-ok-ink: #0B7A52;
-  --dv2-warn-bg: #FFEDEA; --dv2-warn-ink: #B4352A;
-  --dv2-radius: 20px;
-  --dv2-shadow: 0 1px 2px rgba(14, 33, 72, .06), 0 10px 28px -14px rgba(14, 33, 72, .16);
-  color: var(--dv2-ink);
+  --ink: var(--navy);
+  --accent: var(--blue);
+  --accent-strong: var(--blue-600);
+  --paper: #EAEFFB;
+  --grid: #D5DDF2;
+  --card: #FFFFFF;
+  --tint: #E4EBFD;
+  --ok-ink: #0B6B49;
+  --warn-ink: #A92E22;
+  --shadow: 5px 5px 0 var(--navy);
+  --shadow-sm: 3px 3px 0 var(--navy);
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
 }
 .dv2-card {
-  background: var(--dv2-card);
-  border-radius: var(--dv2-radius);
-  box-shadow: var(--dv2-shadow);
-  border: 1px solid var(--dv2-line);
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
 }
-.dv2 :focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; border-radius: 10px; }
+.dv2-card-flat { background: var(--card); border: 2px solid var(--ink); border-radius: 14px; }
+.dv2-ink { background: var(--ink); color: #fff; border: 2px solid var(--ink); border-radius: 14px; box-shadow: 5px 5px 0 var(--glow); }
+.dv2 :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
+.dv2-ink :focus-visible { outline-color: var(--glow); }
+
 .dv2-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  min-height: 44px; padding: 0 20px; border-radius: 14px; font-weight: 600; font-size: 15px;
-  background: var(--dv2-accent); color: #fff; transition: background .15s ease, transform .15s ease;
+  min-height: 44px; padding: 0 18px; font-weight: 800; font-size: 15px;
+  background: var(--accent); color: #fff; border: 2px solid var(--ink); border-radius: 10px;
+  box-shadow: var(--shadow-sm); transition: transform .12s ease, box-shadow .12s ease;
 }
-.dv2-btn:hover { background: var(--dv2-accent-strong); }
-.dv2-btn:active { transform: translateY(1px); }
-.dv2-btn-quiet {
+.dv2-btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.dv2-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.dv2-btn-light { background: var(--glow); color: var(--ink); }
+.dv2-btn-ghost {
   display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
-  border-radius: 12px; font-weight: 600; font-size: 14px; color: var(--dv2-accent);
-  background: var(--dv2-tint); transition: background .15s ease;
+  font-weight: 700; font-size: 14px; color: var(--ink); background: var(--card);
+  border: 2px solid var(--ink); border-radius: 10px; transition: background .12s ease;
 }
-.dv2-btn-quiet:hover { background: #DCE5FA; }
-.dv2-skeleton { background: linear-gradient(90deg, #EDF1FB 25%, #F7F9FE 50%, #EDF1FB 75%); background-size: 200% 100%; animation: dv2Shimmer 1.4s linear infinite; border-radius: 12px; }
+.dv2-btn-ghost:hover { background: var(--tint); }
+
+/* cyan highlighter under a few words of a heading */
+.dv2-mark { background-image: linear-gradient(transparent 62%, var(--glow) 62%, var(--glow) 92%, transparent 92%); padding: 0 2px; }
+
+/* square checkbox */
+.dv2-check {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.dv2-check[data-done="true"] { background: var(--ok); }
+
+.dv2-stamp {
+  display: inline-block; transform: rotate(-3deg); padding: 4px 12px; font-weight: 800; font-size: 14px;
+  color: var(--accent-strong); border: 2px solid var(--accent-strong); border-radius: 8px;
+}
+.dv2-skeleton { background: linear-gradient(90deg, #E4EBFD 25%, #F2F5FE 50%, #E4EBFD 75%); background-size: 200% 100%; animation: dv2Shimmer 1.4s linear infinite; border-radius: 12px; border: 2px solid var(--grid); }
 @keyframes dv2Shimmer { to { background-position: -200% 0; } }
 .dv2-nav { scrollbar-width: none; }
 .dv2-nav::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .dv2-skeleton { animation: none; }
-  .dv2-btn, .dv2-btn-quiet { transition: none; }
+  .dv2-btn, .dv2-btn-ghost { transition: none; }
+  .dv2-btn:hover, .dv2-btn:active { transform: none; }
 }

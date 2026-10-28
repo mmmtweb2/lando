@@ -7,9 +7,9 @@ import ContentPlanCard from '../components/ContentPlanCard';
 import ExternalSiteCard from '../components/ExternalSiteCard';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
 import LeadsTable from '../components/LeadsTable';
-import Overview from './Overview';
+import Overview, { SetupArchive } from './Overview';
 import { useSeoOverview } from './useSeoOverview';
-import { VIEW_LABEL, VIEW_ORDER, type View } from './journey';
+import { VIEW_LABEL, VIEW_ORDER, derivePhase, type View } from './journey';
 import './dashboard.css';
 
 /**
@@ -22,6 +22,8 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
   const reduce = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
   const data = useSeoOverview();
+  const phase = derivePhase(data.input);
+  const navViews: View[] = phase === 'ongoing' ? [...VIEW_ORDER, 'setup'] : VIEW_ORDER;
 
   const go = useCallback((v: View) => {
     setView(v);
@@ -34,16 +36,16 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18 } };
 
   return (
-    <div className="dv2 rounded-[28px] bg-[var(--dv2-surface)] p-3 sm:p-5" dir="rtl">
+    <div className="dv2 rounded-[18px] border-2 border-[var(--navy)] p-3 sm:p-5" dir="rtl">
       <div ref={top} className="scroll-mt-4" />
-      <nav aria-label="תצוגות הקידום" className="dv2-nav -mx-1 mb-5 flex gap-1.5 overflow-x-auto px-1 pb-1">
-        {VIEW_ORDER.map((v) => {
+      <nav aria-label="תצוגות הקידום" className="dv2-nav -mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2 pr-1">
+        {navViews.map((v) => {
           const active = v === view;
           return (
             <button
               key={v} type="button" onClick={() => go(v)} aria-current={active ? 'page' : undefined}
-              className={`min-h-[44px] flex-shrink-0 rounded-full px-4 text-sm font-semibold transition-colors motion-reduce:transition-none ${
-                active ? 'bg-[var(--dv2-accent)] text-white shadow-[var(--dv2-shadow)]' : 'bg-white/70 text-[var(--dv2-muted)] hover:bg-white hover:text-[var(--dv2-ink)]'
+              className={`min-h-[44px] flex-shrink-0 rounded-[10px] border-2 border-[var(--navy)] px-4 text-sm font-extrabold transition-colors motion-reduce:transition-none ${
+                active ? 'bg-[var(--navy)] text-white shadow-[3px_3px_0_var(--glow)]' : 'bg-white text-[var(--navy)] hover:bg-[var(--tint)]'
               }`}
             >
               {VIEW_LABEL[v]}
@@ -55,8 +57,9 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={view} {...motionProps}>
           {view === 'overview' && (
-            <Overview input={data.input} summary={data.summary} loading={data.loading} failed={data.failed} go={go} onRetry={data.reload} />
+            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} go={go} setTick={data.setTick} onRetry={data.reload} />
           )}
+          {view === 'setup' && <SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} />}
           {view === 'profile' && <BusinessAuditCard />}
           {view === 'reviews' && <ReviewsCard />}
           {view === 'content' && <ContentPlanCard />}
@@ -71,14 +74,14 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
               <SeoSubscriptionCard />
               {data.input.loaded && data.input.subscriptionStatus === null && (
                 <div className="dv2-card p-5">
-                  <p className="font-semibold text-[var(--dv2-ink)]">אין כרגע חיוב חודשי לנהל</p>
-                  <p className="mt-1 text-sm text-[var(--dv2-muted)]">המוצר פעיל בחשבון שלכם. אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
+                  <p className="font-semibold text-[var(--ink)]">אין כרגע חיוב חודשי לנהל</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">המוצר פעיל בחשבון שלכם. אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
                 </div>
               )}
               {showPageUpsell && (
                 <div className="dv2-card p-5 text-center">
-                  <p className="text-sm text-[var(--dv2-muted)]">מחזיקים רק בקידום בגוגל. רוצים גם דף נחיתה לעסק?</p>
-                  <Link to="/create" className="dv2-btn-quiet mt-3">יצירת דף ב-Pagey</Link>
+                  <p className="text-sm text-[var(--muted)]">מחזיקים רק בקידום בגוגל. רוצים גם דף נחיתה לעסק?</p>
+                  <Link to="/create" className="dv2-btn-ghost mt-3">יצירת דף ב-Pagey</Link>
                 </div>
               )}
             </div>
