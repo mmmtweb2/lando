@@ -9,6 +9,7 @@ import { createChildPage, getChildPages, linkPage, removeChildPage } from '../co
 import { trackExternalEvent, trackPreflight } from '../controllers/seoTrack.controller';
 import { cancel as cancelSub, getStatus as subStatus, start as startSub, subscriptionReturn, subscriptionWebhook } from '../controllers/seoSubscription.controller';
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
+import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 
 const router = Router();
 
@@ -58,5 +59,9 @@ router.put('/businesses/:id/landing-page', ...gated, linkPage);
 router.get('/businesses/:id/child-pages', ...gated, getChildPages);
 router.post('/businesses/:id/child-pages', ...gated, createChildPage);
 router.delete('/businesses/:id/child-pages/:pageId', ...gated, removeChildPage);
+
+// One-time setup checklist ticks (dashboard v2.1, migration 032).
+router.get('/setup', ...gated, getSetup);
+router.put('/setup/:key', ...gated, putSetup);
 
 export default router;

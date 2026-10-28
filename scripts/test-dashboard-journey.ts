@@ -1,58 +1,80 @@
 // Run: npx tsx scripts/test-dashboard-journey.ts   (imports the client ES module, so ts-node/CJS cannot load it)
 import assert from 'node:assert/strict';
-import { deriveJourney, deriveNextStep, inquiriesText, journeyProgress, statusLine, type OverviewInput } from '../client/src/dashboard/journey';
+import {
+  deriveOngoingNext, derivePhase, deriveSetup, deriveSetupNext, inquiriesText, readiness, MANUAL_KEYS, PHASE2_ACK,
+  type OverviewInput,
+} from '../client/src/dashboard/journey';
 
-const base: OverviewInput = { loaded: true, businessName: null, hasBusiness: false, contentCount: 0, monthLeads: 0, subscriptionStatus: null };
+const base: OverviewInput = { loaded: true, businessName: null, hasBusiness: false, contentCount: 0, monthLeads: 0, subscriptionStatus: null, ticks: [] };
 const biz: OverviewInput = { ...base, hasBusiness: true, businessName: 'שרברב דני' };
-const full: OverviewInput = { ...biz, contentCount: 3, monthLeads: 9, subscriptionStatus: 'active' };
+const allTicks = [...MANUAL_KEYS];
+const finished: OverviewInput = { ...biz, contentCount: 2, ticks: allTicks };
 
-// plural forms
 assert.equal(inquiriesText(1), 'פנייה אחת');
 assert.equal(inquiriesText(2), '2 פניות');
 
-// 1. new account: connect is the customer's turn, everything else waits, next step = connect
-let j = deriveJourney(base);
-assert.equal(j.length, 6);
-assert.equal(j[0].state, 'yours');
-assert.ok(j.slice(1).every((s) => s.state === 'waiting'));
-assert.equal(journeyProgress(j).done, 0);
-assert.equal(deriveNextStep(base).view, 'profile');
-assert.match(deriveNextStep(base).title, /חברו/);
-assert.match(statusLine(base), /עוד לא חיברתם/);
+// 1. new account: 7 steps, none done, phase = setup, next = connect
+let items = deriveSetup(base);
+assert.equal(items.length, 7);
+assert.equal(items.filter((s) => s.done).length, 0);
+assert.equal(derivePhase(base), 'setup');
+assert.equal(deriveSetupNext(base)?.title, 'חיבור העסק');
+let r = readiness(items);
+assert.deepEqual([r.done, r.total, r.percent, r.tier, r.label], [0, 7, 0, 'start', 'בתחילת הדרך']);
 
-// 2. connected, nothing else yet: connect done, check/plan/reviews/content are the customer's turn, leads tracked by us
-j = deriveJourney(biz);
-assert.equal(j[0].state, 'done');
-assert.equal(j[1].state, 'yours');
-assert.equal(j[1].chip, 'בדוק עכשיו');
-assert.equal(j[4].state, 'yours');
-assert.equal(j[5].state, 'ours');
-assert.equal(j[5].chip, 'אנחנו עוקבים');
-assert.equal(journeyProgress(j).done, 1);
-assert.match(deriveNextStep(biz).cta, /בדוק עכשיו/);
-assert.match(statusLine(biz), /שרברב דני מחובר/);
+// 2. connecting a business is detected from data, not ticked
+items = deriveSetup(biz);
+assert.equal(items.find((s) => s.id === 'connect')!.done, true);
+assert.equal(items.find((s) => s.id === 'connect')!.manual, false);
+assert.equal(deriveSetupNext(biz)?.title, 'בדיקה ראשונה מול המובילים');
 
-// 3. content but no inquiries yet: next step = reviews link
-const mid = { ...biz, contentCount: 2 };
-assert.equal(deriveJourney(mid)[4].state, 'done');
-assert.equal(deriveNextStep(mid).view, 'reviews');
+// 3. content is detected from data; a tick of a manual key marks only that step
+items = deriveSetup({ ...biz, contentCount: 1, ticks: ['profile_details'] });
+assert.equal(items.find((s) => s.id === 'content')!.done, true);
+assert.equal(items.find((s) => s.id === 'profile_details')!.done, true);
+assert.equal(items.find((s) => s.id === 'first_check')!.done, false);
+assert.equal(readiness(items).done, 3);
 
-// 4. inquiries are coming in
-j = deriveJourney(full);
-assert.equal(j[5].state, 'done');
-assert.match(j[5].detail, /9 פניות/);
-assert.equal(journeyProgress(j).done, 3);
-assert.equal(deriveNextStep(full).view, 'leads');
+// 4. tracking is done by a tick OR by a real inquiry this month
+assert.equal(deriveSetup({ ...biz, monthLeads: 1 }).find((s) => s.id === 'tracking_ready')!.done, true);
+assert.equal(deriveSetup({ ...biz, ticks: ['tracking_ready'] }).find((s) => s.id === 'tracking_ready')!.done, true);
 
-// 5. a failed payment always wins and is marked urgent
-const late = { ...full, subscriptionStatus: 'past_due' as const };
-assert.equal(deriveNextStep(late).urgent, true);
-assert.equal(deriveNextStep(late).view, 'plan');
-assert.equal(deriveNextStep({ ...base, subscriptionStatus: 'past_due' }).urgent, true);
+// 5. tiers
+const withTicks = (n: number, extra: Partial<OverviewInput> = {}) => readiness(deriveSetup({ ...biz, ...extra, ticks: MANUAL_KEYS.slice(0, n) }));
+assert.equal(withTicks(0).tier, 'start');      // 1/7 = 14%
+assert.equal(withTicks(2).tier, 'way');        // 3/7 = 43%
+assert.equal(withTicks(4, { contentCount: 1 }).tier, 'almost'); // 6/7 = 86%... connect + 4 ticks + content
+assert.equal(withTicks(5, { contentCount: 1 }).tier, 'ready');
 
-// 6. honesty: the profile score is never claimed, and no step promises something that is not live
-const all = [base, biz, mid, full].flatMap((i) => [...deriveJourney(i).map((s) => s.detail + s.title), statusLine(i), deriveNextStep(i).body]).join(' ');
-assert.ok(!/\d+ מתוך 100/.test(all), 'no invented score');
-assert.ok(!/אחריות|30 יום|אוטומטי/.test(all), 'no guarantees or not-yet-live automation');
+// 6. phase only changes when everything is done AND the customer acknowledged
+assert.equal(derivePhase(finished), 'welcome');
+assert.equal(derivePhase({ ...finished, ticks: [...allTicks, PHASE2_ACK] }), 'ongoing');
+assert.equal(deriveSetupNext(finished), null);
+
+// 7. the acknowledgement alone does not skip stage 1
+assert.equal(derivePhase({ ...biz, ticks: [PHASE2_ACK] }), 'setup');
+
+// 8. a veteran who later loses the business goes back to setup, and ticks remain
+const lost = { ...finished, hasBusiness: false, ticks: [...allTicks, PHASE2_ACK] };
+assert.equal(derivePhase(lost), 'setup');
+assert.equal(deriveSetup(lost).find((s) => s.id === 'first_check')!.done, true);
+
+// 9. failed payment always comes first, in both stages
+const pd = { ...biz, subscriptionStatus: 'past_due' as const };
+assert.equal(deriveSetupNext(pd)?.urgent, true);
+assert.equal(deriveSetupNext(pd)?.view, 'plan');
+assert.equal(deriveOngoingNext({ ...finished, subscriptionStatus: 'past_due' }).urgent, true);
+
+// 10. ongoing recommendation
+assert.equal(deriveOngoingNext(finished).view, 'reviews');
+const withLeads = deriveOngoingNext({ ...finished, monthLeads: 3 });
+assert.equal(withLeads.view, 'profile');
+assert.match(withLeads.body, /3 פניות/);
+
+// 11. every setup item points at a real view and has plain-language text
+for (const s of deriveSetup(base)) {
+  assert.ok(s.title && s.how && s.cta, `item ${s.id} lacks text`);
+  assert.ok(['profile', 'reviews', 'content', 'leads'].includes(s.view));
+}
 
 console.log('dashboard journey checks passed');

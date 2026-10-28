@@ -1,10 +1,19 @@
-// Pure logic for the v2 overview: what the customer sees as "journey", "next step" and the one-line
-// status. No React, no network: everything is derived from data the dashboard already loads
-// (connected business, content, month's inquiries, subscription). No Google Places data is read or
-// stored here — the profile score is deliberately NOT kept (Places terms), so the overview never
-// pretends to know it; it asks the customer to run the check.
+// Pure logic of dashboard v2.1: two phases.
+//   1. SETUP: a one-time checklist to get a stable business on Google, with a readiness score.
+//   2. ONGOING: monitoring and growth (competitor check, more reviews, more inquiries).
+// The customer is moved to phase 2 only when every setup step is done, and is told so once.
+//
+// No React, no network. Everything is derived from data the dashboard already loads plus the
+// customer's own ticks for the steps done outside Pagey (migration 032). No Google Places data is
+// read or stored: the profile score is deliberately never kept (Places terms), so nothing here
+// pretends to know it; the customer runs the check when they want a fresh one.
 
-export type View = 'overview' | 'profile' | 'reviews' | 'content' | 'leads' | 'plan';
+export type View = 'overview' | 'profile' | 'reviews' | 'content' | 'leads' | 'plan' | 'setup';
+
+/** Steps the customer ticks themselves (they happen outside Pagey, so we cannot detect them). */
+export type ManualKey = 'first_check' | 'profile_details' | 'profile_verified' | 'review_link_shared' | 'tracking_ready';
+export const MANUAL_KEYS: ManualKey[] = ['first_check', 'profile_details', 'profile_verified', 'review_link_shared', 'tracking_ready'];
+export const PHASE2_ACK = 'phase2_ack';
 
 export interface OverviewInput {
   loaded: boolean;
@@ -14,113 +23,101 @@ export interface OverviewInput {
   contentCount: number;
   monthLeads: number;
   subscriptionStatus: 'active' | 'past_due' | 'canceled' | null;
+  /** keys the customer ticked (ManualKey plus 'phase2_ack') */
+  ticks: string[];
 }
 
-export type StepState = 'done' | 'yours' | 'ours' | 'waiting';
-
-export interface JourneyStep {
-  id: 'connect' | 'check' | 'plan' | 'reviews' | 'content' | 'leads';
+export interface SetupItem {
+  id: 'connect' | ManualKey | 'content';
   title: string;
-  detail: string;
+  /** what to do, in plain words */
+  how: string;
   who: 'we' | 'you';
-  state: StepState;
-  /** chip text; defaults by state */
-  chip: string;
+  done: boolean;
+  /** true when the customer ticks it; false when we detect it from real data */
+  manual: boolean;
   view: View;
+  cta: string;
 }
-
-const CHIP: Record<StepState, string> = { done: 'בוצע', yours: 'תורך', ours: 'אנחנו עובדים', waiting: 'ממתין' };
 
 export function inquiriesText(n: number): string {
   return n === 1 ? 'פנייה אחת' : `${n} פניות`;
 }
 
-export function deriveJourney(i: OverviewInput): JourneyStep[] {
-  const has = i.hasBusiness;
-  const step = (s: Omit<JourneyStep, 'chip'> & { chip?: string }): JourneyStep => ({ ...s, chip: s.chip ?? CHIP[s.state] });
+export function deriveSetup(i: OverviewInput): SetupItem[] {
+  const t = (k: ManualKey) => i.ticks.includes(k);
   return [
-    step({
-      id: 'connect', title: 'חיבור העסק', who: 'you', view: 'profile',
-      detail: has ? `${i.businessName ?? 'העסק'} מחובר.` : 'מחפשים את העסק בגוגל מפות ושומרים אותו כאן.',
-      state: has ? 'done' : 'yours',
-    }),
-    step({
-      id: 'check', title: 'בדיקת הפרופיל', who: 'we', view: 'profile',
-      detail: has ? 'משווים את הפרופיל לשלושת העסקים המובילים באזור. הבדיקה רצה כשלוחצים.' : 'אחרי חיבור העסק נבדוק אותו מול המובילים.',
-      state: has ? 'yours' : 'waiting',
-      chip: has ? 'בדוק עכשיו' : undefined,
-    }),
-    step({
-      id: 'plan', title: 'תוכנית חיזוק', who: 'you', view: 'profile',
-      detail: has ? 'בתוצאות הבדיקה מופיע מה לחזק ומי עושה מה. את מה שרק בעל העסק יכול לעשות, עושים אתם.' : 'מופיעה בתוצאות הבדיקה.',
-      state: has ? 'yours' : 'waiting',
-    }),
-    step({
-      id: 'reviews', title: 'ביקורות', who: 'we', view: 'reviews',
-      detail: has ? 'מקבלים קישור וקוד QR לביקורת, ווידג׳ט ביקורות לאתר. אתם שולחים ללקוחות מרוצים.' : 'אחרי חיבור העסק נכין קישור ביקורות.',
-      state: has ? 'yours' : 'waiting',
-    }),
-    step({
-      id: 'content', title: 'תוכן ודפים', who: 'we', view: 'content',
-      detail: i.contentCount > 0
-        ? `כבר יש ${i.contentCount === 1 ? 'פריט תוכן אחד' : `${i.contentCount} פריטי תוכן`} לעסק.`
-        : has ? 'בוחרים ביטויי חיפוש, ואנחנו מכינים ערכות תוכן עם שאלות ותשובות ודפי חיפוש.' : 'אחרי חיבור העסק נבנה תוכנית תוכן.',
-      state: i.contentCount > 0 ? 'done' : has ? 'yours' : 'waiting',
-    }),
-    step({
-      id: 'leads', title: 'פניות', who: 'we', view: 'leads',
-      detail: i.monthLeads > 0
-        ? `החודש הגיעו ${inquiriesText(i.monthLeads)}.`
-        : has ? 'אנחנו סופרים פניות מדפי Pagey ומהאתר שלכם (עם קוד מעקב). עדיין אין פניות החודש.' : 'כאן יופיעו הפניות שיגיעו.',
-      state: i.monthLeads > 0 ? 'done' : has ? 'ours' : 'waiting',
-      chip: i.monthLeads === 0 && has ? 'אנחנו עוקבים' : undefined,
-    }),
+    { id: 'connect', title: 'חיבור העסק', who: 'you', manual: false, view: 'profile', cta: 'לחיבור העסק',
+      how: 'מחפשים את העסק בגוגל מפות ושומרים אותו כאן. אם עוד אין לו פרופיל, נראה לכם איך פותחים אחד.', done: i.hasBusiness },
+    { id: 'first_check', title: 'בדיקה ראשונה מול המובילים', who: 'we', manual: true, view: 'profile', cta: 'בדוק עכשיו',
+      how: 'אנחנו משווים את הפרופיל לשלושת העסקים המובילים באזור, ואתם רואים מה חסר.', done: t('first_check') },
+    { id: 'profile_details', title: 'השלמת פרטי הפרופיל בגוגל', who: 'you', manual: true, view: 'profile', cta: 'מה חסר לי',
+      how: 'טלפון, שעות פתיחה ותמונות אמיתיות. את זה רק בעל העסק יכול לעדכן, בחשבון הגוגל שלו.', done: t('profile_details') },
+    { id: 'profile_verified', title: 'אימות הפרופיל', who: 'you', manual: true, view: 'profile', cta: 'איך מאמתים',
+      how: 'גוגל מבקשת לוודא שהעסק באמת שלכם. בלי אימות הפרופיל מוגבל.', done: t('profile_verified') },
+    { id: 'review_link_shared', title: 'שליחת קישור ביקורות ללקוח ראשון', who: 'you', manual: true, view: 'reviews', cta: 'לקישור הביקורות',
+      how: 'מקבלים קישור וקוד QR, ושולחים ללקוח מרוצה. ככה נבנות הביקורות הראשונות.', done: t('review_link_shared') },
+    { id: 'content', title: 'תוכן החיפוש הראשון', who: 'we', manual: false, view: 'content', cta: 'לתוכן',
+      how: 'בוחרים ביטויי חיפוש, ואנחנו מכינים ערכת תוכן או דף חיפוש.', done: i.contentCount > 0 },
+    { id: 'tracking_ready', title: 'מעקב אחרי פניות', who: 'you', manual: true, view: 'leads', cta: 'להטמעה',
+      how: 'דף Pagey, או שורת קוד אחת באתר שלכם, כדי שנספור שיחות, וואטסאפ ואימייל.', done: t('tracking_ready') || i.monthLeads > 0 },
   ];
 }
 
-export function journeyProgress(steps: JourneyStep[]): { done: number; total: number; percent: number } {
-  const done = steps.filter((s) => s.state === 'done').length;
-  return { done, total: steps.length, percent: Math.round((done / steps.length) * 100) };
+export type ReadinessTier = 'start' | 'way' | 'almost' | 'ready';
+export interface Readiness { done: number; total: number; percent: number; tier: ReadinessTier; label: string }
+
+export function readiness(items: SetupItem[]): Readiness {
+  const done = items.filter((s) => s.done).length;
+  const percent = Math.round((done / items.length) * 100);
+  const tier: ReadinessTier = done === items.length ? 'ready' : percent >= 70 ? 'almost' : percent >= 30 ? 'way' : 'start';
+  const label = { start: 'בתחילת הדרך', way: 'בדרך הנכונה', almost: 'כמעט שם', ready: 'העסק מוקם' }[tier];
+  return { done, total: items.length, percent, tier, label };
+}
+
+export type Phase = 'setup' | 'welcome' | 'ongoing';
+
+/**
+ * setup:   at least one setup step is open (also when the business was removed again)
+ * welcome: everything is done and the customer has not yet been told about phase 2
+ * ongoing: phase 2
+ */
+export function derivePhase(i: OverviewInput): Phase {
+  const items = deriveSetup(i);
+  if (!items.every((s) => s.done)) return 'setup';
+  return i.ticks.includes(PHASE2_ACK) ? 'ongoing' : 'welcome';
 }
 
 export interface NextStep { title: string; body: string; cta: string; view: View; urgent: boolean }
 
-/** One clear action, picked by priority from the state of the account. */
-export function deriveNextStep(i: OverviewInput): NextStep {
-  if (i.subscriptionStatus === 'past_due') {
-    return {
-      title: 'התשלום החודשי לא עבר', urgent: true, view: 'plan', cta: 'לפרטי המנוי',
-      body: 'כדי שהקידום ימשיך בלי הפרעה, כדאי לעדכן את אמצעי התשלום בימים הקרובים.',
-    };
-  }
-  if (!i.hasBusiness) {
-    return {
-      title: 'חברו את העסק שלכם', urgent: false, view: 'profile', cta: 'לחיבור העסק',
-      body: 'מחפשים את העסק בגוגל מפות. אם אין לו פרופיל, נראה לכם איך פותחים אחד.',
-    };
-  }
-  if (i.contentCount === 0) {
-    return {
-      title: 'בדקו איפה הפרופיל עומד מול המובילים', urgent: false, view: 'profile', cta: 'בדוק עכשיו',
-      body: 'הבדיקה לוקחת כמה שניות, ומראה מה כדאי לחזק קודם.',
-    };
-  }
-  if (i.monthLeads === 0) {
-    return {
-      title: 'קחו את קישור הביקורות ושלחו ללקוחות מרוצים', urgent: false, view: 'reviews', cta: 'לקישור הביקורות',
-      body: 'ביקורות חדשות משפיעות על המקום שלכם בגוגל מפות, ומביאות פניות.',
-    };
-  }
+/** One clear action. A failed payment always comes first; otherwise the first open setup step. */
+export function deriveSetupNext(i: OverviewInput): NextStep | null {
+  if (i.subscriptionStatus === 'past_due') return pastDue();
+  const open = deriveSetup(i).find((s) => !s.done);
+  if (!open) return null;
+  return { title: open.title, body: open.how, cta: open.cta, view: open.view, urgent: false };
+}
+
+function pastDue(): NextStep {
   return {
-    title: 'הפניות מגיעות. כדאי לעבור עליהן', urgent: false, view: 'leads', cta: 'לפניות שלי',
-    body: `החודש הגיעו ${inquiriesText(i.monthLeads)}. כדאי לחזור אליהן מהר.`,
+    title: 'התשלום החודשי לא עבר', urgent: true, view: 'plan', cta: 'לפרטי המנוי',
+    body: 'כדי שהקידום ימשיך בלי הפרעה, כדאי לעדכן את אמצעי התשלום בימים הקרובים.',
   };
 }
 
-export function statusLine(i: OverviewInput): string {
-  if (!i.hasBusiness) return 'עוד לא חיברתם עסק. זה הצעד הראשון, והוא לוקח דקה.';
-  const leads = i.monthLeads > 0 ? `החודש הגיעו ${inquiriesText(i.monthLeads)}.` : 'עדיין אין פניות החודש.';
-  return `${i.businessName ?? 'העסק'} מחובר. ${leads} כדי לראות את הציון מול המובילים באזור, לחצו ״בדוק עכשיו״.`;
+/** Phase 2: the recommendation of the month. */
+export function deriveOngoingNext(i: OverviewInput): NextStep {
+  if (i.subscriptionStatus === 'past_due') return pastDue();
+  if (i.monthLeads === 0) {
+    return {
+      title: 'שלחו את קישור הביקורות ללקוחות מרוצים', urgent: false, view: 'reviews', cta: 'לקישור הביקורות',
+      body: 'עדיין אין פניות החודש. ביקורות חדשות משפיעות על המקום שלכם בגוגל מפות, ומביאות פניות.',
+    };
+  }
+  return {
+    title: 'בדקו איפה אתם עומדים מול המתחרים', urgent: false, view: 'profile', cta: 'בדוק עכשיו',
+    body: `החודש הגיעו ${inquiriesText(i.monthLeads)}. בדיקה מחודשת מראה אם הפער מהמובילים השתנה.`,
+  };
 }
 
 export const VIEW_LABEL: Record<View, string> = {
@@ -130,5 +127,6 @@ export const VIEW_LABEL: Record<View, string> = {
   content: 'תוכן ודפים',
   leads: 'פניות',
   plan: 'מנוי והגדרות',
+  setup: 'ההקמה שלי',
 };
 export const VIEW_ORDER: View[] = ['overview', 'profile', 'reviews', 'content', 'leads', 'plan'];
