@@ -622,3 +622,11 @@ quota cap there.
 - **Concierge button:** `CONCIERGE_WHATSAPP` (digits, 9–15) → a `wa.me` link, shown on the Audit, in the SEO panel and in the external-site card; hidden when unset.
 - **Events** (dataLayer): `Audit_Started`, `Audit_Lead_Captured`, `Snapshot_Downloaded`, `Concierge_Clicked {location}`.
 - Tests: `scripts/test-public-audit.ts`; `smoke-test.mjs` has `checkPublicAudit`. Browser e2e was run manually (PNG 1080×1350 for low/high/no-profile).
+
+## Part 49 — Stage 6.3 groundwork: Google Business Profile connection settings
+
+- Google approved the Business Profile API for Cloud project 34791725092 (300 requests/minute). The customer-facing connection (OAuth, reading calls / directions / website clicks) is **not built yet**; this part fixes the configuration names and gives the operator a safe way to check them.
+- Settings (Coolify, runtime variables): `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GBP_TOKEN_ENCRYPTION_KEY` (exactly 64 hex characters = 32 random bytes, e.g. `openssl rand -hex 32`; it will encrypt customers' refresh tokens — changing or losing it forces every customer to reconnect, so keep a copy in a password manager). Optional `GBP_OAUTH_REDIRECT_URI`; default is `PUBLIC_API_URL` + `/api/seo/gbp/oauth/callback`, and it must match the OAuth client in Google Cloud character for character.
+- Scope: `https://www.googleapis.com/auth/business.manage` (sensitive; until Google verifies the app it works in testing mode only: up to 100 test users, connection expires after 7 days).
+- `GET /api/admin/gbp-config` (and a section in the admin dashboard) reports ok / warn / missing / bad per setting and the redirect URI in full. It never returns the secret or the key. It catches the usual paste mistakes: trailing newline, quotes, wrong length, `http://`, wrong path.
+- Tests: `scripts/test-gbp-config.ts`.

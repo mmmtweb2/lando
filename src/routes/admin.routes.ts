@@ -4,6 +4,7 @@ import { listReviewPayments, reverifyPayment, forceActivatePayment } from '../co
 import { listCoupons, createCoupon, updateCoupon } from '../controllers/coupon.controller';
 import { listUsers, getRevenueStats, getSiteTraffic, getFunnelStats } from '../controllers/adminStats.controller';
 import { adminAuditLeads } from '../controllers/publicAudit.controller';
+import { adminGbpConfig } from '../controllers/gbpConfig.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
 
@@ -28,6 +29,7 @@ router.get('/site-traffic', requireAuth, requireAdmin, getSiteTraffic);
 router.get('/funnel', requireAuth, requireAdmin, getFunnelStats);
 // Leads from the public Audit page (task #1, migration 031).
 router.get('/audit-leads', requireAuth, requireAdmin, adminAuditLeads);
+router.get('/gbp-config', requireAuth, requireAdmin, adminGbpConfig);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for
 // context — these give an admin a way to inspect and resolve a payment stuck
