@@ -395,6 +395,7 @@ export default function AdminDashboard() {
     loadTraffic();
     loadFunnel();
     loadAuditLeads();
+    loadGbpConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, denied, adminPw]);
 
@@ -478,6 +479,23 @@ export default function AdminDashboard() {
         setAuditLeadsNote(b.notMigrated ? 'הטבלה עדיין לא נוצרה (מיגרציה 031).' : null);
       })
       .catch((e: Error) => setAuditLeadsNote(e.message));
+  }
+
+  // ── Google Business Profile connection settings (Stage 6.3) ───────────────
+  interface GbpCheck { key: string; level: 'ok' | 'warn' | 'missing' | 'bad'; message: string }
+  const [gbpChecks, setGbpChecks] = useState<GbpCheck[]>([]);
+  const [gbpRedirect, setGbpRedirect] = useState<string | null>(null);
+  const [gbpReady, setGbpReady] = useState(false);
+  const [gbpNote, setGbpNote] = useState<string | null>(null);
+
+  function loadGbpConfig() {
+    adminFetch('/api/admin/gbp-config')
+      .then((r) => {
+        if (!r.ok) throw new Error('בדיקת ההגדרות נכשלה');
+        return r.json() as Promise<{ checks: GbpCheck[]; redirectUri: string | null; ready: boolean }>;
+      })
+      .then((b) => { setGbpChecks(b.checks); setGbpRedirect(b.redirectUri); setGbpReady(b.ready); setGbpNote(null); })
+      .catch((e: Error) => setGbpNote(e.message));
   }
 
   function loadFunnel() {
@@ -940,6 +958,38 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Google Business Profile settings check ───────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-700 text-sm">חיבור Google Business Profile: בדיקת הגדרות</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {gbpNote ?? (gbpReady ? 'כל ההגדרות תקינות.' : 'חסר או שגוי. הערכים עצמם לא מוצגים.')}
+                </p>
+              </div>
+              <button onClick={loadGbpConfig} className="text-xs text-blue-600 hover:underline">בדוק שוב</button>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {gbpChecks.map((c) => (
+                <li key={c.key} className="px-5 py-3 flex items-start gap-3 text-sm">
+                  <span className={c.level === 'ok' ? 'text-emerald-600' : c.level === 'warn' ? 'text-amber-500' : 'text-red-600'} aria-hidden>
+                    {c.level === 'ok' ? '✓' : c.level === 'warn' ? '⚠' : '✗'}
+                  </span>
+                  <div className="min-w-0">
+                    <div dir="ltr" className="font-mono text-xs text-slate-600 text-right">{c.key}</div>
+                    <div className="text-slate-600">{c.message}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {gbpRedirect && (
+              <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
+                <div className="text-xs text-slate-400 mb-1">כתובת החזרה (Redirect URI) שהשרת ישתמש בה:</div>
+                <code dir="ltr" className="block text-xs text-slate-700 break-all text-left select-all">{gbpRedirect}</code>
               </div>
             )}
           </div>
