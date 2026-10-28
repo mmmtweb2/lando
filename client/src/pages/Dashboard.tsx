@@ -19,6 +19,8 @@ import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
 import SeoProductPanel, { ProductSwitch } from '../components/SeoProductPanel';
+import SeoDashboardV2 from '../dashboard/SeoDashboardV2';
+import { dashV2Enabled } from '../dashboard/flag';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -505,6 +507,7 @@ export default function Dashboard() {
   const [walletKey, setWalletKey] = useState(0);
   const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const [plan, setPlan] = useState<AccountStatus | null>(null);
+  const [isAdminAccount, setIsAdminAccount] = useState(false); // only decides whether dashboard v2 is on by default
   const [product, setProduct] = useState<'pages' | 'seo'>('pages'); // only matters with BOTH products
   const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
   const [singlePagePrice, setSinglePagePrice] = useState(249);
@@ -623,10 +626,11 @@ export default function Dashboard() {
           const planRes = await authFetch('/api/users/plan');
           if (planRes.ok) {
             const pd = await planRes.json() as {
-              status: AccountStatus; bundles: Record<string, BundleDef>; singlePagePrice?: number;
+              status: AccountStatus; bundles: Record<string, BundleDef>; singlePagePrice?: number; isAdmin?: boolean;
             };
             if (!cancelled) {
               setPlan(pd.status);
+              setIsAdminAccount(pd.isAdmin === true);
               setBundlesCatalog(pd.bundles);
               if (pd.singlePagePrice) setSinglePagePrice(pd.singlePagePrice);
             }
@@ -769,6 +773,7 @@ export default function Dashboard() {
   const seoOnly = hasSeo && !dataLoading && !dataError && pages.length === 0;
   const bothProducts = hasSeo && pages.length > 0;
   const seoView = activeTab !== 'settings' && (seoOnly || (bothProducts && product === 'seo'));
+  const dashV2 = dashV2Enabled(isAdminAccount);
 
   const navItems: { icon: ReactNode; label: string; tab: ActiveTab }[] = [
     { icon: <LayoutDashboard size={17} />, label: 'סקירה כללית', tab: 'pages' },
@@ -1246,13 +1251,13 @@ export default function Dashboard() {
           ) : seoOnly ? (
             /* ── seo_autopilot only: no Pagey page, no page-creation prompts ── */
             <>
-              <SeoProductPanel showPageUpsell />
+              {dashV2 ? <SeoDashboardV2 showPageUpsell /> : <SeoProductPanel showPageUpsell />}
               <SetPasswordCard />
             </>
           ) : (
             <>
               {bothProducts && <ProductSwitch value={product} onChange={setProduct} />}
-              {bothProducts && product === 'seo' ? <SeoProductPanel /> : (<>
+              {bothProducts && product === 'seo' ? (dashV2 ? <SeoDashboardV2 /> : <SeoProductPanel />) : (<>
               {/* Stats */}
               <motion.div
                 {...fadeIn}

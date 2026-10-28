@@ -200,7 +200,13 @@ export async function getPlan(req: Request, res: Response): Promise<void> {
     return;
   }
   const status = await getAccountStatus(email, { entitlements: true });
-  res.json({ status, bundles: BUNDLES, singlePagePrice: SINGLE_PAGE_PRICE });
+  // Read-only hint for the client: admins get the new dashboard (v2) by default. A failed lookup is just "not admin".
+  let isAdmin = false;
+  try {
+    const { data: prof } = await supabase.from('user_profiles').select('is_admin').eq('email', email).maybeSingle();
+    isAdmin = (prof as { is_admin?: boolean } | null)?.is_admin === true;
+  } catch { /* default off */ }
+  res.json({ status, bundles: BUNDLES, singlePagePrice: SINGLE_PAGE_PRICE, isAdmin });
 }
 
 // ─── Credit pack purchase (mock checkout — DEV/TEST ONLY, see below) ──────────
