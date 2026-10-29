@@ -1,10 +1,9 @@
-// Dashboard v2 switch. Existing customers see NOTHING different until Moshe decides:
-//   - an admin account gets v2 by default
-//   - anyone else opts in with ?dash=v2 (remembered in this browser); ?dash=v1 turns it off again
+// Dashboard v2 is the default for every account. The old dashboard stays available for now as an
+// escape hatch: ?dash=v1 switches to it (remembered in this browser), ?dash=v2 switches back.
 // Reading storage can throw (private windows, blocked cookies), so every access is guarded.
 const KEY = 'pagey_dash';
 
-export function dashV2Enabled(isAdmin: boolean): boolean {
+export function dashV2Enabled(_isAdmin: boolean): boolean {
   let q: string | null = null;
   try { q = new URLSearchParams(window.location.search).get('dash'); } catch { /* no query */ }
   if (q === 'v2' || q === 'v1') {
@@ -12,8 +11,7 @@ export function dashV2Enabled(isAdmin: boolean): boolean {
     return q === 'v2';
   }
   try {
-    const saved = window.localStorage.getItem(KEY);
-    if (saved === 'v2' || saved === 'v1') return saved === 'v2';
+    if (window.localStorage.getItem(KEY) === 'v1') return false;
   } catch { /* fall through */ }
-  return isAdmin;
+  return true;
 }
