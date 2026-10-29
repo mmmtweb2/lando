@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowLeft, Check as CheckIcon, FileText, Inbox, Mail, MessageCircle, Phone, QrCode, Search, Star } from 'lucide-react';
+import { ArrowLeft, Check as CheckIcon, FileText, Inbox, Mail, MessageCircle, Phone, Search, Star } from 'lucide-react';
 import { LandoBot } from '../components/Lando';
 import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
@@ -30,9 +30,9 @@ function OverviewSkeleton() {
 
 function PastDue({ go }: { go: (v: View) => void }) {
   return (
-    <section className="dv2-card-flat flex flex-wrap items-center justify-between gap-3 border-[var(--warn)] bg-[#FFF1EF] p-4" role="alert">
+    <section className="dv2-card-flat flex flex-wrap items-center justify-between gap-3 border-[#F3B7B0] bg-[#FFF4F2] p-4" role="alert">
       <div>
-        <p className="font-extrabold text-[var(--warn-ink)]">התשלום החודשי לא עבר</p>
+        <p className="font-bold text-[var(--warn-ink)]">התשלום החודשי לא עבר</p>
         <p className="text-sm text-[var(--ink)]">כדי שהקידום ימשיך בלי הפרעה, כדאי לעדכן את אמצעי התשלום בימים הקרובים.</p>
       </div>
       <button type="button" className="dv2-btn" onClick={() => go('plan')}>לפרטי המנוי <ArrowLeft size={16} aria-hidden /></button>
@@ -59,9 +59,9 @@ export function SetupList({ items, ticks, go, setTick, doneOpen = false }: {
                   <Check done={false} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <h3 className="text-[16px] font-extrabold text-[var(--ink)]">{s.title}</h3>
+                      <h3 className="text-[16px] font-bold text-[var(--ink)]">{s.title}</h3>
                       <Who who={s.who} />
-                      {first && <span className="dv2-stamp">הבא בתור</span>}
+                      {first && <span className="dv2-tag">הבא בתור</span>}
                     </div>
                     <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{s.how}</p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -83,7 +83,7 @@ export function SetupList({ items, ticks, go, setTick, doneOpen = false }: {
       )}
       {done.length > 0 && (
         <details open={doneOpen || open.length === 0} className="dv2-card-flat p-4 sm:p-5">
-          <summary className="cursor-pointer text-[15px] font-extrabold text-[var(--ink)]">הושלמו ({done.length})</summary>
+          <summary className="cursor-pointer text-[15px] font-bold text-[var(--ink)]">הושלמו ({done.length})</summary>
           <ul className="mt-3 flex flex-col gap-2.5">
             {done.map((s) => (
               <li key={s.id} className="flex items-center gap-3">
@@ -115,32 +115,32 @@ function SetupOverview({ input, go, setTick, ticksOnServer }: Pick<Props, 'input
   const r = readiness(items);
   return (
     <div className="flex flex-col gap-6">
-      <section className="dv2-ink p-5 sm:p-6" aria-labelledby="dv2-ready">
-        <p className="text-xs font-extrabold tracking-wide text-[var(--glow)]">שלב 1 מתוך 2 · הקמה חד פעמית</p>
+      <section className="dv2-hero p-5 sm:p-6" aria-labelledby="dv2-ready">
+        <p className="text-xs font-bold tracking-wide text-[var(--accent-strong)]">שלב 1 מתוך 2 · הקמה חד פעמית</p>
         <div className="mt-2 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-          <h2 id="dv2-ready" className="text-xl font-extrabold">מוכנות <span className="rounded bg-[var(--glow)] px-1.5 text-[var(--navy)]">העסק</span></h2>
+          <h2 id="dv2-ready" className="text-xl font-bold">מוכנות <span className="">העסק</span></h2>
           <div className="flex items-baseline gap-2" dir="ltr">
-            <span className="text-6xl font-extrabold leading-none tabular-nums sm:text-7xl">{r.done}</span>
-            <span className="text-2xl font-extrabold text-white/70">/ {r.total}</span>
+            <span className="text-5xl font-bold leading-none tabular-nums sm:text-6xl">{r.done}</span>
+            <span className="text-2xl font-bold text-[var(--muted)]">/ {r.total}</span>
           </div>
         </div>
         <div className="mt-4"><Segments done={r.done} total={r.total} label={`${r.done} מתוך ${r.total} צעדי הקמה הושלמו`} /></div>
-        <p className="mt-3 text-[15px] leading-relaxed text-white/90">
-          <strong className="font-extrabold text-[var(--glow)]">{r.label}.</strong> {TIER_LINE[r.tier]}
+        <p className="mt-3 text-[15px] leading-relaxed text-[var(--ink)]">
+          <strong className="font-bold text-[var(--accent-strong)]">{r.label}.</strong> {TIER_LINE[r.tier]}
         </p>
-        <p className="mt-1 text-sm text-white/70">אחרי שהכול מסומן, עוברים אוטומטית לשלב השני: ניטור וצמיחה.</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">אחרי שהכול מסומן, עוברים אוטומטית לשלב השני: ניטור וצמיחה.</p>
       </section>
 
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
 
       <section aria-labelledby="dv2-checklist">
-        <SectionTitle id="dv2-checklist" no="1" title="רשימת ההקמה" mark="ההקמה" hint="מה עושים עכשיו, ומה כבר מוכן." />
+        <SectionTitle id="dv2-checklist" title="רשימת ההקמה" hint="מה עושים עכשיו, ומה כבר מוכן." />
         <SetupList items={items} ticks={input.ticks} go={go} setTick={setTick} />
         {!ticksOnServer && <p className="mt-3 text-xs text-[var(--muted)]">הסימונים נשמרים בדפדפן הזה בלבד.</p>}
       </section>
 
-      <section aria-labelledby="dv2-after" className="dv2-card-flat border-dashed p-4 sm:p-5">
-        <h2 id="dv2-after" className="text-[16px] font-extrabold text-[var(--ink)]">מה מחכה בשלב השני</h2>
+      <section aria-labelledby="dv2-after" className="dv2-card-flat p-4 sm:p-5">
+        <h2 id="dv2-after" className="text-[16px] font-bold text-[var(--ink)]">מה מחכה בשלב השני</h2>
         <ul className="mt-2 flex flex-col gap-1.5 text-sm text-[var(--muted)]">
           <li>בדיקה חוזרת מול המתחרים, כדי לראות אם הפער השתנה.</li>
           <li>איסוף עוד ביקורות ופניות באמצעות הקישור שלכם.</li>
@@ -158,8 +158,8 @@ function Welcome({ setTick }: { setTick: Props['setTick'] }) {
     <section className="dv2-card flex flex-col items-center gap-4 p-6 text-center sm:p-8" aria-labelledby="dv2-welcome">
       <LandoBot mood="success" size={120} />
       <div>
-        <p className="dv2-stamp">שלב 1 הושלם</p>
-        <h2 id="dv2-welcome" className="mt-3 text-2xl font-extrabold text-[var(--ink)]">העסק <span className="dv2-mark">מוקם</span>. עוברים לשלב השני.</h2>
+        <p className="dv2-tag">שלב 1 הושלם</p>
+        <h2 id="dv2-welcome" className="mt-3 text-2xl font-bold text-[var(--ink)]">העסק <span>מוקם</span>. עוברים לשלב השני.</h2>
         <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--muted)]">
           כל צעדי ההקמה מאחוריכם, ואין צורך לחזור אליהם. מעכשיו הדשבורד הוא לניטור ולצמיחה: מתחרים, ביקורות ופניות. רשימת ההקמה נשארת זמינה בתפריט, בלשונית ״ההקמה שלי״.
         </p>
@@ -192,7 +192,7 @@ function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: n
   return (
     <div className="dv2-card-flat p-3">
       <div className="text-[var(--muted)]" aria-hidden>{icon}</div>
-      <div className="mt-1.5 text-3xl font-extrabold leading-none tabular-nums text-[var(--ink)]">{value}</div>
+      <div className="mt-1.5 text-3xl font-bold leading-none tabular-nums text-[var(--ink)]">{value}</div>
       <div className="mt-1 text-sm text-[var(--muted)]">{label}</div>
     </div>
   );
@@ -202,18 +202,18 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
   const next = deriveOngoingNext(input);
   return (
     <div className="flex flex-col gap-6">
-      <section className="dv2-ink p-5 sm:p-6" aria-labelledby="dv2-month">
+      <section className="dv2-hero p-5 sm:p-6" aria-labelledby="dv2-month">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="text-xs font-extrabold tracking-wide text-[var(--glow)]">שלב 2 מתוך 2 · ניהול שוטף</p>
-          <button type="button" onClick={() => go('setup')} className="inline-flex min-h-[44px] items-center gap-1 text-sm font-bold text-white/85 underline underline-offset-4">
+          <p className="text-xs font-bold tracking-wide text-[var(--accent-strong)]">שלב 2 מתוך 2 · ניהול שוטף</p>
+          <button type="button" onClick={() => go('setup')} className="inline-flex min-h-[44px] items-center gap-1 text-sm font-bold text-[var(--accent-strong)] underline underline-offset-4">
             <CheckIcon size={14} strokeWidth={3} aria-hidden /> ההקמה שלי
           </button>
         </div>
-        <h2 id="dv2-month" className="mt-1 text-xl font-extrabold">פניות <span className="rounded bg-[var(--glow)] px-1.5 text-[var(--navy)]">החודש</span></h2>
+        <h2 id="dv2-month" className="mt-1 text-xl font-bold">פניות <span className="">החודש</span></h2>
         <div className="mt-2 flex items-baseline gap-3">
-          <span className="text-6xl font-extrabold leading-none tabular-nums sm:text-7xl">{summary.month_total}</span>
+          <span className="text-5xl font-bold leading-none tabular-nums sm:text-6xl">{summary.month_total}</span>
         </div>
-        <p className="mt-1 text-sm text-white/80">
+        <p className="mt-1 text-sm text-[var(--muted)]">
           {summary.month_total > 0 ? inquiriesText(summary.month_total) + ' מתחילת החודש.' : 'עדיין אין פניות החודש.'}
         </p>
       </section>
@@ -221,9 +221,9 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
 
       <section aria-labelledby="dv2-reco">
-        <SectionTitle id="dv2-reco" no="★" title="ההמלצה לחודש" mark="לחודש" />
-        <div className={`${next.urgent ? 'dv2-card-flat border-[var(--warn)] bg-[#FFF1EF]' : 'dv2-card'} p-4 sm:p-5`}>
-          <h3 className="text-[17px] font-extrabold text-[var(--ink)]">{next.title}</h3>
+        <SectionTitle id="dv2-reco" title="ההמלצה לחודש" />
+        <div className={`${next.urgent ? 'dv2-card-flat border-[#F3B7B0] bg-[#FFF4F2]' : 'dv2-card'} p-4 sm:p-5`}>
+          <h3 className="text-[17px] font-bold text-[var(--ink)]">{next.title}</h3>
           <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{next.body}</p>
           <button type="button" className="dv2-btn mt-3" onClick={() => go(next.view)}>{next.cta} <ArrowLeft size={16} aria-hidden /></button>
         </div>
@@ -242,15 +242,15 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
       )}
 
       <section aria-labelledby="dv2-actions">
-        <SectionTitle id="dv2-actions" no="2" title="מה אפשר לעשות" mark="לעשות" hint="פעולות קבועות שמשפרות את המקום שלכם בגוגל." />
+        <SectionTitle id="dv2-actions" title="מה אפשר לעשות" hint="פעולות קבועות שמשפרות את המקום שלכם בגוגל." />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {ACTIONS.map((a) => (
             <li key={a.title} className="dv2-card-flat flex flex-col p-4">
               <div className="flex items-start justify-between gap-2">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg border-2 border-[var(--ink)] bg-[var(--tint)] text-[var(--ink)]" aria-hidden>{a.icon}</span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--tint)] text-[var(--accent-strong)]" aria-hidden>{a.icon}</span>
                 <Who who={a.who} />
               </div>
-              <h3 className="mt-3 text-[15px] font-extrabold text-[var(--ink)]">{a.title}</h3>
+              <h3 className="mt-3 text-[15px] font-bold text-[var(--ink)]">{a.title}</h3>
               <p className="mt-1 flex-1 text-sm leading-relaxed text-[var(--muted)]">{a.body}</p>
               <button type="button" className="dv2-btn-ghost mt-3 self-start" onClick={() => go(a.view)}>{a.cta} <ArrowLeft size={16} aria-hidden /></button>
             </li>
@@ -262,11 +262,9 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
         <SectionTitle id="dv2-soon" title="בדרך אליכם" />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {SOON.map((f) => (
-            <li key={f.title} className="dv2-card-flat border-dashed p-4">
-              <div className="flex items-center justify-between gap-2">
-                <QrCode size={18} className="text-[var(--muted)]" aria-hidden /><SoonChip />
-              </div>
-              <h3 className="mt-2 text-[15px] font-extrabold text-[var(--ink)]">{f.title}</h3>
+            <li key={f.title} className="dv2-card-flat p-4">
+              <div className="flex justify-end"><SoonChip /></div>
+              <h3 className="mt-1 text-[15px] font-bold text-[var(--ink)]">{f.title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{f.body}</p>
             </li>
           ))}
@@ -283,7 +281,7 @@ export function SetupArchive({ input, go, setTick, ticksOnServer }: Pick<Props, 
   return (
     <div className="flex flex-col gap-4">
       <section className="dv2-card p-5" aria-labelledby="dv2-archive">
-        <h2 id="dv2-archive" className="text-xl font-extrabold text-[var(--ink)]">ההקמה <span className="dv2-mark">שלי</span></h2>
+        <h2 id="dv2-archive" className="text-xl font-bold text-[var(--ink)]">ההקמה <span>שלי</span></h2>
         <p className="mt-1 text-sm text-[var(--muted)]">{r.done === r.total ? 'שלב 1 הושלם. הרשימה כאן רק לעיון.' : `${r.done} מתוך ${r.total} צעדים הושלמו.`}</p>
         <div className="mt-3"><Segments done={r.done} total={r.total} label={`${r.done} מתוך ${r.total} צעדי הקמה הושלמו`} /></div>
       </section>
@@ -299,7 +297,7 @@ export default function Overview({ input, summary, phase, loading, failed, ticks
   if (failed) {
     return (
       <div className="dv2-card p-6 text-center">
-        <p className="font-extrabold text-[var(--ink)]">לא הצלחנו לטעון את הסקירה</p>
+        <p className="font-bold text-[var(--ink)]">לא הצלחנו לטעון את הסקירה</p>
         <p className="mt-1 text-sm text-[var(--muted)]">בדקו את החיבור ונסו שוב. שאר המסכים עובדים כרגיל.</p>
         <button type="button" onClick={onRetry} className="dv2-btn mt-4">נסו שוב</button>
       </div>

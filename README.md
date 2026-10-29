@@ -650,3 +650,7 @@ quota cap there.
 - **Policy:** nothing from Google Places is stored or cached; the audit score is still not kept.
 - **Look:** "field notebook" — 2px navy outlines, hard offset shadows, dotted-paper background, segmented readiness meter, large numerals, cyan highlighter on key words, stamp-style labels, one accent colour. Scoped to `.dv2`; AA contrast, 44px targets, reduced-motion respected.
 - Tests: `scripts/test-dashboard-journey.ts` (`npx tsx`), `scripts/test-seo-setup.ts` (`npx ts-node --transpile-only`).
+
+### Update (Part 51b): v2 is now the default for everyone, calmer look
+- `client/src/dashboard/flag.ts`: dashboard v2 is on for every account. Escape hatch: `?dash=v1` (remembered per browser) shows the old dashboard; `?dash=v2` returns. Part 50's "admin only / opt-in" no longer applies.
+- Look softened after feedback ("too loud"): no hard shadows, thin 1px outlines, plain light surface, no highlighter or stamps, regular weights, a quiet blue meter. Same layout and logic.

@@ -36,7 +36,7 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18 } };
 
   return (
-    <div className="dv2 rounded-[18px] border-2 border-[var(--navy)] p-3 sm:p-5" dir="rtl">
+    <div className="dv2 rounded-[18px] p-3 sm:p-5" dir="rtl">
       <div ref={top} className="scroll-mt-4" />
       <nav aria-label="תצוגות הקידום" className="dv2-nav -mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-2 pr-1">
         {navViews.map((v) => {
@@ -44,8 +44,8 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
           return (
             <button
               key={v} type="button" onClick={() => go(v)} aria-current={active ? 'page' : undefined}
-              className={`min-h-[44px] flex-shrink-0 rounded-[10px] border-2 border-[var(--navy)] px-4 text-sm font-extrabold transition-colors motion-reduce:transition-none ${
-                active ? 'bg-[var(--navy)] text-white shadow-[3px_3px_0_var(--glow)]' : 'bg-white text-[var(--navy)] hover:bg-[var(--tint)]'
+              className={`min-h-[44px] flex-shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors motion-reduce:transition-none ${
+                active ? 'border-[var(--navy)] bg-[var(--navy)] text-white' : 'border-[var(--line)] bg-white text-[var(--navy)] hover:bg-[var(--tint)]'
               }`}
             >
               {VIEW_LABEL[v]}
