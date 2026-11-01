@@ -104,6 +104,12 @@ export async function stats(req: Request, res: Response): Promise<void> {
     res.json({ location: { name: loc.name, title: loc.title }, days, totals });
   } catch (e) {
     if (e instanceof GbpError && e.code === 'revoked') { await markNeedsReconnect(email, 'revoked').catch(() => undefined); res.status(409).json({ error: 'צריך להתחבר מחדש.', code: 'needs_reconnect' }); return; }
+    if (e instanceof GbpError && /:http_429:/.test(e.message)) {
+      // Google gives new Business Profile API projects a 0 requests/minute quota until the access request is approved.
+      console.error('[GBP] quota:', e.message.slice(0, 200));
+      res.status(503).json({ error: 'ממשק Business Profile של גוגל עדיין לא אושר לפרויקט. החיבור תקין, והנתונים יופיעו אחרי אישור גוגל.', code: 'quota_pending', detail: e.message.slice(0, 300) });
+      return;
+    }
     if (e instanceof GbpError) { console.error('[GBP] google error:', e.message); res.status(502).json({ error: 'לא הצלחנו לקרוא את הנתונים מגוגל. נסו שוב בעוד כמה דקות.', code: 'google_error', detail: e.message.slice(0, 300) }); return; }
     fail(res, e);
   }
