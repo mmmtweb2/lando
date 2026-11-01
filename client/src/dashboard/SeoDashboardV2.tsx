@@ -6,6 +6,7 @@ import ReviewsCard from '../components/ReviewsCard';
 import ContentPlanCard from '../components/ContentPlanCard';
 import ExternalSiteCard from '../components/ExternalSiteCard';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
+import GbpCard from '../components/GbpCard';
 import LeadsTable from '../components/LeadsTable';
 import Overview, { SetupArchive } from './Overview';
 import { useSeoOverview } from './useSeoOverview';
@@ -18,7 +19,10 @@ import './dashboard.css';
  * only their placement is new. Behind a flag (see flag.ts).
  */
 export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
-  const [view, setView] = useState<View>('overview');
+  const [view, setView] = useState<View>(() => {
+    // coming back from Google's consent page: show the place where the result is explained
+    try { return new URLSearchParams(window.location.search).has('gbp') ? 'profile' : 'overview'; } catch { return 'overview'; }
+  });
   const reduce = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
   const data = useSeoOverview();
@@ -57,10 +61,15 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={view} {...motionProps}>
           {view === 'overview' && (
-            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} go={go} setTick={data.setTick} onRetry={data.reload} />
+            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} />
           )}
           {view === 'setup' && <SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} />}
-          {view === 'profile' && <BusinessAuditCard />}
+          {view === 'profile' && (
+            <div className="flex flex-col gap-4">
+              <GbpCard />
+              <BusinessAuditCard />
+            </div>
+          )}
           {view === 'reviews' && <ReviewsCard />}
           {view === 'content' && <ContentPlanCard />}
           {view === 'leads' && (

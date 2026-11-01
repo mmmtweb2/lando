@@ -10,6 +10,7 @@ import { trackExternalEvent, trackPreflight } from '../controllers/seoTrack.cont
 import { cancel as cancelSub, getStatus as subStatus, start as startSub, subscriptionReturn, subscriptionWebhook } from '../controllers/seoSubscription.controller';
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
+import * as gbp from '../controllers/gbp.controller';
 
 const router = Router();
 
@@ -63,5 +64,15 @@ router.delete('/businesses/:id/child-pages/:pageId', ...gated, removeChildPage);
 // One-time setup checklist ticks (dashboard v2.1, migration 032).
 router.get('/setup', ...gated, getSetup);
 router.put('/setup/:key', ...gated, putSetup);
+
+// Google Business Profile connection (Stage 6.3, migration 033). Off unless GBP_CONNECT_ENABLED=true.
+// The callback is public (Google redirects the browser to it) and trusts only the signed state.
+const gbpLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/gbp/status', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.status);
+router.get('/gbp/oauth/start', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.start);
+router.get('/gbp/oauth/callback', gbpLimiter, gbp.callback);
+router.post('/gbp/disconnect', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.disconnect);
+router.get('/gbp/stats', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.stats);
+router.put('/gbp/location', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.chooseLocation);
 
 export default router;

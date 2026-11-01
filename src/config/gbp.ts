@@ -117,3 +117,20 @@ export function gbpConfigStatus(env: Env = process.env): GbpConfigStatus {
 
   return { checks, redirectUri: redirect, ready: checks.every((c) => c.level === 'ok' || c.level === 'warn') };
 }
+
+/** The customer-facing "connect Google" feature. Off unless the settings are valid AND the switch is on:
+ *  while the Google app is in testing mode only listed test users can sign in, so customers must not see it. */
+export function gbpConnectEnabled(env: Env = process.env): boolean {
+  return env.GBP_CONNECT_ENABLED === 'true' && gbpConfigStatus(env).ready;
+}
+
+export interface GbpOAuthCfg { clientId: string; clientSecret: string; redirectUri: string; key: Buffer }
+
+/** Everything the OAuth flow needs, or null when the feature is off or misconfigured. */
+export function gbpOAuthConfig(env: Env = process.env): GbpOAuthCfg | null {
+  if (!gbpConnectEnabled(env)) return null;
+  const key = gbpEncryptionKey(env);
+  const redirectUri = gbpRedirectUri(env);
+  if (!key || !redirectUri || !env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) return null;
+  return { clientId: env.GOOGLE_OAUTH_CLIENT_ID, clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET, redirectUri, key };
+}

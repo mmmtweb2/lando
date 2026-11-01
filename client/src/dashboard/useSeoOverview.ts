@@ -23,6 +23,8 @@ export interface SeoOverview {
   items: LeadFeedItem[];
   /** false = ticks live only in this browser (server table missing) */
   ticksOnServer: boolean;
+  /** the Google Business Profile connection is switched on for this deployment */
+  gbpEnabled: boolean;
   setTick: (key: string, done: boolean) => Promise<void>;
   reload: () => void;
 }
@@ -47,17 +49,18 @@ export function useSeoOverview(): SeoOverview {
   const [tick, setTick] = useState(0);
   const onServer = useRef(true);
   const [state, setState] = useState<Omit<SeoOverview, 'reload' | 'setTick'>>({
-    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true,
+    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true, gbpEnabled: false,
     input: { loaded: false, businessName: null, hasBusiness: false, contentCount: 0, monthLeads: 0, subscriptionStatus: null, ticks: [] },
   });
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [biz, leads, sub, setup] = await Promise.all([
+      const [biz, leads, sub, gbp, setup] = await Promise.all([
         json<{ businesses?: { id: string; name: string }[] }>('/api/seo/businesses'),
         json<{ items?: LeadFeedItem[]; summary?: LeadsSummary }>('/api/landing/my-leads'),
         json<{ subscription?: { status: 'active' | 'past_due' | 'canceled' } | null }>('/api/seo/subscription'),
+        json<{ enabled?: boolean }>('/api/seo/gbp/status'),
         authFetch('/api/seo/setup').then(async (r) => ({ status: r.status, body: r.ok ? ((await r.json()) as { steps?: string[] }) : null })).catch(() => ({ status: 0, body: null })),
       ]);
       const first = biz?.businesses?.[0] ?? null;
@@ -80,6 +83,7 @@ export function useSeoOverview(): SeoOverview {
         summary,
         items: leads?.items ?? [],
         ticksOnServer: server,
+        gbpEnabled: gbp?.enabled === true,
         input: {
           loaded: true,
           businessName: first?.name ?? null,

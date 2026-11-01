@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowLeft, Check as CheckIcon, FileText, Inbox, Mail, MessageCircle, Phone, Search, Star } from 'lucide-react';
+import { ArrowLeft, BarChart3, Check as CheckIcon, FileText, Inbox, Mail, MessageCircle, Phone, Search, Star } from 'lucide-react';
 import { LandoBot } from '../components/Lando';
 import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
@@ -15,6 +15,7 @@ interface Props {
   loading: boolean;
   failed: boolean;
   ticksOnServer: boolean;
+  gbpEnabled: boolean;
   go: (v: View) => void;
   setTick: (key: string, done: boolean) => Promise<void>;
   onRetry: () => void;
@@ -198,8 +199,15 @@ function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: n
   );
 }
 
-function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary' | 'go'>) {
+const GBP_ACTION: Action = {
+  icon: <BarChart3 size={20} />, title: 'הנתונים של הפרופיל בגוגל', who: 'we', view: 'profile', cta: 'לצפייה',
+  body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מהפרופיל ב-30 הימים האחרונים.',
+};
+
+function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go'>) {
   const next = deriveOngoingNext(input);
+  const actions = gbpEnabled ? [GBP_ACTION, ...ACTIONS] : ACTIONS;
+  const soon = gbpEnabled ? SOON.filter((s) => s.title !== 'סטטיסטיקות פרופיל מגוגל') : SOON;
   return (
     <div className="flex flex-col gap-6">
       <section className="dv2-hero p-5 sm:p-6" aria-labelledby="dv2-month">
@@ -244,7 +252,7 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
       <section aria-labelledby="dv2-actions">
         <SectionTitle id="dv2-actions" title="מה אפשר לעשות" hint="פעולות קבועות שמשפרות את המקום שלכם בגוגל." />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {ACTIONS.map((a) => (
+          {actions.map((a) => (
             <li key={a.title} className="dv2-card-flat flex flex-col p-4">
               <div className="flex items-start justify-between gap-2">
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--tint)] text-[var(--accent-strong)]" aria-hidden>{a.icon}</span>
@@ -261,7 +269,7 @@ function OngoingOverview({ input, summary, go }: Pick<Props, 'input' | 'summary'
       <section aria-labelledby="dv2-soon">
         <SectionTitle id="dv2-soon" title="בדרך אליכם" />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {SOON.map((f) => (
+          {soon.map((f) => (
             <li key={f.title} className="dv2-card-flat p-4">
               <div className="flex justify-end"><SoonChip /></div>
               <h3 className="mt-1 text-[15px] font-bold text-[var(--ink)]">{f.title}</h3>
@@ -292,7 +300,7 @@ export function SetupArchive({ input, go, setTick, ticksOnServer }: Pick<Props, 
   );
 }
 
-export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, go, setTick, onRetry }: Props) {
+export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, gbpEnabled, go, setTick, onRetry }: Props) {
   if (loading && !input.loaded) return <OverviewSkeleton />;
   if (failed) {
     return (
@@ -304,6 +312,6 @@ export default function Overview({ input, summary, phase, loading, failed, ticks
     );
   }
   if (phase === 'welcome') return <Welcome setTick={setTick} />;
-  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} go={go} />;
+  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} gbpEnabled={gbpEnabled} go={go} />;
   return <SetupOverview input={input} go={go} setTick={setTick} ticksOnServer={ticksOnServer} />;
 }
