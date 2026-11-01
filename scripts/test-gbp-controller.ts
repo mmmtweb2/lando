@@ -53,6 +53,16 @@ const cfg = gbpOAuthConfig()!;
   r = res(); await gbp.stats(req('a@x.co'), r); assert.equal(r.code, 503);
   process.env.GBP_CONNECT_ENABLED = 'true';
 
+  // allow-list: only listed accounts are offered the feature while the Google app is in testing mode
+  process.env.GBP_CONNECT_ALLOWED_EMAILS = 'Owner@x.co, other@x.co';
+  r = res(); await gbp.status(req('a@x.co'), r); assert.equal(r.body.enabled, false, 'not on the list');
+  r = res(); await gbp.start(req('a@x.co'), r); assert.equal(r.code, 503);
+  r = res(); await gbp.stats(req('a@x.co'), r); assert.equal(r.code, 503);
+  r = res(); await gbp.status(req('owner@x.co'), r); assert.equal(r.body.enabled, true, 'listed (case-insensitive)');
+  r = res(); await gbp.start(req('owner@x.co'), r); assert.equal(r.code, 200);
+  r = res(); await gbp.callback(req(undefined, { query: { code: 'C', state: signState('a@x.co', gbpOAuthConfig()!.key) } }), r); assert.match(r.redirected, /gbp=error$/, 'state of an unlisted account is refused');
+  delete process.env.GBP_CONNECT_ALLOWED_EMAILS;
+
   // auth required
   r = res(); await gbp.start(req(undefined), r); assert.equal(r.code, 401);
   r = res(); await gbp.stats(req(undefined), r); assert.equal(r.code, 401);

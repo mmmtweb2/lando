@@ -134,3 +134,12 @@ export function gbpOAuthConfig(env: Env = process.env): GbpOAuthCfg | null {
   if (!key || !redirectUri || !env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) return null;
   return { clientId: env.GOOGLE_OAUTH_CLIENT_ID, clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET, redirectUri, key };
 }
+
+/**
+ * While the Google app is in testing mode only listed test users can sign in. GBP_CONNECT_ALLOWED_EMAILS
+ * (comma separated Pagey account emails) limits who is offered the feature; empty = everyone.
+ */
+export function gbpAllowedFor(email: string, env: Env = process.env): boolean {
+  const list = (env.GBP_CONNECT_ALLOWED_EMAILS ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  return list.length === 0 || list.includes(email.trim().toLowerCase());
+}

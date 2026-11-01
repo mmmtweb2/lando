@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { gbpConnectEnabled, gbpOAuthConfig } from '../config/gbp';
+import { gbpAllowedFor, gbpConnectEnabled, gbpOAuthConfig } from '../config/gbp';
 import { decryptToken, encryptToken, signState, verifyState } from '../services/gbpCrypto';
 import {
   GbpError, accessTokenFrom, authUrl, exchangeCode, fetchTotals, listLocations, pickLocation, revokeToken,
@@ -27,7 +27,7 @@ function fail(res: Response, e: unknown): void {
 export async function status(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { needAuth(res); return; }
-  const enabled = gbpConnectEnabled();
+  const enabled = gbpConnectEnabled() && gbpAllowedFor(email);
   if (!enabled) { res.json({ enabled: false, connected: false, needsReconnect: false }); return; }
   try {
     const c = await getConnection(email);
@@ -40,7 +40,7 @@ export async function start(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { needAuth(res); return; }
   const cfg = gbpOAuthConfig();
-  if (!cfg) { disabled(res); return; }
+  if (!cfg || !gbpAllowedFor(email)) { disabled(res); return; }
   res.json({ url: authUrl(cfg, signState(email, cfg.key)) });
 }
 
@@ -52,7 +52,7 @@ export async function callback(req: Request, res: Response): Promise<void> {
   if (typeof req.query.error === 'string') { to('denied'); return; }
   const st = verifyState(req.query.state, cfg.key);
   const code = typeof req.query.code === 'string' ? req.query.code : '';
-  if (!st || !code || code.length > 2000) { to('error'); return; }
+  if (!st || !code || code.length > 2000 || !gbpAllowedFor(st.email)) { to('error'); return; }
   try {
     const { refreshToken, scope } = await exchangeCode(code, cfg);
     await saveConnection(st.email, encryptToken(refreshToken, cfg.key), scope);
@@ -81,7 +81,7 @@ export async function stats(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { needAuth(res); return; }
   const cfg = gbpOAuthConfig();
-  if (!cfg) { disabled(res); return; }
+  if (!cfg || !gbpAllowedFor(email)) { disabled(res); return; }
   try {
     const c = await getConnection(email);
     if (!c) { res.status(409).json({ error: 'החשבון עדיין לא מחובר.', code: 'not_connected' }); return; }
@@ -114,7 +114,7 @@ export async function chooseLocation(req: Request, res: Response): Promise<void>
   const email = req.authEmail;
   if (!email) { needAuth(res); return; }
   const cfg = gbpOAuthConfig();
-  if (!cfg) { disabled(res); return; }
+  if (!cfg || !gbpAllowedFor(email)) { disabled(res); return; }
   const want = (req.body as { location?: unknown } | undefined)?.location;
   if (typeof want !== 'string') { res.status(400).json({ error: 'בקשה לא תקינה.' }); return; }
   try {
