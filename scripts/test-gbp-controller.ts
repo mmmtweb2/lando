@@ -127,6 +127,10 @@ const cfg = gbpOAuthConfig()!;
   google = (url) => url.includes('oauth2.googleapis.com/token') ? J(200, { access_token: 'AT' }) : J(503, {});
   r = res(); await gbp.stats(req('a@x.co'), r); assert.equal(r.code, 502); assert.equal(conns[0].status, 'active');
 
+  // quota not yet granted (429) -> 503 quota_pending, connection stays active
+  google = (url) => url.includes('oauth2.googleapis.com/token') ? J(200, { access_token: 'AT' }) : J(429, { error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded' } });
+  r = res(); await gbp.stats(req('a@x.co'), r); assert.equal(r.code, 503); assert.equal(r.body.code, 'quota_pending'); assert.equal(conns[0].status, 'active');
+
   // disconnect deletes (and revokes best effort)
   let revoked = false; google = (url) => { if (url.includes('/revoke')) revoked = true; return J(200, {}); };
   r = res(); await gbp.disconnect(req('a@x.co'), r); assert.equal(r.code, 200); assert.equal(conns.length, 0); assert.equal(revoked, true);

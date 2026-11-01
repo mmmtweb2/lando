@@ -10,7 +10,8 @@ type Stats =
   | { kind: 'ok'; title: string; totals: Totals }
   | { kind: 'choose'; locations: { name: string; title: string }[] }
   | { kind: 'reconnect' }
-  | { kind: 'error'; detail: string };
+  | { kind: 'error'; detail: string }
+  | { kind: 'quota' };
 
 const RETURN_MSG: Record<string, string> = {
   ok: 'החשבון חובר. עוד רגע נציג את הנתונים.',
@@ -43,6 +44,7 @@ export default function GbpCard() {
       const r = await authFetch('/api/seo/gbp/stats');
       const b = await r.json().catch(() => ({}));
       if (r.status === 409) setStats({ kind: 'reconnect' });
+      else if (b.code === 'quota_pending') setStats({ kind: 'quota' });
       else if (!r.ok) setStats({ kind: 'error', detail: typeof b.detail === 'string' ? b.detail : '' });
       else if (b.needsChoice) setStats({ kind: 'choose', locations: b.locations ?? [] });
       else setStats({ kind: 'ok', title: b.location?.title ?? '', totals: b.totals });
@@ -120,6 +122,9 @@ export default function GbpCard() {
           <p className="mt-1 text-sm text-[var(--muted)]">החיבור לגוגל פג או בוטל. כדי לראות נתונים צריך להתחבר מחדש.</p>
           {connectBtn('חיבור מחדש')}
         </>
+      )}
+      {stats?.kind === 'quota' && (
+        <p className="mt-1 text-sm text-[var(--muted)]">החשבון חובר בהצלחה. הנתונים יופיעו ברגע שגוגל תאשר לנו גישה לממשק הנתונים שלה. אנחנו מטפלים בזה, אין צורך לעשות כלום.</p>
       )}
       {stats?.kind === 'error' && (
         <>
