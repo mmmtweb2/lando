@@ -10,7 +10,7 @@ type Stats =
   | { kind: 'ok'; title: string; totals: Totals }
   | { kind: 'choose'; locations: { name: string; title: string }[] }
   | { kind: 'reconnect' }
-  | { kind: 'error' };
+  | { kind: 'error'; detail: string };
 
 const RETURN_MSG: Record<string, string> = {
   ok: 'החשבון חובר. עוד רגע נציג את הנתונים.',
@@ -43,10 +43,10 @@ export default function GbpCard() {
       const r = await authFetch('/api/seo/gbp/stats');
       const b = await r.json().catch(() => ({}));
       if (r.status === 409) setStats({ kind: 'reconnect' });
-      else if (!r.ok) setStats({ kind: 'error' });
+      else if (!r.ok) setStats({ kind: 'error', detail: typeof b.detail === 'string' ? b.detail : '' });
       else if (b.needsChoice) setStats({ kind: 'choose', locations: b.locations ?? [] });
       else setStats({ kind: 'ok', title: b.location?.title ?? '', totals: b.totals });
-    } catch { setStats({ kind: 'error' }); }
+    } catch { setStats({ kind: 'error', detail: '' }); }
   }, []);
 
   const loadStatus = useCallback(async () => {
@@ -124,6 +124,7 @@ export default function GbpCard() {
       {stats?.kind === 'error' && (
         <>
           <p className="mt-1 text-sm text-[var(--muted)]">לא הצלחנו לקרוא את הנתונים מגוגל כרגע.</p>
+          {stats.detail && <p className="mt-1 break-words text-xs text-[var(--muted)]" dir="ltr">{stats.detail}</p>}
           <button type="button" className="dv2-btn-ghost mt-3" onClick={loadStats}>נסו שוב</button>
         </>
       )}

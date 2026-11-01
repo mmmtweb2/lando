@@ -62,11 +62,15 @@ export async function revokeToken(token: string, f: Fetch = fetch): Promise<void
   } catch { /* ignore */ }
 }
 
-async function getJson(url: string, access: string, f: Fetch): Promise<Record<string, any>> {
+async function getJson(url: string, access: string, f: Fetch, step = 'google'): Promise<Record<string, any>> {
   const r = await f(url, { headers: { authorization: `Bearer ${access}` } });
   const body = (await r.json().catch(() => ({}))) as Record<string, any>;
   if (r.status === 401) throw new GbpError('revoked');
-  if (!r.ok) throw new GbpError('google', `http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}`);
+  if (!r.ok) {
+    // Google's own short reason (no tokens or secrets in it) so an operator can see what to fix.
+    const why = typeof body?.error?.message === 'string' ? ':' + body.error.message.replace(/\s+/g, ' ').slice(0, 160) : '';
+    throw new GbpError('google', `${step}:http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}${why}`);
+  }
   return body;
 }
 
@@ -74,11 +78,11 @@ export interface GbpLocation { name: string; title: string; placeId: string | nu
 
 /** All locations the signed-in Google user can read (first 100 per account, at most 5 accounts). */
 export async function listLocations(access: string, f: Fetch = fetch): Promise<GbpLocation[]> {
-  const accounts = await getJson('https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=20', access, f);
+  const accounts = await getJson('https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=20', access, f, 'accounts');
   const out: GbpLocation[] = [];
   for (const a of ((accounts.accounts ?? []) as { name?: string }[]).slice(0, 5)) {
     if (!a.name || !/^accounts\/[\w-]+$/.test(a.name)) continue;
-    const l = await getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata&pageSize=100`, access, f);
+    const l = await getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata&pageSize=100`, access, f, 'locations');
     for (const loc of (l.locations ?? []) as { name?: string; title?: string; metadata?: { placeId?: string } }[]) {
       if (loc.name && /^locations\/[\w-]+$/.test(loc.name)) out.push({ name: loc.name, title: loc.title ?? '', placeId: loc.metadata?.placeId ?? null });
     }
@@ -131,6 +135,6 @@ export async function fetchTotals(access: string, location: string, now: Date, f
   for (const m of METRICS) q.append('dailyMetrics', m);
   q.set('dailyRange.start_date.year', String(start.y)); q.set('dailyRange.start_date.month', String(start.m)); q.set('dailyRange.start_date.day', String(start.d));
   q.set('dailyRange.end_date.year', String(end.y)); q.set('dailyRange.end_date.month', String(end.m)); q.set('dailyRange.end_date.day', String(end.d));
-  const body = await getJson(`https://businessprofileperformance.googleapis.com/v1/${location}:fetchMultiDailyMetricsTimeSeries?${q.toString()}`, access, f);
+  const body = await getJson(`https://businessprofileperformance.googleapis.com/v1/${location}:fetchMultiDailyMetricsTimeSeries?${q.toString()}`, access, f, 'metrics');
   return { totals: sumSeries(body), days: 30 };
 }

@@ -100,7 +100,7 @@ const mk = (handler: (url: string) => Response): typeof fetch => (async (url: an
   assert.equal(q.searchParams.get('dailyRange.end_date.day'), '30');
   await assert.rejects(fetchTotals('AT', 'locations/1/../x', new Date(), mk(() => json(200, {}))));
   await assert.rejects(fetchTotals('AT', 'locations/1', new Date(), mk(() => json(401, {}))), (e: any) => e.code === 'revoked');
-  await assert.rejects(fetchTotals('AT', 'locations/1', new Date(), mk(() => json(403, { error: { status: 'PERMISSION_DENIED' } }))), (e: any) => e.message === 'http_403:PERMISSION_DENIED');
+  await assert.rejects(fetchTotals('AT', 'locations/1', new Date(), mk(() => json(403, { error: { status: 'PERMISSION_DENIED' } }))), (e: any) => e.message === 'metrics:http_403:PERMISSION_DENIED');
 
   // ---------- config switch ----------
   const good = {
