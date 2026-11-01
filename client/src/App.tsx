@@ -10,6 +10,7 @@ import type { UserProfile } from './context/UserContext';
 import Wizard          from './components/Wizard';
 import MarketingLanding from './pages/MarketingLanding';
 import PublicAudit from './pages/PublicAudit';
+import SeoPlan from './pages/SeoPlan';
 import LandingViewer   from './pages/LandingViewer';
 import AdminDashboard  from './pages/AdminDashboard';
 import Login           from './pages/Login';
@@ -202,6 +203,7 @@ export default function App() {
             {/* Public legal pages — linked from every footer, and referenced
                 from the checkout disclosures. Deliberately unauthenticated. */}
             <Route path="/audit"         element={<PublicAudit />} />
+            <Route path="/seo-plan"      element={<SeoPlan />} />
             <Route path="/privacy"       element={<Privacy />} />
             <Route path="/terms"         element={<Terms />} />
             <Route path="/accessibility" element={<Accessibility />} />

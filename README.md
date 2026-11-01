@@ -654,3 +654,8 @@ quota cap there.
 ### Update (Part 51b): v2 is now the default for everyone, calmer look
 - `client/src/dashboard/flag.ts`: dashboard v2 is on for every account. Escape hatch: `?dash=v1` (remembered per browser) shows the old dashboard; `?dash=v2` returns. Part 50's "admin only / opt-in" no longer applies.
 - Look softened after feedback ("too loud"): no hard shadows, thin 1px outlines, plain light surface, no highlighter or stamps, regular weights, a quiet blue meter. Same layout and logic.
+
+## Part 52 — `/seo-plan`: where a customer starts the monthly plan
+- New public route `/seo-plan` (`client/src/pages/SeoPlan.tsx`). Signed out: a sign-in/sign-up button (`/login?next=/seo-plan`; Login now honours a same-site `?next=` path, default stays `/dashboard`). Signed in: shows plan name and price from `GET /api/seo/subscription`, and "התחלת מנוי ומעבר לתשלום" calls `POST /api/seo/subscription/start` and redirects to SUMIT. Other states: plan not open yet, already subscribed, product already granted manually (no payment needed), failed payment (renew).
+- It cannot charge by itself; activation still happens only after the server verifies the payment with SUMIT.
+- **Testing a payment:** use an account that does NOT already hold the product by a manual grant, otherwise the server answers "already has access" by design.

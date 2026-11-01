@@ -8,6 +8,14 @@ import { trackEvent } from '../lib/analytics';
 type Mode = 'signin' | 'signup' | 'forgot';
 type InfoScreen = null | 'magic' | 'confirm' | 'reset';
 
+/** Where to go after signing in: ?next=/some/path (same site only), else the dashboard. */
+function nextPath(search: string): string {
+  try {
+    const n = new URLSearchParams(search).get('next') ?? '';
+    return /^\/[A-Za-z0-9/_-]*$/.test(n) && !n.startsWith('//') ? n : '/dashboard';
+  } catch { return '/dashboard'; }
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,12 +71,12 @@ export default function Login() {
           return;
         }
         // If email confirmation is OFF, a session is returned → straight in.
-        if (data.session) navigate('/dashboard', { replace: true });
+        if (data.session) navigate(nextPath(location.search), { replace: true });
         else setInfo('confirm');
       } else {
         const { error: signErr } = await supabase.auth.signInWithPassword({ email: trimmed, password });
         if (signErr) throw signErr;
-        navigate('/dashboard', { replace: true });
+        navigate(nextPath(location.search), { replace: true });
       }
     } catch (err) {
       setError(translateAuthError(err));
