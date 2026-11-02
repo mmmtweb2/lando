@@ -10,7 +10,7 @@ export function unsubscribePage(req: Request, res: Response): void {
   res.setHeader('Cache-Control', 'no-store');
   const t = typeof req.query.t === 'string' ? req.query.t : '';
   if (!verifyUnsub(t)) { res.status(400).send(page('קישור לא תקין', '<h2>הקישור לא תקין</h2><p>אפשר להיכנס לדשבורד ולפנות אלינו מכל מקום באתר.</p>')); return; }
-  res.send(page('הפסקת הסיכום החודשי', `<h2>להפסיק לקבל את הסיכום החודשי?</h2><form method="post" action="/api/seo/digest/unsubscribe?t=${encodeURIComponent(t)}"><button type="submit">כן, להפסיק</button></form>`));
+  res.send(page('הפסקת סיכומים והתראות', `<h2>להפסיק לקבל סיכומים והתראות במייל?</h2><form method="post" action="/api/seo/digest/unsubscribe?t=${encodeURIComponent(t)}"><button type="submit">כן, להפסיק</button></form>`));
 }
 
 /** POST /api/seo/digest/unsubscribe?t=… — the button above, and mail clients' one-click unsubscribe. */

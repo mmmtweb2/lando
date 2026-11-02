@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import BusinessAuditCard from '../components/BusinessAuditCard';
 import ReviewsCard from '../components/ReviewsCard';
 import ReviewRequestsCard from '../components/ReviewRequestsCard';
+import ReviewDraftsCard from '../components/ReviewDraftsCard';
 import ContentPlanCard from '../components/ContentPlanCard';
 import ExternalSiteCard from '../components/ExternalSiteCard';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
@@ -75,6 +76,7 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
           {view === 'reviews' && (
             <div className="flex flex-col gap-4">
               <ReviewsCard />
+              <ReviewDraftsCard />
               <ReviewRequestsCard />
             </div>
           )}

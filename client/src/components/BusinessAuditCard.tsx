@@ -6,7 +6,8 @@ import NoProfileGuide from './NoProfileGuide';
 import AuditLeadForm from './AuditLeadForm';
 import ConciergeButton from './ConciergeButton';
 import { SnapshotButton } from './AuditSnapshot';
-import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit } from '../lib/auditShared';
+import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit, type AiReadiness, type CategoryCheck } from '../lib/auditShared';
+import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
 
 // Stage 5.5.2 — find the customer's business on Google Maps and show a live Audit.
@@ -32,6 +33,8 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
   const [searching, setSearching] = useState(false);
   const [auditing, setAuditing] = useState(false);
   const [audit, setAudit] = useState<Audit | null>(null);
+  const [aiReadiness, setAiReadiness] = useState<AiReadiness | null>(null);
+  const [categoryCheck, setCategoryCheck] = useState<CategoryCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noProfile, setNoProfile] = useState(false);
   const [saved, setSaved] = useState<SavedBusiness[]>([]);
@@ -98,6 +101,8 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
     setQuery(name);
     setSuggestions([]);
     setAudit(null);
+    setAiReadiness(null);
+    setCategoryCheck(null);
     setError(null);
     setSaveMsg(null);
     setNoProfile(false);
@@ -108,6 +113,9 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
       setAudit(body.audit as Audit);
+      setAiReadiness((body.aiReadiness ?? null) as AiReadiness | null);
+      if (body.aiReadiness?.status === 'ok') trackEvent('AI_Readiness_Viewed', { mode, passed: (body.aiReadiness.checks as Array<{ state: string }>).filter(c => c.state === 'pass').length });
+      setCategoryCheck((body.categoryCheck ?? null) as CategoryCheck | null);
       sessionRef.current = newSessionToken(); // a new search session starts after a selection
     } catch {
       setError('הבדיקה נכשלה. בדקו את החיבור ונסו שוב.');
@@ -275,6 +283,12 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
               : 'לא מצאנו מספיק עסקים דומים באזור להשוואה, ולכן הציון נמדד מול יעדים כלליים.'}
           </p>
 
+          {categoryCheck && (
+            <p className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${categoryCheck.status === 'same' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+              {categoryCheck.line}
+            </p>
+          )}
+
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-slate-900">מה בדקנו, מי עושה מה</p>
             <ul className="flex flex-col gap-2">
@@ -307,6 +321,8 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
               ))}
             </ul>
           </div>
+
+          {aiReadiness && <AiReadinessBlock data={aiReadiness} />}
 
           <p className="text-[11px] text-slate-400">
             מקור הנתונים: Google Maps.{' '}

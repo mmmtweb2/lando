@@ -66,7 +66,7 @@ const mk = (handler: (url: string) => Response): typeof fetch => (async (url: an
     if (url.includes('mybusinessaccountmanagement')) return json(200, { accounts: [{ name: 'accounts/111' }, { name: '../evil' }] });
     return json(200, { locations: [{ name: 'locations/1', title: 'שרברב דני', metadata: { placeId: 'ChIJa' } }, { name: 'bad', title: 'x' }, { name: 'locations/2', title: 'סניף' }] });
   }));
-  assert.deepEqual(locs, [{ name: 'locations/1', title: 'שרברב דני', placeId: 'ChIJa' }, { name: 'locations/2', title: 'סניף', placeId: null }]);
+  assert.deepEqual(locs, [{ name: 'locations/1', title: 'שרברב דני', placeId: 'ChIJa', account: 'accounts/111' }, { name: 'locations/2', title: 'סניף', placeId: null, account: 'accounts/111' }]);
   assert.ok(seen.every((s) => (s.init?.headers as any).authorization === 'Bearer AT'));
   assert.ok(seen.some((s) => s.url.includes('/accounts/111/locations?readMask=name,title,metadata')));
   assert.equal(seen.filter((s) => s.url.includes('evil')).length, 0, 'malformed account names are skipped');

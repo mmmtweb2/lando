@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import {
-  PlacesError, auditPlace, autocompleteBusinesses, isValidPlaceId, placesConfigured,
+  PlacesError, auditPlaceFull, autocompleteBusinesses, isValidPlaceId, placesConfigured,
 } from '../services/places.service';
+import { checkAiReadiness } from '../services/aiReadiness';
 import { Take, publicAuditDailyCap, takeAudit, takeLead, takeSearch } from '../services/publicAuditGuard';
 import {
   AuditLeadError, CONSENT_TEXT, hashIp, listAuditLeads, saveAuditLead, validateLead,
@@ -20,6 +21,11 @@ export function conciergeNumber(): string | null {
 export function gtmContainerId(): string | null {
   const v = (process.env.GTM_CONTAINER_ID ?? '').trim();
   return /^GTM-[A-Z0-9]{4,12}$/.test(v) ? v : null;
+}
+
+/** AI-readiness website check on/off. On by default; AUDIT_AI_READINESS_ENABLED=false turns it off. */
+export function aiReadinessEnabled(): boolean {
+  return (process.env.AUDIT_AI_READINESS_ENABLED ?? '').trim().toLowerCase() !== 'false';
 }
 
 /** GET /api/public/config — what the public pages need to know. */
@@ -77,7 +83,12 @@ export async function publicAudit(req: Request, res: Response): Promise<void> {
   if (!placesConfigured()) { placesFail(res, new PlacesError('not_configured', '')); return; }
   if (blocked(takeAudit(), res)) return;
   try {
-    res.json({ audit: await auditPlace(placeId) });
+    const full = await auditPlaceFull(placeId);
+    // The website check is extra: any failure or timeout there must never fail the audit.
+    const aiReadiness = aiReadinessEnabled()
+      ? await checkAiReadiness(full.website).catch(() => null)
+      : null;
+    res.json({ audit: full.audit, aiReadiness, categoryCheck: full.category });
   } catch (e) { placesFail(res, e); }
 }
 

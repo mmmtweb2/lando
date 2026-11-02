@@ -7,6 +7,7 @@ import { supabase } from './config/supabase';
 import { startRenewalSweep } from './services/renewal.service';
 import { startSubscriptionSweep } from './services/seoSubscription.service';
 import { startDigestSweep } from './services/digest.service';
+import { startReviewAlertSweep } from './services/reviewAlerts.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -31,6 +32,7 @@ async function start() {
   startSubscriptionSweep();
   // Monthly summary email to customers. No-op unless MONTHLY_DIGEST_ENABLED=true (+ DIGEST_SECRET).
   startDigestSweep();
+  startReviewAlertSweep();
 }
 
 start().catch((err) => {

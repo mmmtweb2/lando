@@ -23,6 +23,10 @@ function Business({ b }: { b: Saved }) {
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [services, setServices] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [choosing, setChoosing] = useState<string | null>(null);
   const link = reviewUrl(b.google_place_id!);
 
   const load = useCallback(async () => {
@@ -34,6 +38,25 @@ function Business({ b }: { b: Saved }) {
     } catch { setItems([]); }
   }, [b.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`)
+      .then((r) => (r.ok ? r.json() : { services: [] }))
+      .then((x: { services?: string[] }) => setServices(x.services ?? []))
+      .catch(() => setServices([]));
+  }, [b.id]);
+
+  async function saveServices() {
+    const list = draft.split(/[\n,،]/).map((x) => x.trim()).filter(Boolean);
+    setErr('');
+    try {
+      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ services: list }),
+      });
+      const body = await r.json().catch(() => ({})) as { services?: string[]; error?: string };
+      if (!r.ok) { setErr(body.error ?? 'משהו השתבש. נסו שוב.'); return; }
+      setServices(body.services ?? []); setEditing(false);
+    } catch { setErr('משהו השתבש. נסו שוב.'); }
+  }
 
   async function call(path: string, init?: RequestInit): Promise<boolean> {
     setErr('');
@@ -53,9 +76,10 @@ function Business({ b }: { b: Saved }) {
     if (ok) { setName(''); setPhone(''); await load(); }
   }
 
-  async function send(i: Item) {
+  async function send(i: Item, service: string | null) {
     // Open WhatsApp first (a popup must start from the click), then remember that it was sent.
-    window.open(waLink(i.phone, requestText(i.next === 'followup' ? 'followup' : 'first', i.first_name, b.name, link)), '_blank', 'noopener,noreferrer');
+    setChoosing(null);
+    window.open(waLink(i.phone, requestText(i.next === 'followup' ? 'followup' : 'first', i.first_name, b.name, link, service)), '_blank', 'noopener,noreferrer');
     if (await call(`/api/seo/review-requests/${i.id}/sent`, { method: 'POST' })) await load();
   }
 
@@ -74,6 +98,27 @@ function Business({ b }: { b: Saved }) {
         <button type="submit" disabled={busy || !name.trim() || !phone.trim()}
           className="min-h-[40px] rounded-lg bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-50">הוספה</button>
       </form>
+      <div className="text-xs text-slate-500">
+        {!editing ? (
+          <p>
+            {services.length > 0 ? <>השירותים שלכם: {services.join(' · ')}. </> : 'אפשר להוסיף את רשימת השירותים שלכם, והודעת הבקשה תציין איזה שירות הלקוח קיבל. '}
+            <button type="button" onClick={() => { setDraft(services.join(', ')); setEditing(true); }} className="underline hover:text-slate-700">
+              {services.length > 0 ? 'עריכה' : 'הוספת שירותים'}
+            </button>
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <label className="block">עד 8 שירותים, מופרדים בפסיק
+              <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={400} placeholder="ניקיון דירות, צביעה, תיקוני אינסטלציה"
+                className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800" />
+            </label>
+            <div className="flex gap-2">
+              <button type="button" onClick={saveServices} className="min-h-[36px] rounded-lg bg-slate-900 px-4 text-xs font-medium text-white">שמירה</button>
+              <button type="button" onClick={() => setEditing(false)} className="min-h-[36px] rounded-lg border border-slate-200 px-4 text-xs text-slate-600">ביטול</button>
+            </div>
+          </div>
+        )}
+      </div>
       {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
       {items && items.length > 0 && (
         <ul className="divide-y divide-slate-100">
@@ -85,7 +130,7 @@ function Business({ b }: { b: Saved }) {
               </div>
               <div className="flex items-center gap-1.5">
                 {(i.next === 'send' || i.next === 'followup') && (
-                  <button type="button" onClick={() => send(i)}
+                  <button type="button" onClick={() => (services.length > 0 ? setChoosing(choosing === i.id ? null : i.id) : void send(i, null))}
                     className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
                     <MessageCircle size={14} /> {i.next === 'followup' ? 'תזכורת בוואטסאפ' : 'שליחה בוואטסאפ'}
                   </button>
@@ -97,6 +142,19 @@ function Business({ b }: { b: Saved }) {
                 <button type="button" aria-label={`מחיקת ${i.first_name}`} onClick={async () => { if (await call(`/api/seo/review-requests/${i.id}`, { method: 'DELETE' })) await load(); }}
                   className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg text-slate-400 hover:text-red-600"><Trash2 size={15} /></button>
               </div>
+              {choosing === i.id && (
+                <div className="basis-full rounded-lg bg-slate-50 p-2.5">
+                  <p className="mb-1.5 text-xs text-slate-500">איזה שירות {i.first_name} קיבל/ה? ההודעה תציין אותו, והלקוח כותב את הביקורת בעצמו.</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {services.map((sv) => (
+                      <button key={sv} type="button" onClick={() => void send(i, sv)}
+                        className="min-h-[36px] rounded-full border border-slate-200 bg-white px-3 text-xs text-slate-700 hover:bg-slate-100">{sv}</button>
+                    ))}
+                    <button type="button" onClick={() => void send(i, null)}
+                      className="min-h-[36px] rounded-full border border-dashed border-slate-300 px-3 text-xs text-slate-500 hover:bg-slate-100">בלי לציין שירות</button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>

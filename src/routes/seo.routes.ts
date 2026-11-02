@@ -1,3 +1,5 @@
+import { dismissDraft, listDrafts, publishDraft } from '../controllers/reviewDrafts.controller';
+import { getBusinessServices, putBusinessServices } from '../controllers/businessServices.controller';
 import express, { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -64,6 +66,11 @@ router.post('/review-requests/:id/sent', rrLimiter, requireAuth, requireProduct(
 router.post('/review-requests/:id/reviewed', rrLimiter, requireAuth, requireProduct('seo_autopilot'), reviewedRequest);
 router.delete('/review-requests/:id', rrLimiter, requireAuth, requireProduct('seo_autopilot'), deleteRequest);
 
+router.get('/review-drafts', rrLimiter, requireAuth, requireProduct('seo_autopilot'), listDrafts);
+router.post('/review-drafts/:id/publish', rrLimiter, requireAuth, requireProduct('seo_autopilot'), publishDraft);
+router.post('/review-drafts/:id/dismiss', rrLimiter, requireAuth, requireProduct('seo_autopilot'), dismissDraft);
+router.get('/businesses/:id/services', rrLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinessServices);
+router.put('/businesses/:id/services', rrLimiter, requireAuth, requireProduct('seo_autopilot'), putBusinessServices);
 router.get('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinesses);
 router.post('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), saveBusiness);
 router.delete('/businesses/:id', placesLimiter, requireAuth, requireProduct('seo_autopilot'), deleteBusiness);

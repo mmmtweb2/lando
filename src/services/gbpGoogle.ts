@@ -74,7 +74,7 @@ async function getJson(url: string, access: string, f: Fetch, step = 'google'): 
   return body;
 }
 
-export interface GbpLocation { name: string; title: string; placeId: string | null }
+export interface GbpLocation { name: string; title: string; placeId: string | null; account?: string }
 
 /** All locations the signed-in Google user can read (first 100 per account, at most 5 accounts). */
 export async function listLocations(access: string, f: Fetch = fetch): Promise<GbpLocation[]> {
@@ -84,7 +84,7 @@ export async function listLocations(access: string, f: Fetch = fetch): Promise<G
     if (!a.name || !/^accounts\/[\w-]+$/.test(a.name)) continue;
     const l = await getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata&pageSize=100`, access, f, 'locations');
     for (const loc of (l.locations ?? []) as { name?: string; title?: string; metadata?: { placeId?: string } }[]) {
-      if (loc.name && /^locations\/[\w-]+$/.test(loc.name)) out.push({ name: loc.name, title: loc.title ?? '', placeId: loc.metadata?.placeId ?? null });
+      if (loc.name && /^locations\/[\w-]+$/.test(loc.name)) out.push({ name: loc.name, title: loc.title ?? '', placeId: loc.metadata?.placeId ?? null, account: a.name });
     }
   }
   return out;
@@ -137,4 +137,49 @@ export async function fetchTotals(access: string, location: string, now: Date, f
   q.set('dailyRange.end_date.year', String(end.y)); q.set('dailyRange.end_date.month', String(end.m)); q.set('dailyRange.end_date.day', String(end.d));
   const body = await getJson(`https://businessprofileperformance.googleapis.com/v1/${location}:fetchMultiDailyMetricsTimeSeries?${q.toString()}`, access, f, 'metrics');
   return { totals: sumSeries(body), days: 30 };
+}
+
+// ── Reviews (My Business API v4: the only API that lists reviews and posts replies) ──
+export interface GbpReview { id: string; rating: number; createdAt: string; reviewer: string | null; hasReply: boolean; text: string }
+const STARS: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+
+/** Google sends the star rating as a word and omits fields freely; anything unusable is skipped. */
+export function parseReviews(resp: any): GbpReview[] {
+  const out: GbpReview[] = [];
+  for (const r of (resp?.reviews ?? []) as any[]) {
+    const id = typeof r?.reviewId === 'string' ? r.reviewId : '';
+    const rating = STARS[String(r?.starRating)] ?? 0;
+    const createdAt = typeof r?.createTime === 'string' ? r.createTime : '';
+    if (!/^[\w-]{5,200}$/.test(id) || !rating || !createdAt || Number.isNaN(Date.parse(createdAt))) continue;
+    out.push({
+      id, rating, createdAt,
+      reviewer: r?.reviewer?.isAnonymous ? null : (typeof r?.reviewer?.displayName === 'string' ? r.reviewer.displayName : null),
+      hasReply: !!(r?.reviewReply && typeof r.reviewReply.comment === 'string' && r.reviewReply.comment.trim()),
+      text: typeof r?.comment === 'string' ? r.comment.slice(0, 1500) : '',
+    });
+  }
+  return out;
+}
+
+const ACCOUNT_RE = /^accounts\/[\w-]+$/;
+const LOCATION_RE = /^locations\/[\w-]+$/;
+
+/** Newest 50 reviews of a location. Fetched live; the caller keeps only what it needs. */
+export async function listReviews(access: string, account: string, location: string, f: Fetch = fetch): Promise<GbpReview[]> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  const body = await getJson(`https://mybusiness.googleapis.com/v4/${account}/${location}/reviews?pageSize=50&orderBy=updateTime%20desc`, access, f, 'reviews');
+  return parseReviews(body);
+}
+
+/** Publishes (or replaces) the owner's reply to one review. Called only after the owner approved the text. */
+export async function postReply(access: string, account: string, location: string, reviewId: string, comment: string, f: Fetch = fetch): Promise<void> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location) || !/^[\w-]{5,200}$/.test(reviewId)) throw new GbpError('google', 'bad_location');
+  const r = await f(`https://mybusiness.googleapis.com/v4/${account}/${location}/reviews/${reviewId}/reply`, {
+    method: 'PUT', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' }, body: JSON.stringify({ comment }),
+  });
+  if (r.status === 401) throw new GbpError('revoked');
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as Record<string, any>;
+    throw new GbpError('google', `reply:http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}`);
+  }
 }

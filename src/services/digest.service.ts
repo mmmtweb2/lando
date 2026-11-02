@@ -98,7 +98,7 @@ export function buildDigest(s: DigestStats, unsub: string): { subject: string; h
   const delta = deltaLine(s);
   const asks = s.reviewAsks === 0 ? 'לא נשלחו בקשות ביקורת.' : `נשלחו ${s.reviewAsks === 1 ? 'בקשת ביקורת אחת' : `${s.reviewAsks} בקשות ביקורת`}.`;
   const tip = suggestion(s);
-  const text = `סיכום ${s.prevLabel} ל${name}\n\n${inquiriesLine(s)}. ${delta}\n${asks}\n\nהצעד הבא: ${tip}\n\nלדשבורד: ${APP_URL}/dashboard\n\nלא רוצים לקבל את הסיכום? ${unsub}`;
+  const text = `סיכום ${s.prevLabel} ל${name}\n\n${inquiriesLine(s)}. ${delta}\n${asks}\n\nהצעד הבא: ${tip}\n\nלדשבורד: ${APP_URL}/dashboard\n\nלא רוצים לקבל סיכומים והתראות במייל? ${unsub}`;
   const html = `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1e293b;line-height:1.6">
   <h2 style="margin:0 0 4px;font-size:20px">סיכום ${esc(s.prevLabel)}: ${esc(name)}</h2>
   <p style="margin:0 0 16px;color:#64748b;font-size:14px">הקידום שלכם בגוגל, בקצרה.</p>
@@ -109,7 +109,7 @@ export function buildDigest(s: DigestStats, unsub: string): { subject: string; h
   <p style="margin:0 0 12px">${esc(asks)}</p>
   <p style="margin:0 0 16px"><b>הצעד הבא:</b> ${esc(tip)}</p>
   <p style="margin:0 0 24px"><a href="${esc(APP_URL)}/dashboard" style="background:#2E63F6;color:#fff;border-radius:8px;padding:10px 18px;text-decoration:none;font-weight:600;display:inline-block">לדשבורד</a></p>
-  <p style="color:#94a3b8;font-size:12px">קיבלתם את המייל כי יש לכם את מוצר הקידום ב-Pagey. <a href="${esc(unsub)}" style="color:#94a3b8">הפסקת קבלת הסיכום החודשי</a></p>
+  <p style="color:#94a3b8;font-size:12px">קיבלתם את המייל כי יש לכם את מוצר הקידום ב-Pagey. <a href="${esc(unsub)}" style="color:#94a3b8">הפסקת קבלת סיכומים והתראות במייל</a></p>
 </div>`;
   return { subject, html, text };
 }
