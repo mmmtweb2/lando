@@ -706,3 +706,10 @@ quota cap there.
 - **Run once:** `migrations/035_review_requests.sql`. Before it runs the card says the tool is not enabled yet (503).
 - **Endpoints** (gated by `seo_autopilot`): `GET/POST /api/seo/review-requests`, `POST /:id/sent`, `POST /:id/reviewed`, `DELETE /:id`.
 - **Tests:** `npx ts-node --transpile-only scripts/test-review-requests.ts`, `npx tsx scripts/test-review-msg.ts`; browser check at 375px with a mocked API (add, bad phone error, WhatsApp URL, status change).
+
+## Part 59 — "Powered by Pagey" under the reviews widget
+- **What it is:** a small line under the embeddable reviews widget: "בדיקה חינמית לפרופיל שלכם בגוגל: Powered by Pagey", linking to `/audit?utm_source=widget&utm_medium=reviews&utm_campaign=<first 8 chars of the business id>`. The Audit lead form already stores `utm_source` / `utm_campaign`, so `/admin` → "פניות מה-Audit" shows which business's widget brought each lead.
+- **Placement:** below the Google content box, never inside it (Places policy keeps our own content visually separate from Google's). Also on the fallback view, not on the "unavailable" view.
+- **No referral credits** are attached: credits were already abused through self-referral (see the referral notes above), so this is attribution only.
+- **Switch:** `WIDGET_CREDIT_ENABLED=false` hides it everywhere. Open decision: whether paying customers may remove it (today it is global).
+- **Test:** `scripts/test-reviews-widget.ts` (utm tags, placement, fallback, off switch, sanitized id).

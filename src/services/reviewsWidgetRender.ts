@@ -84,8 +84,26 @@ ul{list-style:none;margin:0;padding:0}
 .links{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin-top:4px}
 a{color:#2E63F6}
 .cta{display:inline-block;margin-top:8px;background:#2E63F6;color:#fff;border-radius:8px;padding:8px 14px;text-decoration:none;font-weight:600}
+.credit{margin:0 8px 8px;text-align:center;font-size:12px;color:#6b7280}.credit a{color:#6b7280}
 .foot{font-size:11px;color:#6b7280;margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px}
 `;
+
+const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
+
+/**
+ * "Powered by Pagey": a small link under the widget to the free Audit page, tagged with
+ * utm parameters so /admin shows which business's widget brought each lead (the Audit lead
+ * form already stores utm_source / utm_campaign). It lives OUTSIDE the Google content box on
+ * purpose (Places policy: our own content stays visually separate from Google's). No
+ * referral credits are attached (credits would reopen the self-referral abuse path).
+ * Off with WIDGET_CREDIT_ENABLED=false.
+ */
+export function creditHtml(businessId?: string): string {
+  if (process.env.WIDGET_CREDIT_ENABLED === 'false') return '';
+  const campaign = (businessId ?? '').replace(/[^a-f0-9]/gi, '').slice(0, 8) || 'widget';
+  const href = `${APP_URL}/audit?utm_source=widget&utm_medium=reviews&utm_campaign=${campaign}`;
+  return `<p class="credit">בדיקה חינמית לפרופיל שלכם בגוגל: <a href="${esc(href)}" target="_blank" rel="noopener">Powered by Pagey</a></p>`;
+}
 
 function shell(inner: string): string {
   return `<!doctype html>
@@ -95,7 +113,7 @@ function shell(inner: string): string {
 }
 
 /** Live view: Google content + required attribution, all in one visually separated container. */
-export function renderReviewsWidget(data: PlaceReviewsSnapshot, placeId: string): string {
+export function renderReviewsWidget(data: PlaceReviewsSnapshot, placeId: string, businessId?: string): string {
   const reviews = (data.reviews ?? []).slice(0, MAX_REVIEWS_SHOWN);
   const maps = safeHttps(data.googleMapsUri);
   const rating = typeof data.rating === 'number' ? data.rating : null;
@@ -107,16 +125,16 @@ export function renderReviewsWidget(data: PlaceReviewsSnapshot, placeId: string)
   ${reviews.length ? `<ul>${reviews.map(reviewHtml).join('')}</ul>` : `<p class="note">אין עדיין ביקורות להצגה.</p>`}
   <div><a class="cta" href="${esc(writeReviewUrl(placeId))}" target="_blank" rel="noopener noreferrer">כתבו ביקורת ב-Google</a>${maps ? ` <a href="${esc(maps)}" target="_blank" rel="noopener noreferrer">צפייה בכל הביקורות ב-Google Maps</a>` : ''}</div>
   <div class="foot">מוצגות עד ${MAX_REVIEWS_SHOWN} ביקורות, לפי הרלוונטיות שקבעה Google. Google אינה מאמתת ביקורות, ומסירה תוכן שזוהה כמזויף (<a href="${esc(POLICY_URL)}" target="_blank" rel="noopener noreferrer">מדיניות</a>).</div>
-</div>`);
+</div>${creditHtml(businessId)}`);
 }
 
 /**
  * No Google content at all (daily budget spent, or Google unreachable): only our own
  * "write a review" button, built from the stored place_id, plus a plain Maps link.
  */
-export function renderReviewsFallback(placeId: string): string {
+export function renderReviewsFallback(placeId: string, businessId?: string): string {
   return shell(`<div class="box"><p class="note">נהניתם? נשמח לביקורת.</p>
-  <a class="cta" href="${esc(writeReviewUrl(placeId))}" target="_blank" rel="noopener noreferrer">כתבו ביקורת ב-Google</a></div>`);
+  <a class="cta" href="${esc(writeReviewUrl(placeId))}" target="_blank" rel="noopener noreferrer">כתבו ביקורת ב-Google</a></div>${creditHtml(businessId)}`);
 }
 
 /** Business missing, not entitled, or widget disabled. Reveals nothing about why. */

@@ -59,6 +59,23 @@ assert.equal(safeHttps('http://x.co'), null);
 assert.equal(safeHttps('https://x.co/a')?.startsWith('https://x.co'), true);
 assert.equal(writeReviewUrl('A_b-1'), 'https://search.google.com/local/writereview?placeid=A_b-1');
 
+
+// "Powered by Pagey" credit: tagged link to the free Audit, outside the Google box, switchable
+import { creditHtml } from '../src/services/reviewsWidgetRender';
+const BID = '0f3a9c21-7b1e-4d55-9c3a-aaaaaaaaaaaa';
+const withCredit = renderReviewsWidget(data, PID, BID);
+assert.ok(withCredit.includes('utm_source=widget&amp;utm_medium=reviews&amp;utm_campaign=0f3a9c21'), 'utm tags carry the business prefix');
+assert.ok(withCredit.includes('/audit?'), 'links to the free audit');
+assert.ok(withCredit.indexOf('class="credit"') > withCredit.lastIndexOf('</div>\n'.trim()) - 1, 'credit is after the box');
+assert.ok(withCredit.indexOf('class="credit"') > withCredit.indexOf('class="foot"'), 'credit sits below the Google box, not inside it');
+assert.ok(renderReviewsFallback(PID, BID).includes('class="credit"'), 'fallback has it too');
+assert.ok(!renderReviewsUnavailable().includes('class="credit"'), 'unavailable page has none');
+assert.ok(!creditHtml("<script>").includes('<script>'), 'business id is sanitized');
+process.env.WIDGET_CREDIT_ENABLED = 'false';
+assert.equal(creditHtml(BID), '', 'can be switched off');
+assert.ok(!renderReviewsWidget(data, PID, BID).includes('class="credit"'));
+delete process.env.WIDGET_CREDIT_ENABLED;
+
 // ── controller: guards ──
 import { serveReviewsWidget, takeLiveFetch } from '../src/controllers/reviewsWidget.controller';
 import { supabase } from '../src/config/supabase';
