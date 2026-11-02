@@ -5,6 +5,7 @@ import { listCoupons, createCoupon, updateCoupon } from '../controllers/coupon.c
 import { listUsers, getRevenueStats, getSiteTraffic, getFunnelStats } from '../controllers/adminStats.controller';
 import { adminAuditLeads } from '../controllers/publicAudit.controller';
 import { adminGbpConfig } from '../controllers/gbpConfig.controller';
+import { adminListGrants, adminGrant, adminRevoke } from '../controllers/betaAccess.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
 
@@ -30,6 +31,10 @@ router.get('/funnel', requireAuth, requireAdmin, getFunnelStats);
 // Leads from the public Audit page (task #1, migration 031).
 router.get('/audit-leads', requireAuth, requireAdmin, adminAuditLeads);
 router.get('/gbp-config', requireAuth, requireAdmin, adminGbpConfig);
+// Free access to the Google-promotion product for testers (manual grants).
+router.get('/beta-access', requireAuth, requireAdmin, adminListGrants);
+router.post('/beta-access', requireAuth, requireAdmin, adminGrant);
+router.post('/beta-access/revoke', requireAuth, requireAdmin, adminRevoke);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for
 // context — these give an admin a way to inspect and resolve a payment stuck
