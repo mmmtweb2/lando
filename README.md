@@ -697,3 +697,12 @@ quota cap there.
 - **No personal data in events** (existing rule in `client/src/lib/track.ts`).
 - **Privacy policy:** section 11 now says measurement tools may load on the public pages after consent. **Needs a legal read before launch.**
 - **Test:** `NEXT_PUBLIC_SUPABASE_URL=http://localhost:1 SUPABASE_SERVICE_ROLE_KEY=fake npx tsx scripts/test-gtm.ts`; browser behavior was checked with Playwright (banner only with an id; accept loads, decline does not, remembered choice loads, `/privacy` and `/login` never load).
+
+## Part 58 — Stage 7: review requests (migration 035)
+- **What the customer gets:** in the dashboard's "ביקורות" view, a card "בקשות ביקורת מלקוחות": add a happy customer (first name + Israeli mobile), tap "שליחה בוואטסאפ", and WhatsApp opens with a ready personal message and the Google review link. After a week the same row offers one reminder. "כתב/ה ביקורת" and delete are one tap.
+- **Deliberate design:** Pagey sends nothing. Every message leaves from the owner's own WhatsApp, one person at a time. No provider, no bulk send, no consent flow needed on our side. Fully automatic sending would need a WhatsApp Business provider and proof of each customer's consent; that is a separate decision.
+- **Rules (enforced on the server):** at most one request and one reminder per person, a week apart; never a third message. 200 people per business. Same phone twice → 409. Israeli mobile numbers only (`05X…`), stored as `9725XXXXXXXX`. Only the owner of the business can read or change its rows.
+- **Data:** first name + phone only (migration 035, RLS enabled+forced, no policies). Deleting a person, a business or the account removes the rows. **Terms/Privacy should mention that owners may store their own customers' names and numbers here (Pagey as processor) — needs a legal read.**
+- **Run once:** `migrations/035_review_requests.sql`. Before it runs the card says the tool is not enabled yet (503).
+- **Endpoints** (gated by `seo_autopilot`): `GET/POST /api/seo/review-requests`, `POST /:id/sent`, `POST /:id/reviewed`, `DELETE /:id`.
+- **Tests:** `npx ts-node --transpile-only scripts/test-review-requests.ts`, `npx tsx scripts/test-review-msg.ts`; browser check at 375px with a mocked API (add, bad phone error, WhatsApp URL, status change).

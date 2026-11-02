@@ -12,6 +12,7 @@ import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
 import { sendFeedback } from '../controllers/feedback.controller';
+import { addRequest, deleteRequest, listRequests, reviewedRequest, sentRequest } from '../controllers/reviewRequests.controller';
 
 const router = Router();
 
@@ -47,6 +48,15 @@ router.get('/places/:placeId/audit', placesLimiter, requireAuth, placeAudit);
 // Tester/customer feedback (migration 034). Per-IP burst limit here, per-account daily cap in the service.
 const feedbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
 router.post('/feedback', feedbackLimiter, requireAuth, requireProduct('seo_autopilot'), sendFeedback);
+
+// Review requests (stage 7, migration 035): the owner's list of customers to ask for a review.
+// The owner sends each message from their own WhatsApp; nothing here sends anything.
+const rrLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/review-requests', rrLimiter, requireAuth, requireProduct('seo_autopilot'), listRequests);
+router.post('/review-requests', rrLimiter, requireAuth, requireProduct('seo_autopilot'), addRequest);
+router.post('/review-requests/:id/sent', rrLimiter, requireAuth, requireProduct('seo_autopilot'), sentRequest);
+router.post('/review-requests/:id/reviewed', rrLimiter, requireAuth, requireProduct('seo_autopilot'), reviewedRequest);
+router.delete('/review-requests/:id', rrLimiter, requireAuth, requireProduct('seo_autopilot'), deleteRequest);
 
 router.get('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinesses);
 router.post('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), saveBusiness);
