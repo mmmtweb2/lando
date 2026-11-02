@@ -7,6 +7,7 @@ import ContentPlanCard from '../components/ContentPlanCard';
 import ExternalSiteCard from '../components/ExternalSiteCard';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
 import GbpCard from '../components/GbpCard';
+import FeedbackBox from './FeedbackBox';
 import LeadsTable from '../components/LeadsTable';
 import Overview, { SetupArchive } from './Overview';
 import { useSeoOverview } from './useSeoOverview';
@@ -98,6 +99,7 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
           )}
         </motion.div>
       </AnimatePresence>
+      <FeedbackBox page={view} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { cancel as cancelSub, getStatus as subStatus, start as startSub, subscri
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
+import { sendFeedback } from '../controllers/feedback.controller';
 
 const router = Router();
 
@@ -43,6 +44,10 @@ router.post('/places/autocomplete', placesLimiter, requireAuth, placesAutocomple
 router.get('/places/:placeId/audit', placesLimiter, requireAuth, placeAudit);
 
 // Saved businesses belong to the paid product, so these ARE gated by requireProduct.
+// Tester/customer feedback (migration 034). Per-IP burst limit here, per-account daily cap in the service.
+const feedbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.post('/feedback', feedbackLimiter, requireAuth, requireProduct('seo_autopilot'), sendFeedback);
+
 router.get('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), getBusinesses);
 router.post('/businesses', placesLimiter, requireAuth, requireProduct('seo_autopilot'), saveBusiness);
 router.delete('/businesses/:id', placesLimiter, requireAuth, requireProduct('seo_autopilot'), deleteBusiness);

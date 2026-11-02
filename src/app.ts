@@ -10,6 +10,7 @@ import { serveSitemap } from './controllers/sitemap.controller';
 import { serveReviewsWidget } from './controllers/reviewsWidget.controller';
 import { serveTrackScript } from './controllers/seoTrack.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
+import { describeRequest, notifyOwner } from './services/alerts';
 
 const app = express();
 
@@ -33,6 +34,13 @@ if (!corsOrigin && isProd) {
 app.use(cors({ credentials: true, origin: corsOrigin ?? (isProd ? false : true) }));
 app.use(express.json());
 app.use(cookieParser());
+// Owner alert on any HTTP 500 (OFF unless ALERTS_ENABLED=true; see services/alerts.ts).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.on('finish', () => {
+    if (res.statusCode === 500) void notifyOwner(`שגיאת שרת 500: ${describeRequest(req.method, req.originalUrl)}`);
+  });
+  next();
+});
 app.use(supabaseSession);
 
 // OG tag injection for public landing pages — must be before static middleware
