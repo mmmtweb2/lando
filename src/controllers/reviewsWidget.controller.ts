@@ -59,14 +59,14 @@ export async function serveReviewsWidget(req: Request, res: Response): Promise<v
       send(res, 404, renderReviewsUnavailable());
       return;
     }
-    if (!takeLiveFetch(biz.id)) { send(res, 200, renderReviewsFallback(biz.google_place_id)); return; }
+    if (!takeLiveFetch(biz.id)) { send(res, 200, renderReviewsFallback(biz.google_place_id, biz.id)); return; }
     try {
       const data = await fetchPlaceReviews(biz.google_place_id);
-      send(res, 200, renderReviewsWidget(data, biz.google_place_id));
+      send(res, 200, renderReviewsWidget(data, biz.google_place_id, biz.id));
     } catch (e) {
       if (e instanceof PlacesError && e.code === 'not_configured') { send(res, 404, renderReviewsUnavailable()); return; }
       // Google unreachable / place gone: degrade to the button rather than break the customer's site.
-      send(res, 200, renderReviewsFallback(biz.google_place_id));
+      send(res, 200, renderReviewsFallback(biz.google_place_id, biz.id));
     }
   } catch (e) {
     console.error('[REVIEWS] widget failed:', e);
