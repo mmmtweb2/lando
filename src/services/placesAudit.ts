@@ -41,6 +41,17 @@ export interface PlaceSnapshot {
 
 export interface CompetitorSnapshot { id: string; rating?: number; userRatingCount?: number }
 
+/** A nearby business found for the category check. Only what the comparison needs; never stored. */
+export interface CategoryPeer { id: string; userRatingCount?: number; primaryType?: string; primaryTypeDisplayName?: { text?: string } }
+
+export interface CategoryComparison {
+  /** same → our primary category equals the leaders'; different → it does not. */
+  status: 'same' | 'different';
+  ours: string;
+  theirs: string;
+  line: string;
+}
+
 export interface Benchmark {
   /** Usable competitors the numbers are based on. */
   count: number;
@@ -265,5 +276,39 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
     benchmark,
     items,
     reviewsMissing,
+  };
+}
+
+/**
+ * "The competitors are defined as X and you as Y." Looks only at the TOP_N most-reviewed
+ * same-area businesses that carry our category among their types, and at their PRIMARY category.
+ * Any missing piece (our category, too few peers with a category) returns null: the block is skipped.
+ */
+export function compareCategory(
+  self: { id: string; primaryType?: string; primaryTypeDisplayName?: { text?: string } },
+  peers: CategoryPeer[],
+): CategoryComparison | null {
+  const ours = self.primaryTypeDisplayName?.text?.trim();
+  if (!self.primaryType || !ours) return null;
+  const leaders = peers
+    .filter(p => p.id !== self.id && p.primaryType && p.primaryTypeDisplayName?.text?.trim() && typeof p.userRatingCount === 'number')
+    .sort((a, b) => (b.userRatingCount as number) - (a.userRatingCount as number))
+    .slice(0, TOP_N);
+  if (leaders.length < 2) return null;
+  // Most common primary category among the leaders; a tie goes to the more-reviewed one.
+  const tally = new Map<string, { n: number; label: string; first: number }>();
+  leaders.forEach((p, i) => {
+    const t = p.primaryType as string;
+    const cur = tally.get(t) ?? { n: 0, label: (p.primaryTypeDisplayName?.text as string).trim(), first: i };
+    cur.n++;
+    tally.set(t, cur);
+  });
+  const [theirType, theirs] = [...tally.entries()].sort((a, b) => b[1].n - a[1].n || a[1].first - b[1].first)[0];
+  if (theirType === self.primaryType) {
+    return { status: 'same', ours, theirs: theirs.label, line: `הקטגוריה שלכם (${ours}) זהה לזו של המתחרים המובילים באזור.` };
+  }
+  return {
+    status: 'different', ours, theirs: theirs.label,
+    line: `המתחרים מוגדרים כ-${theirs.label} ואתם כ-${ours}. כדאי לבדוק שהקטגוריה שלכם מתאימה למה שלקוחות מחפשים.`,
   };
 }

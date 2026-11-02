@@ -6,7 +6,8 @@
 //   • Never logs the key or full upstream bodies.
 
 import {
-  buildAudit, buildBenchmark, type Benchmark, type BusinessAudit, type CompetitorSnapshot, type PlaceSnapshot,
+  buildAudit, buildBenchmark, compareCategory, type Benchmark, type BusinessAudit, type CategoryComparison,
+  type CategoryPeer, type CompetitorSnapshot, type PlaceSnapshot,
 } from './placesAudit';
 
 const BASE = 'https://places.googleapis.com/v1';
@@ -158,6 +159,65 @@ export async function fetchCompetitors(place: PlaceSnapshot): Promise<Competitor
     }),
   })) as { places?: CompetitorSnapshot[] };
   return json.places ?? [];
+}
+
+/** Category check on/off. On by default; AUDIT_CATEGORY_CHECK_ENABLED=false removes its Places call. */
+export function categoryCheckEnabled(): boolean {
+  return (process.env.AUDIT_CATEGORY_CHECK_ENABLED ?? '').trim().toLowerCase() !== 'false';
+}
+
+/**
+ * Most popular nearby businesses that carry our category among their types (not only as primary),
+ * so their PRIMARY category can differ from ours. The mask asks for userRatingCount (to find the most
+ * reviewed ones), which bills at the same Enterprise tier as the benchmark search: each public audit
+ * now makes TWO Nearby Search calls. AUDIT_CATEGORY_CHECK_ENABLED=false removes this one.
+ * Best effort: callers treat any failure as "no category line".
+ */
+export async function fetchCategoryPeers(place: PlaceSnapshot): Promise<CategoryPeer[]> {
+  const lat = place.location?.latitude;
+  const lng = place.location?.longitude;
+  if (!place.primaryType || typeof lat !== 'number' || typeof lng !== 'number') return [];
+  const json = (await call(`${BASE}/places:searchNearby`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey(),
+      'X-Goog-FieldMask': 'places.id,places.primaryType,places.primaryTypeDisplayName,places.userRatingCount',
+    },
+    body: JSON.stringify({
+      includedTypes: [place.primaryType],
+      maxResultCount: 8,
+      rankPreference: 'POPULARITY',
+      languageCode: 'he',
+      regionCode: 'IL',
+      locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: COMPETITOR_RADIUS_M } },
+    }),
+  })) as { places?: CategoryPeer[] };
+  return json.places ?? [];
+}
+
+export interface FullAudit { audit: BusinessAudit; website: string | null; category: CategoryComparison | null }
+
+/**
+ * The public Audit: the same audit the dashboard computes, plus the pieces only the public page
+ * shows (website for the AI-readiness check, category comparison). The nearby searches run in parallel.
+ */
+export async function auditPlaceFull(placeId: string): Promise<FullAudit> {
+  const place = await fetchPlace(placeId);
+  const [benchmark, category] = await Promise.all([
+    fetchCompetitors(place).then(c => buildBenchmark(place.id, c)).catch((e): Benchmark | null => {
+      if (e instanceof PlacesError && e.code === 'not_configured') throw e;
+      console.error('[PLACES] benchmark unavailable, using fixed targets');
+      return null;
+    }),
+    (categoryCheckEnabled() ? fetchCategoryPeers(place).then(p => compareCategory(place, p)) : Promise.resolve(null))
+      .catch((e): CategoryComparison | null => {
+        if (e instanceof PlacesError && e.code === 'not_configured') throw e;
+        console.error('[PLACES] category check unavailable');
+        return null;
+      }),
+  ]);
+  return { audit: buildAudit(place, benchmark), website: place.websiteUri ?? null, category };
 }
 
 export async function auditPlace(placeId: string): Promise<BusinessAudit> {

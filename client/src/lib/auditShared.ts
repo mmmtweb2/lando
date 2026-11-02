@@ -15,6 +15,12 @@ export interface Audit {
   score: number; items: AuditItem[]; photosCapped: boolean; benchmark: Benchmark | null;
 }
 
+export interface ReadinessCheck {
+  key: string; label: string; state: 'pass' | 'fail' | 'unknown'; detail: string; fix: string;
+}
+export interface AiReadiness { status: 'ok' | 'no_website' | 'unreachable'; host: string | null; checks: ReadinessCheck[] }
+export interface CategoryCheck { status: 'same' | 'different'; ours: string; theirs: string; line: string }
+
 export const LEVEL_STYLE: Record<Level, { dot: string; text: string }> = {
   good: { dot: 'bg-emerald-500', text: 'text-emerald-700' },
   ok: { dot: 'bg-amber-500', text: 'text-amber-700' },

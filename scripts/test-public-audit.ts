@@ -84,7 +84,7 @@ function res() {
 
   // ── config + concierge ──
   let r = res(); publicConfig({} as any, r);
-  assert.deepEqual(r.body, { auditEnabled: false, concierge: null, consentText: CONSENT_TEXT });
+  assert.deepEqual(r.body, { auditEnabled: false, concierge: null, consentText: CONSENT_TEXT, gtmId: null });
   process.env.CONCIERGE_WHATSAPP = '+972-50-123-4567'; assert.equal(conciergeNumber(), '972501234567');
   process.env.CONCIERGE_WHATSAPP = '12'; assert.equal(conciergeNumber(), null);
   process.env.CONCIERGE_WHATSAPP = 'tel:<x>'; assert.equal(conciergeNumber(), null);
