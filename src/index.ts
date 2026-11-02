@@ -6,6 +6,7 @@ import app from './app';
 import { supabase } from './config/supabase';
 import { startRenewalSweep } from './services/renewal.service';
 import { startSubscriptionSweep } from './services/seoSubscription.service';
+import { startDigestSweep } from './services/digest.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -28,6 +29,8 @@ async function start() {
   startRenewalSweep();
   // Monthly SEO subscription housekeeping (period ends, grace window). No-op without migration 030.
   startSubscriptionSweep();
+  // Monthly summary email to customers. No-op unless MONTHLY_DIGEST_ENABLED=true (+ DIGEST_SECRET).
+  startDigestSweep();
 }
 
 start().catch((err) => {

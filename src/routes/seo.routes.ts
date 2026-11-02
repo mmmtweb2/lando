@@ -12,6 +12,7 @@ import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
 import { sendFeedback } from '../controllers/feedback.controller';
+import { unsubscribeApply, unsubscribePage } from '../controllers/digest.controller';
 import { addRequest, deleteRequest, listRequests, reviewedRequest, sentRequest } from '../controllers/reviewRequests.controller';
 
 const router = Router();
@@ -48,6 +49,11 @@ router.get('/places/:placeId/audit', placesLimiter, requireAuth, placeAudit);
 // Tester/customer feedback (migration 034). Per-IP burst limit here, per-account daily cap in the service.
 const feedbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
 router.post('/feedback', feedbackLimiter, requireAuth, requireProduct('seo_autopilot'), sendFeedback);
+
+// Monthly summary email: public, signed-token unsubscribe (GET only shows a button, POST applies).
+const digestLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'יותר מדי בקשות.' });
+router.get('/digest/unsubscribe', digestLimiter, unsubscribePage);
+router.post('/digest/unsubscribe', digestLimiter, unsubscribeApply);
 
 // Review requests (stage 7, migration 035): the owner's list of customers to ask for a review.
 // The owner sends each message from their own WhatsApp; nothing here sends anything.

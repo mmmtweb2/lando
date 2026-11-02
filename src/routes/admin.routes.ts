@@ -7,6 +7,7 @@ import { adminAuditLeads } from '../controllers/publicAudit.controller';
 import { adminGbpConfig } from '../controllers/gbpConfig.controller';
 import { adminListGrants, adminGrant, adminRevoke } from '../controllers/betaAccess.controller';
 import { adminListFeedback, adminMarkSeen } from '../controllers/feedback.controller';
+import { adminPreview, adminTest } from '../controllers/digest.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
 
@@ -36,6 +37,9 @@ router.get('/gbp-config', requireAuth, requireAdmin, adminGbpConfig);
 router.get('/beta-access', requireAuth, requireAdmin, adminListGrants);
 router.post('/beta-access', requireAuth, requireAdmin, adminGrant);
 router.post('/beta-access/revoke', requireAuth, requireAdmin, adminRevoke);
+// Monthly summary email: preview an account's email, or send a test to yourself.
+router.get('/digest/preview', requireAuth, requireAdmin, adminPreview);
+router.post('/digest/test', requireAuth, requireAdmin, adminTest);
 // Feedback from testers (migration 034).
 router.get('/feedback', requireAuth, requireAdmin, adminListFeedback);
 router.post('/feedback/:id/seen', requireAuth, requireAdmin, adminMarkSeen);

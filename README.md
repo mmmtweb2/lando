@@ -713,3 +713,13 @@ quota cap there.
 - **No referral credits** are attached: credits were already abused through self-referral (see the referral notes above), so this is attribution only.
 - **Switch:** `WIDGET_CREDIT_ENABLED=false` hides it everywhere. Open decision: whether paying customers may remove it (today it is global).
 - **Test:** `scripts/test-reviews-widget.ts` (utm tags, placement, fallback, off switch, sanitized id).
+
+## Part 60 — Monthly summary email to customers (migration 036, OFF until switched on)
+- **What the customer gets:** once a month a short email: inquiries last month vs. the month before, how many review requests they sent, one concrete next step, and a button to the dashboard. Sent only to accounts with an active `seo_autopilot` entitlement.
+- **When:** an hourly sweep (`startDigestSweep`) sends only on days 2–7 of the month (Israel time), at most once per account per month. The `(email, month)` pair is claimed in `seo_digest_log` BEFORE sending, so a restart or overlapping run cannot double-send; a failed send releases the claim so the next hour retries.
+- **Unsubscribe:** every email carries a link and a one-click header. The link is signed (HMAC with `DIGEST_SECRET`, never expires). `GET` only shows a confirm page; `POST` applies it, so mail scanners that open links cannot unsubscribe anyone.
+- **Switch on:** set `DIGEST_SECRET` (long random string), `RESEND_API_KEY`/`RESEND_FROM_EMAIL`, then `MONTHLY_DIGEST_ENABLED=true` in Coolify and Redeploy. Default is off.
+- **Run once:** `migrations/036_monthly_digest.sql` (RLS enabled+forced, no policies).
+- **Admin:** `/admin` → "מייל חודשי ללקוחות": preview any account's email, or send a test to yourself (never to the customer). Endpoints `GET /api/admin/digest/preview?email=`, `POST /api/admin/digest/test`.
+- **Legal:** Terms/Privacy should mention the monthly service email and the unsubscribe. **Needs a legal read.**
+- **Test:** `npx ts-node --transpile-only scripts/test-digest.ts` (month bounds, window, token tampering, escaping, once per month, retry after failure, unsubscribe GET vs POST).
