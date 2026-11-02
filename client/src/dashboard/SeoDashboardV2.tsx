@@ -91,8 +91,14 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
               {data.input.loaded && data.input.subscriptionStatus === null && (
                 <div className="dv2-card p-5">
                   <p className="font-semibold text-[var(--ink)]">אין כרגע חיוב חודשי לנהל</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
-                  <Link to="/seo-plan" className="dv2-btn mt-3">להצטרפות למנוי החודשי ולתשלום</Link>
+                  {data.billingEnabled ? (
+                    <>
+                      <p className="mt-1 text-sm text-[var(--muted)]">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
+                      <Link to="/seo-plan" className="dv2-btn mt-3">להצטרפות למנוי החודשי ולתשלום</Link>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-sm text-[var(--muted)]">המוצר פעיל בחשבון שלכם ואין עליו חיוב כרגע.</p>
+                  )}
                 </div>
               )}
               {showPageUpsell && (

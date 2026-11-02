@@ -25,6 +25,8 @@ export interface SeoOverview {
   ticksOnServer: boolean;
   /** the Google Business Profile connection is switched on for this deployment */
   gbpEnabled: boolean;
+  /** Is the monthly plan open for sign-up right now (server switch)? */
+  billingEnabled: boolean;
   setTick: (key: string, done: boolean) => Promise<void>;
   reload: () => void;
 }
@@ -49,7 +51,7 @@ export function useSeoOverview(): SeoOverview {
   const [tick, setTick] = useState(0);
   const onServer = useRef(true);
   const [state, setState] = useState<Omit<SeoOverview, 'reload' | 'setTick'>>({
-    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true, gbpEnabled: false,
+    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true, gbpEnabled: false, billingEnabled: false,
     input: { loaded: false, businessName: null, hasBusiness: false, contentCount: 0, monthLeads: 0, subscriptionStatus: null, ticks: [] },
   });
 
@@ -84,6 +86,7 @@ export function useSeoOverview(): SeoOverview {
         items: leads?.items ?? [],
         ticksOnServer: server,
         gbpEnabled: gbp?.enabled === true,
+        billingEnabled: (sub as { enabled?: boolean } | null)?.enabled === true,
         input: {
           loaded: true,
           businessName: first?.name ?? null,
