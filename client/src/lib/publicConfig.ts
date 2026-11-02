@@ -1,6 +1,6 @@
 // /api/public/config — what the public pages need from the server (read once per page load).
 
-export interface PublicConfig { auditEnabled: boolean; concierge: string | null; consentText: string }
+export interface PublicConfig { auditEnabled: boolean; concierge: string | null; consentText: string; gtmId?: string | null }
 
 let cached: Promise<PublicConfig | null> | null = null;
 

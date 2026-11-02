@@ -690,3 +690,10 @@ quota cap there.
 - **Spam guard:** the same alert at most once per 15 minutes, 30 per hour in total. Messages hold method + path (no query string), status or a trimmed line. No bodies, tokens or customer data (feedback alerts include the sender's email and the first 200 chars of the message, on purpose).
 - **Not covered:** a crash that kills the process (the container restarts) is not reported by this; use Coolify's own notifications for that. 502/503 are not alerted (expected cases like the Google quota).
 - **Test:** `npx ts-node --transpile-only scripts/test-feedback-alerts.ts`.
+
+## Part 57 — Google Tag Manager / Pixel hookup (OFF until `GTM_CONTAINER_ID`)
+- **What it does:** the events the site already pushes to `window.dataLayer` (`Audit_Started`, `Audit_Lead_Captured`, `Snapshot_Downloaded`, `Concierge_Clicked`, wizard steps) now have somewhere to go. Set `GTM_CONTAINER_ID=GTM-XXXXXXX` in Coolify (runtime, no rebuild; Redeploy) and build the Pixel/Google tags inside the GTM container itself.
+- **Consent first:** on `/` and `/audit` only, a small bar asks "אישור / לא תודה". Nothing is loaded before "אישור"; the choice is remembered in the browser (`pagey_marketing_consent`). Never loaded on `/dashboard`, `/admin`, `/seo-plan`, customer pages (`/p`, `/b`), login or legal pages.
+- **No personal data in events** (existing rule in `client/src/lib/track.ts`).
+- **Privacy policy:** section 11 now says measurement tools may load on the public pages after consent. **Needs a legal read before launch.**
+- **Test:** `NEXT_PUBLIC_SUPABASE_URL=http://localhost:1 SUPABASE_SERVICE_ROLE_KEY=fake npx tsx scripts/test-gtm.ts`; browser behavior was checked with Playwright (banner only with an id; accept loads, decline does not, remembered choice loads, `/privacy` and `/login` never load).
