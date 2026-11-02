@@ -1,3 +1,4 @@
+import { getJourney, postAccountEvent, postActivate, postSetupComplete, putBusiness, startJourney } from '../controllers/journey.controller';
 import { dismissDraft, listDrafts, publishDraft } from '../controllers/reviewDrafts.controller';
 import { getBusinessServices, putBusinessServices } from '../controllers/businessServices.controller';
 import express, { Router } from 'express';
@@ -65,6 +66,16 @@ router.post('/review-requests', rrLimiter, requireAuth, requireProduct('seo_auto
 router.post('/review-requests/:id/sent', rrLimiter, requireAuth, requireProduct('seo_autopilot'), sentRequest);
 router.post('/review-requests/:id/reviewed', rrLimiter, requireAuth, requireProduct('seo_autopilot'), reviewedRequest);
 router.delete('/review-requests/:id', rrLimiter, requireAuth, requireProduct('seo_autopilot'), deleteRequest);
+
+// Customer journey (task #9, migration 039). Any signed-in account may walk it: it is the on-ramp
+// to the product, so these are NOT gated by requireProduct.
+const journeyLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/journey', journeyLimiter, requireAuth, getJourney);
+router.post('/journey/start', journeyLimiter, requireAuth, startJourney);
+router.put('/journey/business', journeyLimiter, requireAuth, putBusiness);
+router.post('/journey/setup-complete', journeyLimiter, requireAuth, postSetupComplete);
+router.post('/journey/activate', journeyLimiter, requireAuth, postActivate);
+router.post('/journey/event', journeyLimiter, requireAuth, postAccountEvent);
 
 router.get('/review-drafts', rrLimiter, requireAuth, requireProduct('seo_autopilot'), listDrafts);
 router.post('/review-drafts/:id/publish', rrLimiter, requireAuth, requireProduct('seo_autopilot'), publishDraft);

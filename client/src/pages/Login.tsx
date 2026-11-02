@@ -19,7 +19,7 @@ function nextPath(search: string): string {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [mode, setMode] = useState<Mode>('signin');
+  const [mode, setMode] = useState<Mode>(() => (new URLSearchParams(location.search).get('mode') === 'signup' ? 'signup' : 'signin'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ export default function Login() {
         const { data, error: signErr } = await supabase.auth.signUp({
           email: trimmed,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+          options: { emailRedirectTo: `${window.location.origin}${nextPath(location.search)}` },
         });
         if (signErr) throw signErr;
         // Supabase returns an obfuscated user with EMPTY identities when the email
@@ -115,7 +115,7 @@ export default function Login() {
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
-        options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+        options: { emailRedirectTo: `${window.location.origin}${nextPath(location.search)}` },
       });
       if (otpError) throw otpError;
       setInfo('magic');
