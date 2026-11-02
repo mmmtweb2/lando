@@ -670,3 +670,9 @@ quota cap there.
 - **Endpoints** (all under `/api/seo/gbp`, gated by `seo_autopilot` except the callback): `GET status`, `GET oauth/start`, `GET oauth/callback`, `POST disconnect`, `GET stats`, `PUT location`.
 - **Not verified against live Google.** The request shapes follow Google's reference pages; tests (`scripts/test-gbp.ts`, `scripts/test-gbp-controller.ts`) use a simulated Google. First real run: Moshe's own account, then check the numbers against the Business Profile app.
 - **Allow-list (Part 53b):** `GBP_CONNECT_ALLOWED_EMAILS` (comma-separated Pagey account emails) limits who is offered the connection while the Google app is in testing mode; empty = everyone. It is enforced on status, start, callback (via the signed state), stats and location choice.
+
+## Part 54 — Admin: free access for testers
+- **What it is:** a panel in `/admin` ("גישה חינם לבודקים"): type an email and a number of days (empty = no end date) and the account gets the Google-promotion product. It writes the same `user_products` row as the SQL grant (`source='manual'`). "סיום גישה" ends a manual grant immediately.
+- **Rules:** the person must already have a Pagey account (otherwise 404); a paying SUMIT subscriber is never changed (409); days 1..3650.
+- **Endpoints** (admin only, behind the admin password): `GET /api/admin/beta-access`, `POST /api/admin/beta-access {email, days?}`, `POST /api/admin/beta-access/revoke {email}`.
+- **Test:** `npx ts-node --transpile-only scripts/test-beta-access.ts`.
