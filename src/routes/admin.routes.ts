@@ -6,6 +6,7 @@ import { listUsers, getRevenueStats, getSiteTraffic, getFunnelStats } from '../c
 import { adminAuditLeads } from '../controllers/publicAudit.controller';
 import { adminGbpConfig } from '../controllers/gbpConfig.controller';
 import { adminListGrants, adminGrant, adminRevoke } from '../controllers/betaAccess.controller';
+import { adminListFeedback, adminMarkSeen } from '../controllers/feedback.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
 
@@ -35,6 +36,9 @@ router.get('/gbp-config', requireAuth, requireAdmin, adminGbpConfig);
 router.get('/beta-access', requireAuth, requireAdmin, adminListGrants);
 router.post('/beta-access', requireAuth, requireAdmin, adminGrant);
 router.post('/beta-access/revoke', requireAuth, requireAdmin, adminRevoke);
+// Feedback from testers (migration 034).
+router.get('/feedback', requireAuth, requireAdmin, adminListFeedback);
+router.post('/feedback/:id/seen', requireAuth, requireAdmin, adminMarkSeen);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for
 // context — these give an admin a way to inspect and resolve a payment stuck

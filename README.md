@@ -676,3 +676,17 @@ quota cap there.
 - **Rules:** the person must already have a Pagey account (otherwise 404); a paying SUMIT subscriber is never changed (409); days 1..3650.
 - **Endpoints** (admin only, behind the admin password): `GET /api/admin/beta-access`, `POST /api/admin/beta-access {email, days?}`, `POST /api/admin/beta-access/revoke {email}`.
 - **Test:** `npx ts-node --transpile-only scripts/test-beta-access.ts`.
+
+## Part 55 — Feedback from testers/customers (migration 034)
+- **What it is:** a quiet "משהו לא עובד, או יש לכם רעיון? ספרו לנו" link at the bottom of the Google-promotion dashboard. It opens a small form (kind: not working / idea / other + free text up to 2000 chars). Admin sees the list in `/admin` ("משוב מבודקים") and can mark messages read.
+- **Run once:** `migrations/034_seo_feedback.sql` (RLS enabled+forced, no policies). Before it runs the form answers 503 and the admin list says the table is missing.
+- **Limits:** per-IP 10/min, per-account 10 messages per 24h. `page` is a short view label, never a URL.
+- **Endpoints:** `POST /api/seo/feedback` (needs `seo_autopilot`), `GET /api/admin/feedback`, `POST /api/admin/feedback/:id/seen`.
+- A new message also triggers an owner alert when alerts are on (Part 56).
+
+## Part 56 — Owner alerts on server errors
+- **What it is:** when any request ends with HTTP 500, or a tester sends feedback, the owner gets a short message. **OFF** unless `ALERTS_ENABLED=true`.
+- **Channels:** `ALERT_WEBHOOK_URL` (https; JSON `{text, content}` so Slack/Discord/Make/Zapier receivers work) and/or email to `ADMIN_ALERT_EMAIL` through Resend (`RESEND_API_KEY`). A failing channel is logged and ignored.
+- **Spam guard:** the same alert at most once per 15 minutes, 30 per hour in total. Messages hold method + path (no query string), status or a trimmed line. No bodies, tokens or customer data (feedback alerts include the sender's email and the first 200 chars of the message, on purpose).
+- **Not covered:** a crash that kills the process (the container restarts) is not reported by this; use Coolify's own notifications for that. 502/503 are not alerted (expected cases like the Google quota).
+- **Test:** `npx ts-node --transpile-only scripts/test-feedback-alerts.ts`.

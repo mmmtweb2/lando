@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import BetaAccessPanel from '../components/admin/BetaAccessPanel';
+import FeedbackAdminPanel from '../components/admin/FeedbackAdminPanel';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authFetch } from '../lib/api';
@@ -924,6 +925,7 @@ export default function AdminDashboard() {
           </div>
 
           <BetaAccessPanel adminFetch={adminFetch} />
+          <FeedbackAdminPanel adminFetch={adminFetch} />
 
           {/* ── Leads from the public Audit page ──────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
