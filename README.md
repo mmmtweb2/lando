@@ -744,3 +744,15 @@ quota cap there.
 - **Note:** a manual grant blocks starting a SUMIT subscription until it expires or is revoked (existing, deliberate behavior).
 - **Funnel log (`journey_events`):** events `audit_started, audit_completed, recs_viewed, lead_captured, signup, setup_step_completed (step_id), setup_completed, activation_viewed, activated_beta, payment_started, payment_succeeded, day7_active, day30_active`, with an anonymous random id (so an /audit visit links to the account created from it), first-touch source/UTM, and a small props allow-list (the server drops anything else). Milestones are recorded once per account (unique index). **Server-side operational collection to our own database, no third party; GTM stays behind the consent bar.** Needs legal review (anonymous id in localStorage + funnel log) before launch; deploy early so data accumulates.
 - **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`; `npx tsx scripts/test-recommendations.ts`. Browser check at 375px with a mocked API.
+
+---
+
+## חלק 63 – שדרוג "וואו" לדף הלקוח (עיצוב v2, מאחורי `?design=2`)
+
+- **מה השתנה:** `client/src/pages/LandingViewer.tsx` בלבד (כ-260 שורות). השינוי פעיל **רק** כשכתובת הדף מסתיימת ב-`?design=2`; בלי הפרמטר הדף נראה בדיוק כמו קודם. כך אפשר להשוות על דפים אמיתיים ולהחליט מתי להפוך את v2 לברירת מחדל.
+- **כרטיסיות במקום מספרים:** שירותים ותהליך מוצגים כרטיסים עם אייקון (בלי מספרי 1,2,3), הרמה והצללה בריחוף, פס צבע עליון. בתהליך יש מספר "מים" חלש ברקע וחיצי חיבור בין הכרטיסים (עד 4 שלבים). נתיבי העריכה (`services.i.title` וכו') נשמרו.
+- **מעברים חלקים בגלילה:** כל קטע אחרי ה-hero "עולה" מעל הקודם עם פינות מעוגלות והופעה הדרגתית; פס התקדמות דק מתחת לכותרת. מכבד `prefers-reduced-motion`.
+- **Hero:** תמונת הרקע חצי שקופה (שקיפות ~32%, מיזוג luminosity עם גרדיאנט המותג) עם זום איטי, אורבים נעים, כותרת גדולה וכפתור ממוסגר. אין כרטיס זכוכית; ללא תמונה נשאר גרדיאנט נקי. לא פעיל במצב עריכה, ב-hero מסוג fullbleed (luxury) או במבני split/bento/editorial.
+- **כותרת ובועת וואטסאפ:** הכותרת שקופה מעל ה-hero והופכת לזכוכית אחרי גלילה; הבועה הופכת לכפתור "דברו איתנו" שקופץ פנימה (בסמארטפון נשארת עיגול). כל ההפניות, `handleCtaClick` ומעקב הלידים ללא שינוי.
+- **לא נגענו ב:** שרת, JSON-LD/SSR, דשבורד, קוד ה-autopilot.
+- **בדיקה:** `tsc` נקי בקובץ (שגיאת `html-to-image` ב-`AuditSnapshot.tsx` קיימת מקודם ובאה מחבילה שחסרה ב-node_modules המקומי), build ב-vite ותמונות מסך דסקטופ+מובייל על דף דמו.
