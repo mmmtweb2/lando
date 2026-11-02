@@ -16,6 +16,12 @@ export function conciergeNumber(): string | null {
   return d.length >= 9 && d.length <= 15 ? d : null;
 }
 
+/** Google Tag Manager container id (GTM-XXXX). Anything else is ignored. */
+export function gtmContainerId(): string | null {
+  const v = (process.env.GTM_CONTAINER_ID ?? '').trim();
+  return /^GTM-[A-Z0-9]{4,12}$/.test(v) ? v : null;
+}
+
 /** GET /api/public/config — what the public pages need to know. */
 export function publicConfig(_req: Request, res: Response): void {
   res.setHeader('Cache-Control', 'no-store');
@@ -23,6 +29,7 @@ export function publicConfig(_req: Request, res: Response): void {
     auditEnabled: publicAuditDailyCap() > 0 && placesConfigured(),
     concierge: conciergeNumber(),
     consentText: CONSENT_TEXT,
+    gtmId: gtmContainerId(),
   });
 }
 

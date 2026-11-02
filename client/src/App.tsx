@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import MarketingTags from './components/MarketingTags';
 import { UserProvider, useUser } from './context/UserContext';
 import type { UserProfile } from './context/UserContext';
 
@@ -189,6 +190,7 @@ export default function App() {
           <AuthErrorRedirect />
           <SyncAuth />
           <SiteTracker />
+          <MarketingTags />
           <Routes>
             <Route path="/"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <MarketingLanding />} />
             <Route path="/create"    element={<Wizard />} />
