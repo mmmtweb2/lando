@@ -3,6 +3,7 @@ import {
   PlacesError, auditPlaceFull, autocompleteBusinesses, isValidPlaceId, placesConfigured,
 } from '../services/places.service';
 import { checkAiReadiness } from '../services/aiReadiness';
+import { logEvent } from '../services/journey.service';
 import { Take, publicAuditDailyCap, takeAudit, takeLead, takeSearch } from '../services/publicAuditGuard';
 import {
   AuditLeadError, CONSENT_TEXT, hashIp, listAuditLeads, saveAuditLead, validateLead,
@@ -104,6 +105,7 @@ export async function publicLead(req: Request, res: Response): Promise<void> {
   if (takeLead() === 'cap') { res.status(429).json({ error: 'המערכת עמוסה כרגע, נסו שוב מחר.', code: 'daily_cap' }); return; }
   try {
     const { duplicate } = await saveAuditLead(v.value, hashIp(req.ip || 'unknown'));
+    if (!duplicate) void logEvent({ event: 'lead_captured', props: { place_id: v.value.placeId }, attribution: { source: 'audit', utm_source: v.value.utmSource, utm_campaign: v.value.utmCampaign } });
     res.status(duplicate ? 200 : 201).json({
       ok: true,
       reviewUrl: `https://search.google.com/local/writereview?placeid=${encodeURIComponent(v.value.placeId)}`,

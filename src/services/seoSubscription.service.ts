@@ -3,6 +3,7 @@
 // user_products (the entitlement everything else reads). The state rules are in
 // subscriptionState.ts; the SUMIT field names are in sumitRecurring.ts.
 
+import { logEvent } from './journey.service';
 import { supabase } from '../config/supabase';
 import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
 import { isEntitled } from './entitlements.service';
@@ -182,6 +183,7 @@ export async function applyVerifiedPayment(
       ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
       ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
     });
+    void logEvent({ event: 'payment_succeeded', email: row.email }); // first verified payment only (unique milestone)
     return 'activated';
   }
 

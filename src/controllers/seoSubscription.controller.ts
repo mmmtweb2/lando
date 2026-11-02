@@ -1,3 +1,4 @@
+import { logEvent } from '../services/journey.service';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
@@ -49,7 +50,9 @@ export async function start(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
   try {
-    res.json(await startSubscription(email));
+    const started = await startSubscription(email);
+    void logEvent({ event: 'payment_started', email });
+    res.json(started);
   } catch (e) { fail(res, e); }
 }
 

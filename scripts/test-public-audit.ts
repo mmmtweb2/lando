@@ -45,6 +45,7 @@ let missing = false;
 (supabase as any).from = (table: string) => {
   const f: Array<(r: Row) => boolean> = []; let op = 'select'; let patch: Row = {};
   const run = (): any => {
+    if (table !== 'audit_leads') return { data: null, error: null }; // e.g. the funnel log (journey_events) is not under test here
     if (missing) return { data: null, error: { code: '42P01', message: 'relation "audit_leads" does not exist' } };
     if (op === 'insert') { db.audit_leads.push({ id: `l${db.audit_leads.length + 1}`, created_at: new Date().toISOString(), ...patch }); return { data: null, error: null }; }
     return { data: db.audit_leads.filter(r => f.every(fn => fn(r))), error: null };

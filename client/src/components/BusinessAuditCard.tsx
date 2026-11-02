@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Search, Loader2, Star, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { RoleTag } from './RoleTag';
@@ -9,6 +10,8 @@ import { SnapshotButton } from './AuditSnapshot';
 import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit, type AiReadiness, type CategoryCheck } from '../lib/auditShared';
 import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
+import RecommendationsList from './RecommendationsList';
+import { rememberPlace, trackPublic } from '../lib/journeyClient';
 
 // Stage 5.5.2 — find the customer's business on Google Maps and show a live Audit.
 // All Google calls go through our server (/api/seo/places/*); the API key never
@@ -21,7 +24,7 @@ function newSessionToken(): string {
   try { return crypto.randomUUID(); } catch { return `s${Date.now()}${Math.random().toString(36).slice(2, 10)}`; }
 }
 
-export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'account' | 'public' }) {
+export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void }) {
   // 'public' = the signed-out /audit page: no login, no saved businesses, a lead form instead of
   // "connect this business to my account". Same card, same score (the server wraps the same code).
   const isPublic = mode === 'public';
@@ -97,6 +100,7 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
     // the query: if the name equals what was typed, React bails out, the effect never runs, and the
     // flag would stay set and swallow the user's next real search.
     if (query !== name) pickedRef.current = true;
+    onSelect?.(placeId);
     seq.current++; // drop any in-flight search
     setQuery(name);
     setSuggestions([]);
@@ -109,10 +113,12 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
     setAuditing(true);
     try {
       trackEvent('Audit_Started', { mode });
+      if (isPublic) trackPublic('audit_started', { place_id: placeId });
       const r = await api(auditUrl(placeId));
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
       setAudit(body.audit as Audit);
+      if (isPublic) trackPublic('audit_completed', { place_id: placeId, score: (body.audit as Audit).score });
       setAiReadiness((body.aiReadiness ?? null) as AiReadiness | null);
       if (body.aiReadiness?.status === 'ok') trackEvent('AI_Readiness_Viewed', { mode, passed: (body.aiReadiness.checks as Array<{ state: string }>).filter(c => c.state === 'pass').length });
       setCategoryCheck((body.categoryCheck ?? null) as CategoryCheck | null);
@@ -123,6 +129,11 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
       setAuditing(false);
     }
   }
+
+  // The recommendations list is on screen as soon as the audit is (public funnel step).
+  useEffect(() => {
+    if (isPublic && audit) trackPublic('recs_viewed', { place_id: audit.placeId });
+  }, [isPublic, audit?.placeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (s: Suggestion) => runAudit(s.placeId, s.name);
 
@@ -321,6 +332,23 @@ export default function BusinessAuditCard({ mode = 'account' }: { mode?: 'accoun
               ))}
             </ul>
           </div>
+
+          {isPublic && (
+            <>
+              <RecommendationsList audit={audit} />
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 flex flex-col gap-2">
+                <p className="text-sm font-semibold text-slate-900">רוצים שנטפל בזה בשבילכם?</p>
+                <p className="text-xs leading-relaxed text-slate-600">פותחים חשבון, מחברים את העסק הזה ומקבלים שלבי הקמה קצרים. ההרשמה לוקחת כמה שניות.</p>
+                <Link
+                  to="/login?mode=signup&next=/start"
+                  onClick={() => rememberPlace(audit.placeId)}
+                  className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0]"
+                >
+                  פתחו חשבון וחברו את העסק
+                </Link>
+              </div>
+            </>
+          )}
 
           {aiReadiness && <AiReadinessBlock data={aiReadiness} />}
 

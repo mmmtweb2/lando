@@ -1,3 +1,4 @@
+import JourneyBanner from '../components/JourneyBanner';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1121,6 +1122,8 @@ export default function Dashboard() {
 
         {/* Content */}
         <main className="flex-1 px-5 sm:px-6 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
+
+          <JourneyBanner />
 
           {/* Page title */}
           <motion.div {...fadeIn}>

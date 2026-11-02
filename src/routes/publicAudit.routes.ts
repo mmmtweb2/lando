@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { rateLimit } from '../middleware/rateLimit';
+import { postPublicEvent } from '../controllers/journey.controller';
 import { publicAudit, publicConfig, publicLead, publicSearch } from '../controllers/publicAudit.controller';
 
 // PUBLIC routes (no login) for /audit. Per-IP limits here; the global daily budget lives in
@@ -16,5 +17,8 @@ router.get('/config', configLimiter, publicConfig);
 router.post('/audit/search', searchLimiter, publicSearch);
 router.get('/audit/:placeId', auditLimiter, publicAudit);
 router.post('/audit/lead', leadLimiter, publicLead);
+// Anonymous funnel events (audit_started / audit_completed / recs_viewed). Always 204; unknown events are dropped.
+const eventLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'יותר מדי בקשות.' });
+router.post('/journey/event', eventLimiter, postPublicEvent);
 
 export default router;
