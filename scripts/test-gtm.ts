@@ -8,7 +8,7 @@ assert.equal(gtmSrc('GTM-ABC1234'), 'https://www.googletagmanager.com/gtm.js?id=
 for (const bad of ['', 'gtm-abc1234', 'GTM-', 'GTM-AB', 'GTM-ABC1234"><script>', 'UA-123', 'GTM-ABC1234 x']) assert.equal(gtmSrc(bad), null, `rejects ${bad}`);
 
 // only public marketing pages
-assert.equal(marketingPath('/'), true); assert.equal(marketingPath('/audit'), true);
+assert.equal(marketingPath('/'), true); assert.equal(marketingPath('/audit'), true); assert.equal(marketingPath('/seo'), true);
 for (const p of ['/dashboard', '/admin', '/p/cafe', '/b/cafe', '/login', '/seo-plan', '/privacy']) assert.equal(marketingPath(p), false, p);
 
 // server side: invalid ids are never exposed

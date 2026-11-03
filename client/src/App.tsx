@@ -19,6 +19,7 @@ import Login           from './pages/Login';
 import ResetPassword   from './pages/ResetPassword';
 import Dashboard       from './pages/Dashboard';
 import Privacy         from './pages/legal/Privacy';
+import SeoLanding      from './pages/SeoLanding';
 import Terms           from './pages/legal/Terms';
 import Accessibility   from './pages/legal/Accessibility';
 import { authFetch } from './lib/api';
@@ -206,6 +207,7 @@ export default function App() {
             {/* Public legal pages — linked from every footer, and referenced
                 from the checkout disclosures. Deliberately unauthenticated. */}
             <Route path="/audit"         element={<PublicAudit />} />
+            <Route path="/seo"           element={<SeoLanding />} />
             <Route path="/start"         element={<StartJourney />} />
             <Route path="/seo-plan"      element={<SeoPlan />} />
             <Route path="/privacy"       element={<Privacy />} />
