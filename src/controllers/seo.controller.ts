@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import {
   PlacesError, auditPlace, autocompleteBusinesses, fetchPlace, isValidPlaceId, placesConfigured,
 } from '../services/places.service';
+import { linkJourneyBusiness } from '../services/journeyBusiness.service';
 import { MAX_BUSINESSES_PER_ACCOUNT, addBusiness, listBusinesses, removeBusiness } from '../services/seoBusinesses.service';
 
 // Per-account daily ceiling on Places calls — protects the Google bill from one
@@ -89,6 +90,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** GET /api/seo/businesses — the account's saved businesses. */
 export async function getBusinesses(req: Request, res: Response): Promise<void> {
   try {
+    // The business chosen in /start becomes the dashboard's business here (once, best effort, never throws).
+    await linkJourneyBusiness(req.authEmail!);
     res.json({ businesses: await listBusinesses(req.authEmail!), max: MAX_BUSINESSES_PER_ACCOUNT });
   } catch (e) {
     console.error('[SEO] list businesses failed:', e);

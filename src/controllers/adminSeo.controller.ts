@@ -4,12 +4,12 @@ import type { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import {
   churn30, feedbackSignals, funnel, overview, parsePremium, premiumOnly, revenue, users,
-  type EventR, type JourneyR, type PremiumR, type ProductR, type SubEventR, type SubR,
+  type AuditContactR, type BusinessNameR, type EventR, type JourneyR, type PremiumR, type ProductR, type SubEventR, type SubR,
 } from '../services/adminOps';
 import { healthSnapshot } from '../services/adminHealth.service';
 
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
-const JCOLS_BASE = 'email, stage, source, utm_source, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, updated_at';
+const JCOLS_BASE = 'email, place_id, stage, source, utm_source, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, updated_at';
 const JCOLS = `${JCOLS_BASE}, profile_state, pending_name`;
 const EVENT_WINDOW_DAYS = 120;
 
@@ -32,6 +32,15 @@ const events = () => rows<EventR>('journey_events', supabase.from('journey_event
   .select('event, email, anon_id, props, created_at').gte('created_at', new Date(Date.now() - EVENT_WINDOW_DAYS * 86400000).toISOString())
   .order('created_at', { ascending: false }).limit(20000), true);
 
+const businessNames = () => rows<BusinessNameR>('seo_businesses', supabase.from('seo_businesses').select('owner_email, name').limit(5000), true);
+const auditContacts = () => rows<AuditContactR>('audit_leads', supabase.from('audit_leads').select('place_id, name, phone, business_name, created_at').order('created_at', { ascending: false }).limit(2000), true);
+/** Public-Audit leads of the last 30 days not marked handled (migration 042). null = cannot tell (table or column missing). */
+async function unhandledAuditLeads(now: Date): Promise<number | null> {
+  const since = new Date(now.getTime() - 30 * 86400000).toISOString();
+  const { count, error } = await supabase.from('audit_leads').select('id', { count: 'exact', head: true }).is('handled_at', null).gte('created_at', since);
+  return error ? null : count ?? 0;
+}
+
 function fail(res: Response, e: unknown): void {
   const msg = e instanceof Error ? e.message : String(e);
   if (e instanceof LoadError && missing(e.message)) { res.status(503).json({ error: 'חסרה מיגרציה במסד הנתונים.', code: 'not_migrated', table: e.table }); return; }
@@ -42,8 +51,8 @@ function fail(res: Response, e: unknown): void {
 export async function adminSeoOverview(_req: Request, res: Response): Promise<void> {
   try {
     const now = new Date();
-    const [j, p, s, pr, health] = await Promise.all([journeys(), products(), subs(), premiumRows(), healthSnapshot(now)]);
-    res.json(overview({ journeys: j, products: p, subs: s, premium: pr, alerts: health.alerts, now }));
+    const [j, p, s, pr, health, leads] = await Promise.all([journeys(), products(), subs(), premiumRows(), healthSnapshot(now), unhandledAuditLeads(now)]);
+    res.json(overview({ journeys: j, products: p, subs: s, premium: pr, alerts: health.alerts, now, auditLeadsUnhandled: leads }));
   } catch (e) { fail(res, e); }
 }
 
@@ -58,8 +67,8 @@ export async function adminSeoFunnel(_req: Request, res: Response): Promise<void
 export async function adminSeoUsers(_req: Request, res: Response): Promise<void> {
   try {
     const now = new Date();
-    const [j, p, pr] = await Promise.all([journeys(), products(), premiumRows()]);
-    res.json({ users: users(j, p, pr, now), premiumWithoutJourney: premiumOnly(j, pr) });
+    const [j, p, pr, biz, contacts] = await Promise.all([journeys(), products(), premiumRows(), businessNames(), auditContacts()]);
+    res.json({ users: users(j, p, pr, now, { businesses: biz, contacts }), premiumWithoutJourney: premiumOnly(j, pr) });
   } catch (e) { fail(res, e); }
 }
 

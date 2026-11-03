@@ -99,11 +99,19 @@ export async function saveAuditLead(v: AuditLeadInput, ipHash: string | null, no
 }
 
 export async function listAuditLeads(limit = 200): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabase
-    .from('audit_leads')
-    .select('id, name, phone, place_id, business_name, score, consent_at, utm_source, utm_medium, utm_campaign, created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const base = 'id, name, phone, place_id, business_name, score, consent_at, utm_source, utm_medium, utm_campaign, created_at';
+  let { data, error } = (await supabase.from('audit_leads').select(`${base}, handled_at`).order('created_at', { ascending: false }).limit(limit)) as { data: unknown[] | null; error: { message: string; code?: string } | null };
+  // Migration 042 not run yet: the list keeps working, just without the "handled" mark.
+  if (error && /handled_at/.test(error.message)) {
+    ({ data, error } = (await supabase.from('audit_leads').select(base).order('created_at', { ascending: false }).limit(limit)) as { data: unknown[] | null; error: { message: string; code?: string } | null });
+  }
   if (error) throw dbError(error);
   return (data ?? []) as Record<string, unknown>[];
+}
+
+/** Marks (or un-marks) a lead as handled by the owner. Returns false when there is no such lead. */
+export async function setAuditLeadHandled(id: string, handled: boolean, now = new Date()): Promise<boolean> {
+  const { data, error } = await supabase.from('audit_leads').update({ handled_at: handled ? now.toISOString() : null }).eq('id', id).select('id');
+  if (error) throw dbError(error);
+  return (data ?? []).length > 0;
 }

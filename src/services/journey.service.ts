@@ -10,6 +10,8 @@
 import { supabase } from '../config/supabase';
 import { isEntitled } from './entitlements.service';
 import { grantAccess } from './betaAccess.service';
+import { ensureUserProfile } from './profile.service';
+import { linkJourneyBusiness } from './journeyBusiness.service';
 
 // ── Switches ─────────────────────────────────────────────────────────────────
 /** On: activation means paying (SUMIT). Off (default): activation is the free beta. */
@@ -158,13 +160,22 @@ export async function start(email: string, anonId: string | null, attribution: u
   let row = await getRow(email);
   if (!row) {
     const a = cleanAttribution(attribution);
-    const { error } = await supabase.from('seo_journey').insert({ email, anon_id: validAnonId(anonId), ...a, registered_at: now.toISOString() });
+    // seo_journey.email references user_profiles(email), and a brand-new account's profile is created
+    // concurrently by POST /api/users/auth. Make sure it exists first (idempotent: an existing row is never touched).
+    await ensureProfileRow(email);
+    const insert = () => supabase.from('seo_journey').insert({ email, anon_id: validAnonId(anonId), ...a, registered_at: now.toISOString() });
+    let { error } = await insert();
+    if (error && error.code === '23503') { await ensureProfileRow(email); ({ error } = await insert()); } // FK still not visible: one retry
     if (error && error.code !== '23505') throw dbErr(error);
     row = await getRow(email);
     const ent = await entitlementOf(email, now);
     if (!ent.entitled) await logEvent({ event: 'signup', email, anonId, attribution });
   }
   return view(email, row, now);
+}
+
+async function ensureProfileRow(email: string): Promise<void> {
+  try { await ensureUserProfile(email); } catch (e) { throw new JourneyError('db', e instanceof Error ? e.message : 'profile'); }
 }
 
 const touch = (patch: Record<string, unknown>) => ({ ...patch, updated_at: new Date().toISOString() });
@@ -229,7 +240,10 @@ export type ActivateResult = JourneyView & { requested: boolean };
 export async function activate(email: string, now = new Date()): Promise<ActivateResult> {
   const ent = await entitlementOf(email, now);
   const row = await getRow(email);
-  if (ent.entitled) return { ...(await view(email, row, now)), requested: !!row?.activation_requested_at };
+  if (ent.entitled) {
+    await linkJourneyBusiness(email, now); // access granted by hand (admin) also lands on a connected business
+    return { ...(await view(email, row, now)), requested: !!row?.activation_requested_at };
+  }
   if (!row || row.stage !== 'ready_to_activate') throw new JourneyError('not_ready');
   if (paymentGateEnabled()) throw new JourneyError('payment_required');
 
@@ -248,6 +262,7 @@ export async function activate(email: string, now = new Date()): Promise<Activat
   const { error } = await supabase.from('seo_journey').update(touch({ beta_activated_at: now.toISOString() })).eq('email', email);
   if (error) throw dbErr(error);
   await logEvent({ event: 'activated_beta', email });
+  await linkJourneyBusiness(email, now); // the dashboard opens with the business already connected
   return { ...(await view(email, await getRow(email), now)), requested: false };
 }
 

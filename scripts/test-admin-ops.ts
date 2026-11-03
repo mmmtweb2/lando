@@ -3,7 +3,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
 import {
-  churn30, feedbackSignals, funnel, isStuck, isoWeekStart, median, mrr, overview, parsePremium, premiumOnly, revenue, stateOf, users,
+  churn30, feedbackSignals, funnel, isStuck, isoWeekStart, median, mrr, overview, parsePremium, premiumOnly, premiumStale, revenue, stateOf, users,
   type JourneyR, type PremiumR, type ProductR, type SubR, type EventR,
 } from '../src/services/adminOps';
 import { placesSkuOf, placesUsageView, jobsView, recordHttp, httpView, resetHttp } from '../src/services/opsMetrics.service';
@@ -25,7 +25,9 @@ const stuckJ = J('stuck@x.co', { registered_at: ago(60), updated_at: ago(60) });
 assert.equal(isStuck(stuckJ, 'registered', now), true, 'registered, 60h without progress');
 assert.equal(isStuck(J('new@x.co'), 'registered', now), false);
 assert.equal(isStuck(J('s@x.co', { stage: 'setup', registered_at: ago(100), setup_at: ago(30), updated_at: ago(30) }), 'setup', now), false, 'progress 30h ago is not stuck');
-assert.equal(isStuck(J('r@x.co', { stage: 'ready_to_activate', registered_at: ago(300), updated_at: ago(300) }), 'ready_to_activate', now), false, 'waiting to activate is not "stuck"');
+assert.equal(isStuck(J('r@x.co', { stage: 'ready_to_activate', registered_at: ago(300), updated_at: ago(300) }), 'ready_to_activate', now), true, 'finished setup but never activated for 300h IS stuck-eligible');
+assert.equal(isStuck(J('r2@x.co', { stage: 'ready_to_activate', registered_at: ago(300), updated_at: ago(300), activation_requested_at: ago(5) }), 'ready_to_activate', now), false, 'a fresh activation request is progress');
+assert.equal(isStuck(J('r3@x.co', { stage: 'ready_to_activate', registered_at: ago(300), updated_at: ago(300) }), 'active_beta', now), false, 'an active customer is never stuck');
 assert.equal(stateOf(J('a@x.co'), 'beta'), 'active_beta'); assert.equal(stateOf(J('a@x.co'), 'paid'), 'active');
 
 const journeys: JourneyR[] = [
@@ -55,12 +57,27 @@ assert.deepEqual([m.sumit, m.manual, m.total], [398, 800, 1198]);
 assert.equal(m.goalPct, 48, '1198 / 2500'); assert.equal(m.payingCount, 2); assert.equal(m.manualPayingCount, 2);
 assert.equal(mrr([], [{ ...premium[0], monthly_price: null }]).total, 0, 'no price = no MRR, no default');
 
+// MRR: manual premium stops counting once the account's access expired (or was cancelled)
+const expiredAccess: ProductR[] = [P('a@x.co', 'manual', -24), P('ghost@x.co', 'manual', 24 * 5)];
+const m2 = mrr(subs, premium, expiredAccess, now);
+assert.deepEqual([m2.manual, m2.manualPayingCount], [300, 1], 'a@x.co (access ended yesterday) is out, ghost@x.co (access valid) stays');
+assert.equal(mrr(subs, premium, [P('a@x.co', 'manual', 24 * 5, 'canceled')], now).manual, 300, 'a cancelled access row is out too');
+assert.equal(mrr(subs, premium, [], now).manual, 800, 'no access row at all: still counted (tracked before access is granted)');
+
 // overview
 const o = overview({ journeys, products, subs, premium, alerts: [], now });
 assert.deepEqual([o.signupsWeek, o.signupsPrev], [3, 1], 'last 7 days vs the 7 before');
 assert.deepEqual([o.setupsCompleted, o.setupsWeek], [3, 1]);
 assert.deepEqual([o.activeBeta, o.activePaid, o.stuck, o.manualPremiumActive], [1, 1, 1, 3]);
 assert.equal(o.mrr.total, 1198);
+// "what to do today" block
+assert.deepEqual(o.todo, { stuck: 1, pendingActivation: 0, auditLeadsUnhandled: null, premiumStale: 2 }, 'premium: a fresh, c and ghost never recorded; b is paused');
+assert.deepEqual(overview({ journeys, products, subs, premium, alerts: [], now, auditLeadsUnhandled: 4 }).todo.auditLeadsUnhandled, 4);
+const stale = premiumStale([{ email: 'x@x.co', status: 'active', last_card_update: '2026-10-03', monthly_price: 1, note: null }, { email: 'y@x.co', status: 'active', last_card_update: '2026-10-05', monthly_price: 1, note: null }, { email: 'z@x.co', status: 'ended', last_card_update: '2020-01-01', monthly_price: 1, note: null }], now);
+assert.equal(stale, 1, 'a card updated 31 days ago is stale, 29 days ago is not, an ended row is ignored');
+const req = overview({ journeys: [J('q@x.co', { stage: 'ready_to_activate', activation_requested_at: ago(2) }), J('r@x.co', { stage: 'ready_to_activate', activation_requested_at: ago(30), beta_activated_at: ago(29) })], products: [P('r@x.co', 'manual', 24 * 60)], subs: [], premium: [], alerts: [{ level: 'bad', text: 'x' }], now });
+assert.equal(req.todo.pendingActivation, 1, 'an activation request that was already granted is not pending');
+assert.equal(req.alerts.length, 2); assert.deepEqual(req.alerts[0], { level: 'warn', text: 'בקשת הפעלה אחת ממתינה להפעלה ידנית.', tab: 'users' });
 
 // funnel
 const events: EventR[] = [
@@ -92,6 +109,25 @@ assert.deepEqual(premiumOnly(journeys, premium).map((x) => x.email), ['ghost@x.c
 
 const pp = users([J('pp@x.co', { profile_state: 'pending_verification', pending_name: 'קפה נעמי' }), J('np@x.co')], [], [], now);
 assert.deepEqual(pp.map((x) => [x.profilePending, x.pendingName]).sort(), [[false, null], [true, 'קפה נעמי']]);
+
+// users: place name, phone (only via a public-Audit lead of the same place), activation request date
+const ctxUsers = users([
+  J('n1@x.co', { place_id: 'PLACE_AAAAAAA', activation_requested_at: ago(3) }), J('n2@x.co', { place_id: 'PLACE_BBBBBBB', profile_state: 'pending_verification', pending_name: 'שם שהוקלד' }), J('n3@x.co', { place_id: 'PLACE_CCCCCCC' }), J('n4@x.co'),
+], [], [], now, {
+  businesses: [{ owner_email: 'n3@x.co', name: 'העסק השמור' }],
+  contacts: [
+    { place_id: 'PLACE_AAAAAAA', name: 'ישן', phone: '0500000000', business_name: 'פיצה ישנה', created_at: ago(100) },
+    { place_id: 'PLACE_AAAAAAA', name: 'חדש', phone: '0501234567', business_name: 'פיצה', created_at: ago(10) },
+    { place_id: 'PLACE_CCCCCCC', name: 'x', phone: '0509999999', business_name: 'שם אחר', created_at: ago(10) },
+  ],
+});
+const cu = (e: string) => ctxUsers.find((x) => x.email === e)!;
+assert.deepEqual([cu('n1@x.co').placeName, cu('n1@x.co').phone, cu('n1@x.co').activationRequestedAt], ['פיצה', '0501234567', ago(3)], 'newest lead per place wins');
+assert.equal(cu('n2@x.co').placeName, 'שם שהוקלד'); assert.equal(cu('n2@x.co').phone, null);
+assert.equal(cu('n3@x.co').placeName, 'העסק השמור', 'the saved business beats the lead name'); assert.equal(cu('n3@x.co').phone, '0509999999');
+assert.deepEqual([cu('n4@x.co').placeName, cu('n4@x.co').phone, cu('n4@x.co').activationRequestedAt], [null, null, null]);
+assert.equal(users([J('s@x.co')], [], [], now)[0].phone, null, 'ctx is optional');
+assert.equal(users([J('rr@x.co', { stage: 'ready_to_activate', registered_at: ago(300), updated_at: ago(300) })], [], [], now)[0].stuck, true);
 
 // revenue
 const rv = revenue({ journeys, products, subs, premium, now });

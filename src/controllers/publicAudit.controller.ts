@@ -6,7 +6,7 @@ import { checkAiReadiness } from '../services/aiReadiness';
 import { logEvent } from '../services/journey.service';
 import { Take, publicAuditDailyCap, takeAudit, takeLead, takeSearch } from '../services/publicAuditGuard';
 import {
-  AuditLeadError, CONSENT_TEXT, hashIp, listAuditLeads, saveAuditLead, validateLead,
+  AuditLeadError, CONSENT_TEXT, hashIp, listAuditLeads, saveAuditLead, setAuditLeadHandled, validateLead,
 } from '../services/auditLeads.service';
 
 // Public (no login) Audit, task #1. These handlers WRAP the same services the dashboard uses
@@ -127,6 +127,20 @@ export async function adminAuditLeads(_req: Request, res: Response): Promise<voi
   } catch (e) {
     if (e instanceof AuditLeadError && e.code === 'not_migrated') { res.json({ leads: [], notMigrated: true }); return; }
     console.error('[AUDIT-LEAD] admin list failed:', e);
+    res.status(500).json({ error: 'שגיאה פנימית.' });
+  }
+}
+
+/** POST /api/admin/audit-leads/:id/handled { handled?: boolean } — the owner marks a lead as handled (default) or not. */
+export async function adminAuditLeadHandled(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) { res.status(400).json({ error: 'מזהה לא תקין.' }); return; }
+  try {
+    const ok = await setAuditLeadHandled(id, (req.body ?? {}).handled !== false);
+    res.status(ok ? 200 : 404).json(ok ? { ok: true } : { error: 'הפנייה לא נמצאה.' });
+  } catch (e) {
+    if (e instanceof AuditLeadError && e.code === 'not_migrated') { res.status(503).json({ error: 'חסרה מיגרציה 031/042.', code: 'not_migrated' }); return; }
+    console.error('[AUDIT-LEAD] mark handled failed:', e);
     res.status(500).json({ error: 'שגיאה פנימית.' });
   }
 }
