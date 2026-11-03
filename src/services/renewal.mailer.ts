@@ -72,8 +72,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '📅',
         headline: 'עוד חודש לחידוש',
         lead: `דף הנחיתה של <strong>${name}</strong> פעיל כבר כמעט שנה — כל הכבוד!`,
-        body: `התוקף שלו מסתיים בעוד כ־30 יום${when}. חידוש שנתי עולה ${RENEWAL_PRICE} ₪ בלבד, והדף ממשיך לעבוד בדיוק כמו היום — אותה כתובת, אותו תוכן, אותם לידים.`,
-        cta: `חדשו עכשיו — ${RENEWAL_PRICE} ₪`,
+        body: `התוקף שלו מסתיים בעוד כ־30 יום${when}. חידוש שנתי עולה ₪${RENEWAL_PRICE} בלבד, והדף ממשיך לעבוד בדיוק כמו היום — אותה כתובת, אותו תוכן, אותם לידים.`,
+        cta: `חדשו עכשיו — ₪${RENEWAL_PRICE}`,
         accent: '#6366f1',
       };
     case 'week':
@@ -82,8 +82,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '⏳',
         headline: 'נשאר שבוע לחידוש',
         lead: `התוקף של דף הנחיתה של <strong>${name}</strong> מסתיים בעוד כשבוע${when}.`,
-        body: `כדי שהדף ימשיך להיות זמין ללקוחות שלכם, יש לחדש אותו — ${RENEWAL_PRICE} ₪ לשנה נוספת. הכתובת, העיצוב והלידים נשארים בדיוק כפי שהם.`,
-        cta: `חדשו עכשיו — ${RENEWAL_PRICE} ₪`,
+        body: `כדי שהדף ימשיך להיות זמין ללקוחות שלכם, יש לחדש אותו — ₪${RENEWAL_PRICE} לשנה נוספת. הכתובת, העיצוב והלידים נשארים בדיוק כפי שהם.`,
+        cta: `חדשו עכשיו — ₪${RENEWAL_PRICE}`,
         accent: '#f59e0b',
       };
     case 'expiry_day':
@@ -92,8 +92,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '⚠️',
         headline: 'התוקף מסתיים היום',
         lead: `התוקף של דף הנחיתה של <strong>${name}</strong> מסתיים היום${when}.`,
-        body: `הדף עדיין באוויר ויישאר פעיל עוד שבוע נוסף כתקופת חסד. אם לא יחודש עד אז, הוא ירד מהאוויר באופן זמני — אבל <strong>לא יימחק</strong>: התוכן והלידים נשמרים, ותוכלו להחזיר אותו לאוויר בכל רגע בתשלום של ${RENEWAL_PRICE} ₪.`,
-        cta: `חדשו עכשיו — ${RENEWAL_PRICE} ₪`,
+        body: `הדף עדיין באוויר ויישאר פעיל עוד שבוע נוסף כתקופת חסד. אם לא יחודש עד אז, הוא ירד מהאוויר באופן זמני — אבל <strong>לא יימחק</strong>: התוכן והלידים נשמרים, ותוכלו להחזיר אותו לאוויר בכל רגע בתשלום של ₪${RENEWAL_PRICE}.`,
+        cta: `חדשו עכשיו — ₪${RENEWAL_PRICE}`,
         accent: '#ef4444',
       };
     case 'frozen':
@@ -102,8 +102,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '🔒',
         headline: 'הדף ירד מהאוויר',
         lead: `דף הנחיתה של <strong>${name}</strong> לא חודש, ולכן הוא כרגע אינו זמין למבקרים.`,
-        body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו שמורים אצלנו במלואם, והדף יחזור לאוויר באותה כתובת בדיוק ברגע שתחדשו — ${RENEWAL_PRICE} ₪ לשנה. הדף נשמר אצלנו למשך 12 חודשים; אם לא יחודש עד אז, הוא והלידים שלו יימחקו לצמיתות.`,
-        cta: `החזירו את הדף לאוויר — ${RENEWAL_PRICE} ₪`,
+        body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו שמורים אצלנו במלואם, והדף יחזור לאוויר באותה כתובת בדיוק ברגע שתחדשו — ₪${RENEWAL_PRICE} לשנה. הדף נשמר אצלנו למשך 12 חודשים; אם לא יחודש עד אז, הוא והלידים שלו יימחקו לצמיתות.`,
+        cta: `החזירו את הדף לאוויר — ₪${RENEWAL_PRICE}`,
         accent: '#0ea5e9',
       };
     // Mid-freeze check-ins (2026-09-06, retention fixes): the single 'frozen'
@@ -117,8 +117,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '📦',
         headline: 'הדף עדיין מושהה — אפשר להחזיר אותו',
         lead: `דף הנחיתה של <strong>${name}</strong> מושהה כבר כחצי שנה ועדיין לא חודש.`,
-        body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו עדיין שמורים אצלנו במלואם, ואפשר להחזיר את הדף לאוויר בכל רגע — באותה כתובת בדיוק — תמורת ${RENEWAL_PRICE} ₪ לשנה. בהתאם למדיניות השמירה שלנו, דף שלא יחודש יימחק לצמיתות 12 חודשים ממועד ההשהיה.`,
-        cta: `החזירו את הדף לאוויר — ${RENEWAL_PRICE} ₪`,
+        body: `<strong>שום דבר לא נמחק.</strong> התוכן, העיצוב וכל הלידים שנאספו עדיין שמורים אצלנו במלואם, ואפשר להחזיר את הדף לאוויר בכל רגע — באותה כתובת בדיוק — תמורת ₪${RENEWAL_PRICE} לשנה. בהתאם למדיניות השמירה שלנו, דף שלא יחודש יימחק לצמיתות 12 חודשים ממועד ההשהיה.`,
+        cta: `החזירו את הדף לאוויר — ₪${RENEWAL_PRICE}`,
         accent: '#0ea5e9',
       };
     case 'frozen_11mo':
@@ -128,8 +128,8 @@ function copyFor(kind: ReminderKind, businessName: string, expiryText: string): 
         emoji: '🚨',
         headline: 'הזדמנות אחרונה לפני מחיקה סופית',
         lead: `דף הנחיתה של <strong>${name}</strong> מושהה כבר כ־11 חודשים.`,
-        body: `בעוד כחודש, אם הדף לא יחודש, הוא <strong>וכל הלידים שנאספו בו יימחקו לצמיתות</strong> ולא ניתן יהיה לשחזר אותם. עד אז, עדיין אפשר להחזיר את הכול לאוויר — באותה כתובת בדיוק — תמורת ${RENEWAL_PRICE} ₪ לשנה.`,
-        cta: `החזירו את הדף עכשיו — ${RENEWAL_PRICE} ₪`,
+        body: `בעוד כחודש, אם הדף לא יחודש, הוא <strong>וכל הלידים שנאספו בו יימחקו לצמיתות</strong> ולא ניתן יהיה לשחזר אותם. עד אז, עדיין אפשר להחזיר את הכול לאוויר — באותה כתובת בדיוק — תמורת ₪${RENEWAL_PRICE} לשנה.`,
+        cta: `החזירו את הדף עכשיו — ₪${RENEWAL_PRICE}`,
         accent: '#dc2626',
       };
   }

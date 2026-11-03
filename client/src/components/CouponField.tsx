@@ -128,7 +128,7 @@ export default function CouponField({ purpose, references, onChange, className =
           {busy ? '…' : 'החל קופון'}
         </button>
       </div>
-      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-xs font-medium text-red-600">{error}</p>}
     </div>
   );
 }

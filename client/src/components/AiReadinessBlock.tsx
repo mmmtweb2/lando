@@ -29,7 +29,7 @@ export default function AiReadinessBlock({ data }: { data: AiReadiness }) {
     return (
       <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
         <p className="text-sm font-semibold text-slate-900">מוכנות ל-AI</p>
-        <p className="mt-1">לא מקושר אתר לפרופיל בגוגל, ולכן אין מה שעוזרי חיפוש ו-AI יוכלו לקרוא.</p>
+        <p className="mt-1">לא מקושר אתר בכרטיס העסק שלכם בגוגל, ולכן אין מה שעוזרי חיפוש ו-AI יוכלו לקרוא.</p>
       </div>
     );
   }

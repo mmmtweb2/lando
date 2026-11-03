@@ -62,7 +62,7 @@ export default function SeoSubscriptionCard() {
   if (sub.status === 'canceled') line = `המנוי הסתיים${end ? ` ב-${end}` : ''}.`;
   else if (sub.cancelAtPeriodEnd) line = `המנוי בוטל ולא יחודש. הגישה נשארת עד ${end}.`;
   else if (sub.status === 'past_due') line = 'החיוב האחרון לא עבר. כדי להמשיך ללא הפסקה, הזינו כרטיס מחדש.';
-  else line = `המנוי פעיל${end ? ` ועד ${end}` : ''}, ומתחדש כל חודש${st.price ? ` ב-${st.price} ₪` : ''}.`;
+  else line = `המנוי פעיל${end ? ` ועד ${end}` : ''}, ומתחדש כל חודש${st.price ? ` ב-₪${st.price}` : ''}.`;
 
   const canRenew = sub.status === 'past_due' || sub.status === 'canceled' || sub.cancelAtPeriodEnd;
   const canCancel = (sub.status === 'active' || sub.status === 'past_due') && !sub.cancelAtPeriodEnd;
@@ -72,7 +72,7 @@ export default function SeoSubscriptionCard() {
       <h3 className="text-base font-semibold text-slate-900">{st.planName}, המנוי שלכם</h3>
       {returnMsg && <p className="text-sm text-slate-700">{returnMsg}</p>}
       <p className="text-sm text-slate-700">{line}</p>
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {canRenew && st.enabled && (
           <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/start')}

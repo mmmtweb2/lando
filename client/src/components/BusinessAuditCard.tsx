@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Loader2, Star, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
 import { authFetch } from '../lib/api';
@@ -48,6 +48,9 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
   const sessionRef = useRef(newSessionToken());
   const seq = useRef(0);
   const pickedRef = useRef(false);
+  const listId = useId();
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const [listOpen, setListOpen] = useState(true);
 
   // Debounced business search.
   useEffect(() => {
@@ -74,6 +77,8 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
           return;
         }
         setSuggestions(body.suggestions ?? []);
+        setActiveIdx(-1);
+        setListOpen(true);
         setSearched(true);
       } catch {
         if (mine === seq.current) setError('החיפוש נכשל. בדקו את החיבור ונסו שוב.');
@@ -173,6 +178,27 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
   const hasGaps = !!audit && audit.items.some(i => i.tip);
 
   const sc = audit ? scoreStyle(audit.score, hasGaps) : null;
+  const listVisible = suggestions.length > 0 && listOpen;
+  const optionId = (i: number) => `${listId}-opt-${i}`;
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') { if (listVisible) { e.preventDefault(); setListOpen(false); setActiveIdx(-1); } return; }
+    if (suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!listOpen) { setListOpen(true); setActiveIdx(0); } else setActiveIdx(i => (i + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setListOpen(true);
+      setActiveIdx(i => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && listVisible && activeIdx >= 0 && suggestions[activeIdx]) {
+      e.preventDefault();
+      pick(suggestions[activeIdx]);
+    }
+  }
+  const liveStatus = auditing ? 'בודקים את העסק…'
+    : searching ? 'מחפשים…'
+    : suggestions.length > 0 ? `נמצאו ${suggestions.length} עסקים. אפשר לבחור עם מקשי החיצים ו-Enter.`
+    : '';
   const noResults = searched && !searching && !auditing && !audit && suggestions.length === 0 && query.trim().length >= 2 && !error;
 
   return (
@@ -180,7 +206,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
       <div>
         <h3 className="text-base font-semibold text-slate-900">בדיקת מצב העסק בגוגל מפות</h3>
         <p className="mt-1 text-sm text-slate-500">
-          הקלידו את שם העסק והעיר, ונראה איך הפרופיל שלכם נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
+          הקלידו את שם העסק והעיר, ונראה איך כרטיס העסק שלכם בגוגל נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
         </p>
       </div>
 
@@ -200,7 +226,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
                       בדיקה מחדש
                     </button>
                   )}
-                  <button type="button" onClick={() => removeSaved(b.id)} className="text-slate-400 hover:text-rose-600">
+                  <button type="button" onClick={() => removeSaved(b.id)} className="text-slate-600 hover:text-rose-600">
                     הסרה
                   </button>
                 </span>
@@ -219,37 +245,51 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
             <input
               type="text"
               value={query}
-              onChange={e => { setQuery(e.target.value); setAudit(null); }}
+              onChange={e => { setQuery(e.target.value); setAudit(null); setListOpen(true); setActiveIdx(-1); }}
+              onKeyDown={onSearchKeyDown}
               placeholder="למשל: קייטרינג דוד, חיפה"
               aria-label="שם העסק והעיר"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={listVisible}
+              aria-controls={listId}
+              aria-activedescendant={listVisible && activeIdx >= 0 ? optionId(activeIdx) : undefined}
+              autoComplete="off"
               className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2E63F6]/30 focus:border-[#2E63F6]"
             />
             {(searching || auditing) && (
               <Loader2 size={16} className="absolute top-1/2 -translate-y-1/2 left-3 text-slate-400 animate-spin" />
             )}
-            {suggestions.length > 0 && (
-              <ul className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden" role="listbox">
-                {suggestions.map(s => (
-                  <li key={s.placeId}>
-                    <button
-                      type="button"
-                      onClick={() => pick(s)}
-                      className="w-full text-right px-3 py-2.5 hover:bg-slate-50 flex items-start gap-2"
-                    >
-                      <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-400" />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-slate-900 truncate">{s.name}</span>
-                        {s.details && <span className="block text-xs text-slate-500 truncate">{s.details}</span>}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="עסקים שנמצאו"
+              hidden={!listVisible}
+              className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden"
+            >
+              {suggestions.map((s, i) => (
+                <li
+                  key={s.placeId}
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={i === activeIdx}
+                  onClick={() => pick(s)}
+                  onMouseEnter={() => setActiveIdx(i)}
+                  className={`w-full cursor-pointer text-right px-3 py-2.5 flex items-start gap-2 ${i === activeIdx ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                >
+                  <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-500" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-900 truncate">{s.name}</span>
+                    {s.details && <span className="block text-xs text-slate-600 truncate">{s.details}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div role="status" aria-live="polite" className="sr-only">{liveStatus}</div>
           </div>
 
           {noResults && (
-            <p className="text-sm text-slate-500">
+            <p role="status" className="text-sm text-slate-500">
               לא מצאנו עסק בשם הזה. נסו להוסיף את שם העיר או לכתוב את השם אחרת.
             </p>
           )}
@@ -260,7 +300,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
               onClick={() => { setNoProfile(true); setSuggestions([]); setAudit(null); setError(null); }}
               className="self-start text-sm font-medium text-[#2E63F6] hover:underline"
             >
-              אין לי פרופיל בגוגל מפות
+              אין לי כרטיס עסק בגוגל מפות
             </button>
           )}
         </>
@@ -277,7 +317,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
           <div className="flex items-center gap-4">
             <div className={`flex h-20 w-20 flex-shrink-0 flex-col items-center justify-center rounded-full border-4 ${sc.ring}`}>
               <span className="text-2xl font-semibold leading-none">{audit.score}</span>
-              <span className="text-[10px] text-slate-400">מתוך 100</span>
+              <span className="text-[10px] text-slate-600">מתוך 100</span>
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">{audit.name}</p>
@@ -355,11 +395,11 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
 
           {aiReadiness && <AiReadinessBlock data={aiReadiness} />}
 
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-600">
             מקור הנתונים: Google Maps.{' '}
             {audit.mapsUrl && (
               <a href={audit.mapsUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">
-                צפייה בפרופיל במפות
+                צפייה בכרטיס העסק במפות
               </a>
             )}
           </p>
@@ -376,7 +416,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
                 <>
                   <p className="flex items-start gap-2 text-sm text-slate-700">
                     <RoleTag who="you" />
-                    <span>זה העסק שלכם? חברו אותו לחשבון, כדי שנוכל לעקוב אחריו ולהמשיך לחזק אותו.</span>
+                    <span>זה העסק שלכם? חברו אותו לחשבון, כדי להמשיך להקמה.</span>
                   </p>
                   <button
                     type="button"
@@ -399,7 +439,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
 
           {audit.items.every(i => !i.tip) && (
             <p className="flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle2 size={15} /> הפרופיל במצב טוב. נמשיך לעקוב ולחזק אותו.
+              <CheckCircle2 size={15} /> כרטיס העסק במצב טוב. כדאי להמשיך לעדכן אותו מדי פעם.
             </p>
           )}
         </div>

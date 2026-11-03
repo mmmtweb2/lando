@@ -292,6 +292,9 @@ export function parseJsonLoose<T>(raw: string): T {
 
 // ─── Mock ─────────────────────────────────────────────────────────────────────
 
+// Fallback used only when the AI is unavailable. It is deliberately a neutral TEMPLATE: it states no
+// numbers, years, results, guarantees, awards or customer quotes, and it says nothing about the
+// business that the owner did not provide. The owner is expected to edit it.
 function getMockContent(input: GenerateInput): AiContent {
   return {
     page_strategy: {
@@ -300,8 +303,8 @@ function getMockContent(input: GenerateInput): AiContent {
     },
     hero: {
       title: `ברוכים הבאים ל${input.business_name}`,
-      subtitle: 'מקצועיות, אמינות ושירות ללא פשרות',
-      primary_cta_text: 'צרו קשר עכשיו',
+      subtitle: 'כל הפרטים על העסק, השירותים ודרכי יצירת הקשר, במקום אחד.',
+      primary_cta_text: 'צרו קשר',
       hero_image_prompt: `Professional business interior for "${input.business_name}", ${input.vibe}, warm ambient lighting, no people, commercial photography, landscape 4:3`,
     },
     about: {
@@ -309,27 +312,27 @@ function getMockContent(input: GenerateInput): AiContent {
       content:
         input.user_provided_text ||
         input.about_business ||
-        'אנחנו עסק מוביל בתחומנו עם שנות ניסיון רבות. אנחנו מחויבים לספק את השירות הטוב ביותר לכל לקוח.',
+        'כאן כדאי לכתוב כמה משפטים על העסק: מה אתם עושים, למי זה מתאים ומה חשוב לדעת לפני שפונים. אפשר לערוך את הטקסט הזה.',
     },
     services_or_benefits: [
       {
         id: '1',
-        title: 'שירות מקצועי',
-        description: 'מגיבים מהר, מקיימים הבטחות.',
+        title: 'שירות ראשון',
+        description: 'כאן מתארים את השירות במשפט או שניים. אפשר לערוך את הטקסט.',
         service_image_prompt: `Professional team delivering expert service for "${input.business_name}", ${input.vibe}. Cinematic lighting, photorealistic, NO text, NO watermarks, landscape orientation.`,
         service_icon_keyword: 'professional service',
       },
       {
         id: '2',
-        title: 'צוות מומחים',
-        description: 'ניסיון מוכח, תוצאות מיידיות.',
+        title: 'שירות שני',
+        description: 'כאן מפרטים למי השירות מתאים ומה הוא כולל.',
         service_image_prompt: `Skilled professionals at work in ${input.vibe} setting. Cinematic lighting, photorealistic, NO text, NO watermarks, landscape orientation.`,
         service_icon_keyword: 'expert team',
       },
       {
         id: '3',
-        title: 'תמורה מעולה',
-        description: 'תמחור שקוף, ללא הפתעות.',
+        title: 'שירות שלישי',
+        description: 'כאן מוסיפים פרטים נוספים על השירות, כמו זמני אספקה או מחיר, אם רוצים.',
         service_image_prompt: `High-quality result related to ${input.vibe}. Cinematic lighting, photorealistic, NO text, NO watermarks, landscape orientation.`,
         service_icon_keyword: 'quality value',
       },
@@ -352,30 +355,30 @@ function getMockContent(input: GenerateInput): AiContent {
       image_keywords: ['professional office', 'business workspace', 'modern interior'],
     },
     benefits: [
-      { title: 'שירות מהיר', description: 'מגיבים תוך שעות, לא ימים.' },
-      { title: 'ניסיון בתחום', description: 'עבודה מקצועית שנשענת על ניסיון בשטח.' },
-      { title: 'תמחור שקוף', description: 'מחיר ברור מראש. אפס הפתעות.' },
+      { title: 'יתרון ראשון', description: 'כאן כותבים יתרון אמיתי של העסק.' },
+      { title: 'יתרון שני', description: 'כאן כותבים עוד יתרון שחשוב ללקוחות.' },
+      { title: 'יתרון שלישי', description: 'כאן כותבים יתרון נוסף, אם יש.' },
     ],
-    benefits_heading: 'למה לבחור בנו',
-    benefits_kicker: 'היתרונות שלנו',
+    benefits_heading: 'מה חשוב לדעת',
+    benefits_kicker: 'על העסק',
     faq: [
-      { question: 'כיצד ניצור קשר לתיאום?', answer: 'בוואטסאפ, טלפון, או טופס הפנייה — נחזור תוך 24 שעות.' },
-      { question: 'כמה זמן לוקח התהליך?', answer: 'בונים לוח זמנים מותאם אישית כבר בשיחה הראשונה.' },
-      { question: 'איך מתחילים?', answer: 'משאירים פרטים בטופס או כותבים לנו בוואטסאפ, ואנחנו חוזרים אליכם.' },
+      { question: 'איך יוצרים קשר?', answer: 'אפשר ליצור קשר בוואטסאפ, בטלפון או בטופס הפנייה שבדף.' },
+      { question: 'איך מתחילים?', answer: 'משאירים פרטים בטופס או כותבים בוואטסאפ, וממשיכים משם.' },
+      { question: 'איפה אפשר לראות את השירותים?', answer: 'פירוט השירותים מופיע בדף. אפשר גם לשאול אותנו ישירות.' },
     ],
     faq_heading: 'שאלות נפוצות',
     faq_kicker: 'עזרה ותשובות',
     process_steps: [
-      { step_number: 1, title: 'יצירת קשר', description: 'פנו אלינו ונקבע שיחת היכרות.' },
-      { step_number: 2, title: 'התאמה אישית', description: 'נבנה פתרון מדויק לצרכים שלכם.' },
-      { step_number: 3, title: 'תוצאה מיידית', description: 'מקבלים שירות מקצועי ותוצאה אמיתית.' },
+      { step_number: 1, title: 'יצירת קשר', description: 'משאירים פרטים או פונים בוואטסאפ.' },
+      { step_number: 2, title: 'תיאום', description: 'מתאמים את הפרטים לפי הצורך.' },
+      { step_number: 3, title: 'קבלת השירות', description: 'מקבלים את השירות שסוכם.' },
     ],
     process_heading: 'איך זה עובד',
     process_kicker: 'התהליך שלנו',
     testimonials: input.include_testimonials
       ? (input.testimonial_quote?.trim()
           ? [
-              { quote: input.testimonial_quote.trim(), author: input.testimonial_author?.trim() || 'שם הלקוח', role: '' },
+              { quote: input.testimonial_quote.trim(), author: input.testimonial_author?.trim() || 'לקוח/ה', role: '' },
               { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
             ]
           : [
@@ -385,14 +388,10 @@ function getMockContent(input: GenerateInput): AiContent {
       : [],
     testimonials_heading: 'מה לקוחות אומרים',
     testimonials_kicker: 'לקוחות מספרים',
-    cta_banner_subline: `נשמח לענות על כל שאלה ולעזור לכם להתחיל`,
-    seo_title: `${input.business_name} | שירות מקצועי`,
-    seo_description: `גלו את ${input.business_name} — פתרונות מותאמים אישית במחיר שקוף. צרו קשר עוד היום.`,
-    trust_badges: [
-      { label: 'שירות אישי' },
-      { label: 'מענה מהיר' },
-      { label: 'ללא התחייבות' },
-    ],
+    cta_banner_subline: `אפשר ליצור קשר בכל שאלה`,
+    seo_title: `${input.business_name}`,
+    seo_description: `${input.business_name}: פרטים על העסק והשירותים, ודרכי יצירת קשר.`,
+    // No trust badges in the fallback: every badge would be a claim the owner never made.
     typography_pairing: 'modern_clean',
     color_palette: {
       primary: input.primary_color ?? '#2563eb',

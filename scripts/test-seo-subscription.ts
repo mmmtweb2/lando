@@ -1,10 +1,7 @@
-// Run: npx ts-node --transpile-only scripts/test-seo-subscription.ts
-process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
-process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
-process.env.SUMIT_COMPANY_ID = '123';
-process.env.SUMIT_API_KEY = 'k';
-process.env.PUBLIC_API_URL = 'https://api.test';
-process.env.PUBLIC_APP_URL = 'https://app.test';
+// Run: npx tsx scripts/test-seo-subscription.ts
+// Env must be set BEFORE the app modules load. tsx/esbuild hoists `import` statements above plain
+// statements, so this lives in a side-effect module that is imported first.
+import './_env-seo-subscription';
 import assert from 'node:assert/strict';
 import { supabase } from '../src/config/supabase';
 import { cancel, getStatus, start, subscriptionReturn, subscriptionWebhook } from '../src/controllers/seoSubscription.controller';
@@ -12,7 +9,7 @@ import { SubError, getSubscription, sweepSubscriptions } from '../src/services/s
 import { getEntitlements } from '../src/services/entitlements.service';
 
 type Row = Record<string, any>;
-const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [] };
+const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [] };
 const UNIQUE: Record<string, string[]> = { seo_subscriptions: ['email'], seo_subscription_events: ['sumit_payment_id'] };
 let seq = 0;
 let missingTable = false;

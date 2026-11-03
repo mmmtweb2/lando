@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-public-audit.ts
+// Run: npx tsx scripts/test-public-audit.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= 'fake';

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Star } from 'lucide-react';
 import { authFetch } from '../lib/api';
 
-// Reviews that waited 5+ days for an answer, each with a draft reply. Nothing is published unless
-// the owner presses "פרסום התשובה בגוגל" on that card; the text sent is exactly what is in the box.
+// Reviews that waited 5+ days for an answer, each with a draft reply. While Google's API access is
+// not approved (the server says `canPublish: false`) the card is copy-and-paste only and never
+// promises publishing. When the server reports that publishing works, nothing is sent unless the
+// owner presses the publish button on that card; the text sent is exactly what is in the box.
 
 interface Draft { id: string; rating: number; reviewer: string | null; createdAt: string; draft: string; reviewText: string | null }
 
-function Row({ d, onDone }: { d: Draft; onDone: (id: string, msg: string) => void }) {
+function Row({ d, canPublish, onDone }: { d: Draft; canPublish: boolean; onDone: (id: string, msg: string) => void }) {
   const [text, setText] = useState(d.draft);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -39,11 +41,17 @@ function Row({ d, onDone }: { d: Draft; onDone: (id: string, msg: string) => voi
           className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800" />
       </label>
       {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
+      {!canPublish && <p className="text-xs text-slate-500">אחרי ההעתקה, הדביקו את התשובה כתגובה לביקורת בכרטיס העסק שלכם בגוגל.</p>}
+      {copied && <p role="status" className="sr-only">התשובה הועתקה</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={busy || text.trim().length < 2} onClick={() => void act('publish')}
-          className="min-h-[40px] rounded-lg bg-[#2E63F6] px-4 text-sm font-medium text-white disabled:opacity-50">פרסום התשובה בגוגל</button>
+        {canPublish && (
+          <button type="button" disabled={busy || text.trim().length < 2} onClick={() => void act('publish')}
+            className="min-h-[40px] rounded-lg bg-[#2E63F6] px-4 text-sm font-medium text-white disabled:opacity-50">פרסום התשובה בגוגל</button>
+        )}
         <button type="button" onClick={() => { void navigator.clipboard?.writeText(text).then(() => setCopied(true)).catch(() => undefined); }}
-          className="min-h-[40px] rounded-lg border border-slate-200 px-4 text-sm text-slate-700">{copied ? 'הועתק' : 'העתקה'}</button>
+          className={canPublish
+            ? 'min-h-[40px] rounded-lg border border-slate-200 px-4 text-sm text-slate-700'
+            : 'min-h-[40px] rounded-lg bg-[#2E63F6] px-4 text-sm font-medium text-white'}>{copied ? 'הועתק' : 'העתקת התשובה'}</button>
         <button type="button" disabled={busy} onClick={() => void act('dismiss')}
           className="min-h-[40px] rounded-lg px-3 text-sm text-slate-500 hover:text-slate-800 disabled:opacity-50">דילוג</button>
       </div>
@@ -54,9 +62,10 @@ function Row({ d, onDone }: { d: Draft; onDone: (id: string, msg: string) => voi
 export default function ReviewDraftsCard() {
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [note, setNote] = useState('');
+  const [canPublish, setCanPublish] = useState(false);
   useEffect(() => {
     authFetch('/api/seo/review-drafts').then((r) => (r.ok ? r.json() : { drafts: [] }))
-      .then((b: { drafts?: Draft[] }) => setDrafts(b.drafts ?? []))
+      .then((b: { drafts?: Draft[]; canPublish?: boolean }) => { setCanPublish(b.canPublish === true); setDrafts(b.drafts ?? []); })
       .catch(() => setDrafts([]));
   }, []);
   if (!drafts || (drafts.length === 0 && !note)) return null;
@@ -64,11 +73,15 @@ export default function ReviewDraftsCard() {
     <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-4">
       <div>
         <h3 className="text-base font-semibold text-slate-900">ביקורות שמחכות לתשובה</h3>
-        <p className="mt-1 text-sm text-slate-500">הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. התשובה מתפרסמת בגוגל רק כשאתם לוחצים על "פרסום", בדיוק בנוסח שבתיבה.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          {canPublish
+            ? 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. התשובה נשלחת לגוגל רק כשאתם לוחצים על "פרסום", בדיוק בנוסח שבתיבה.'
+            : 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. אפשר לערוך אותה, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.'}
+        </p>
       </div>
       {note && <p role="status" className="text-sm text-emerald-700">{note}</p>}
       <ul className="flex flex-col gap-3">
-        {drafts.map((d) => <Row key={d.id} d={d} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); }} />)}
+        {drafts.map((d) => <Row key={d.id} d={d} canPublish={canPublish} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); }} />)}
       </ul>
     </div>
   );

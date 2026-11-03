@@ -86,11 +86,11 @@ export default function SeoPlan() {
   } else {
     body = (
       <>
-        <p className="text-3xl font-bold text-slate-900">{price} ₪ <span className="text-base font-medium text-slate-500">לחודש, כולל מע״מ</span></p>
+        <p className="text-3xl font-bold text-slate-900">₪{price} <span className="text-base font-medium text-slate-500">לחודש, כולל מע״מ</span></p>
         <ul className="mt-4 flex flex-col gap-1.5 text-sm text-slate-700">
-          <li>בדיקת הפרופיל שלכם בגוגל מפות והשוואה למובילים באזור.</li>
-          <li>קישור וקוד QR לביקורות, ווידג׳ט ביקורות לאתר.</li>
-          <li>דפי חיפוש וערכות תוכן, ומעקב פניות במקום אחד.</li>
+          <li>בדיקת כרטיס העסק שלכם בגוגל מפות והשוואה לעסקים דומים באזור.</li>
+          <li>קישור וקוד QR לביקורות, וקוד להצגת הביקורות באתר.</li>
+          <li>דפי נחיתה לשירותים, ערכות תוכן ומעקב פניות במקום אחד.</li>
         </ul>
         <p className="mt-4 text-xs text-slate-500">המנוי מתחדש אוטומטית בכל חודש. אפשר לבטל בכל רגע מהדשבורד, והגישה נשארת עד סוף התקופה ששולמה. התשלום מתבצע בעמוד מאובטח של SUMIT.</p>
         {err && <p className="mt-3 text-sm text-red-600" role="alert">{err}</p>}

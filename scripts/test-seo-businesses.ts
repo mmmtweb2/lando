@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-seo-businesses.ts
+// Run: npx tsx scripts/test-seo-businesses.ts
 // Stage 6.1 — save/list/remove businesses, against an in-memory fake of the supabase client
 // plus a mocked Places fetch. No network, no DB.
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:1';

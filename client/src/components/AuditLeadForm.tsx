@@ -66,14 +66,14 @@ export default function AuditLeadForm({
           <CheckCircle2 size={16} /> תודה! קיבלנו את הפרטים ונשלח אליכם בוואטסאפ את תוכנית החיזוק.
         </p>
         <p className="text-sm text-slate-700">
-          בינתיים, הדרך המהירה ביותר לחזק את הפרופיל: ביקורות חדשות. זה הקישור הישיר שאפשר לשלוח ללקוחות מרוצים, והוא פותח להם חלון דירוג בגוגל:
+          בינתיים, דרך מהירה לחזק את כרטיס העסק שלכם: ביקורות חדשות. זה קישור ישיר שאפשר לשלוח ללקוחות, והוא פותח להם חלון כתיבת ביקורת בגוגל:
         </p>
         <input
           readOnly dir="ltr" value={reviewUrl} onFocus={e => e.currentTarget.select()}
           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
         />
         <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="self-start text-sm font-medium text-[#2E63F6] hover:underline">
-          פתיחת חלון הדירוג
+          פתיחת חלון כתיבת הביקורת
         </a>
       </div>
     );

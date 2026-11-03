@@ -1004,7 +1004,7 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
       res.status(409).json({
         needsRenewal: true,
         reason: 'frozen_needs_renewal',
-        error: 'הדף פג תוקף וירד מהאוויר. כדי להחזירו לאוויר יש לחדש אותו — 99 ₪ לשנה.',
+        error: 'הדף פג תוקף וירד מהאוויר. כדי להחזירו לאוויר יש לחדש אותו — ₪99 לשנה.',
       });
       return;
     }

@@ -12,8 +12,8 @@ const mk = (items: any[]) => ({ items }) as any;
 let recs = buildRecommendations(mk(all.map((k) => item(k, 'weak', k === 'website' ? 'now' : 'soon'))));
 assert.deepEqual(recs.map((r) => r.key), ['reviews', 'rating', 'photos', 'website', 'phone', 'hours', 'category', 'status'], 'sorted by points at stake (ties by weight)');
 assert.equal(recs[0].impact, 'high'); assert.equal(recs[3].impact, 'medium'); assert.equal(recs[7].impact, 'low');
-assert.equal(recs.find((r) => r.key === 'website')!.weDoLabel, 'נטפל בזה בשבילך אחרי ההרשמה');
-assert.equal(recs.find((r) => r.key === 'rating')!.weDoLabel, 'בקרוב: נטפל בזה בשבילך', 'not yet available is said honestly');
+assert.equal(recs.find((r) => r.key === 'website')!.weDoLabel, 'נטפל בזה בשבילכם אחרי ההרשמה');
+assert.equal(recs.find((r) => r.key === 'rating')!.weDoLabel, 'בקרוב: נטפל בזה בשבילכם', 'not yet available is said honestly');
 assert.ok(recs.every((r) => r.why.length > 10 && r.how.length > 0), 'every item says why and how');
 
 // "ok" items count half: weak photos (15) > ok reviews (12.5) > weak website (10).

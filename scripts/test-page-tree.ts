@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-page-tree.ts
+// Run: npx tsx scripts/test-page-tree.ts
 // Stage 9.1 — deleting a PARENT page whose CHILD page has leads.
 // leads.landing_page_id has no ON DELETE clause, so the leads of the whole tree must go first;
 // children then go with the parent through landing_pages.parent_id ON DELETE CASCADE.

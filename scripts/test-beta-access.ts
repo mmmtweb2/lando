@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-beta-access.ts
+// Run: npx tsx scripts/test-beta-access.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';

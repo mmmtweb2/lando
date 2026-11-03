@@ -2,17 +2,17 @@ import { useState } from 'react';
 import { ExternalLink, ArrowRight, Loader2 } from 'lucide-react';
 import { RoleTag } from './RoleTag';
 
-// "I don't have a Google Maps profile" — a business without one is a target customer of
+// "I don't have a Google Maps business card" — a business without one is a target customer of
 // the product (Moshe, 2026-10-23). We cannot create the profile for them (Google requires
 // the owner to create and verify it), so this guide makes the split explicit.
 
 const STEPS: { who: 'we' | 'you'; soon?: boolean; title: string; body: string; href?: string; cta?: string }[] = [
   {
     who: 'you',
-    title: 'פתחו פרופיל עסק בגוגל',
-    body: 'זה חינם ולוקח כמה דקות. גוגל דורשת שבעל העסק ייצור את הפרופיל בעצמו.',
+    title: 'פתחו כרטיס עסק בגוגל',
+    body: 'זה חינם ולוקח כמה דקות. גוגל דורשת שבעל העסק ייצור את הכרטיס בעצמו.',
     href: 'https://business.google.com/create',
-    cta: 'פתיחת פרופיל בגוגל',
+    cta: 'פתיחת כרטיס עסק בגוגל',
   },
   {
     who: 'you',
@@ -27,13 +27,13 @@ const STEPS: { who: 'we' | 'you'; soon?: boolean; title: string; body: string; h
   },
   {
     who: 'you',
-    title: 'אמתו את הפרופיל',
+    title: 'אמתו את כרטיס העסק',
     body: 'גוגל תבקש אימות בסרטון קצר, בטלפון או בדואר. האימות יכול לקחת כמה ימים, ואפשר להמשיך בהקמה בינתיים. זה השלב שבו רוב העסקים נתקעים, ואפשר לפנות אלינו.',
   },
   {
     who: 'we',
     title: 'חזרו לכאן, ונריץ בדיקה מלאה',
-    body: 'נמדוד את הפרופיל מול העסקים הדומים לכם באזור ונבנה לכם תוכנית חיזוק.',
+    body: 'נשווה את כרטיס העסק שלכם לעסקים דומים באזור ונכין לכם תוכנית עבודה.',
   },
 ];
 
@@ -47,8 +47,8 @@ function PendingForm({ onPending }: { onPending: (name: string) => Promise<void>
       className="flex flex-col gap-2 rounded-lg border border-blue-100 bg-blue-50/60 p-3"
       onSubmit={async (e) => { e.preventDefault(); if (!ok || busy) return; setBusy(true); try { await onPending(name.trim()); } finally { setBusy(false); } }}
     >
-      <p className="text-sm font-medium text-slate-900">הפרופיל עוד לא מוכן או ממתין לאימות? ממשיכים בהקמה בינתיים</p>
-      <p className="text-xs leading-relaxed text-slate-600">לא צריך לחכות לגוגל. נכין אתכם מראש, וכשהפרופיל יאושר תחזרו לכאן ותחברו אותו בחיפוש.</p>
+      <p className="text-sm font-medium text-slate-900">כרטיס העסק עוד לא מוכן או ממתין לאימות? ממשיכים בהקמה בינתיים</p>
+      <p className="text-xs leading-relaxed text-slate-600">לא צריך לחכות לגוגל. נכין אתכם מראש, וכשכרטיס העסק יאושר תחזרו לכאן ותחברו אותו בחיפוש.</p>
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-[12rem] flex-1 text-xs text-slate-600">שם העסק
           <input
@@ -57,7 +57,7 @@ function PendingForm({ onPending }: { onPending: (name: string) => Promise<void>
           />
         </label>
         <button type="submit" disabled={!ok || busy} className="inline-flex items-center gap-2 rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-50">
-          {busy && <Loader2 size={14} className="animate-spin" />} ממשיכים בלי פרופיל
+          {busy && <Loader2 size={14} className="animate-spin" />} ממשיכים בלי כרטיס עסק
         </button>
       </div>
     </form>
@@ -68,9 +68,9 @@ export default function NoProfileGuide({ onBack, onPending }: { onBack: () => vo
   return (
     <div className="flex flex-col gap-4 border-t border-slate-100 pt-5">
       <div>
-        <p className="text-sm font-semibold text-slate-900">אין בעיה, מתחילים מפרופיל חדש</p>
+        <p className="text-sm font-semibold text-slate-900">אין בעיה, מתחילים מכרטיס עסק חדש</p>
         <p className="mt-1 text-sm text-slate-500">
-          רוב הלקוחות שמחפשים עסק בגוגל מגיעים דרך המפות, ולכן הפרופיל הוא הבסיס. הנה מי עושה מה:
+          רוב הלקוחות שמחפשים עסק בגוגל מגיעים דרך המפות, ולכן כרטיס העסק בגוגל הוא הבסיס. הנה מי עושה מה:
         </p>
       </div>
       <ol className="flex flex-col gap-3">
@@ -105,7 +105,7 @@ export default function NoProfileGuide({ onBack, onPending }: { onBack: () => vo
         onClick={onBack}
         className="inline-flex items-center gap-1 self-start text-sm text-slate-500 hover:text-slate-900"
       >
-        <ArrowRight size={14} /> יש לי כבר פרופיל, חזרה לחיפוש
+        <ArrowRight size={14} /> יש לי כבר כרטיס עסק, חזרה לחיפוש
       </button>
     </div>
   );

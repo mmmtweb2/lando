@@ -89,14 +89,14 @@ export function buildAlertEmail(business: string, count: number, unsub: string):
   const biz = business.trim() || 'העסק שלכם';
   const subject = count === 1 ? `ביקורת אחת ב-${biz} מחכה לתשובה` : `${count} ביקורות ב-${biz} מחכות לתשובה`;
   const line = count === 1 ? 'יש ביקורת בגוגל שלא נענתה כבר כמה ימים.' : `יש ${count} ביקורות בגוגל שלא נענו כבר כמה ימים.`;
-  const body = 'הכנו לכל אחת טיוטת תשובה. כלום לא יפורסם בלי שתקראו, תערכו אם צריך, ותאשרו בלחיצה.';
+  const body = 'הכנו לכל אחת טיוטת תשובה. אפשר לקרוא, לערוך אם צריך, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.';
   const text = `${line}\n${body}\n\nלתשובות המוכנות: ${APP_URL}/dashboard\n\nלא רוצים לקבל סיכומים והתראות במייל? ${unsub}`;
   const html = `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1e293b;line-height:1.6">
   <h2 style="margin:0 0 8px;font-size:20px">${esc(subject)}</h2>
   <p style="margin:0 0 8px">${esc(line)}</p>
   <p style="margin:0 0 20px">${esc(body)}</p>
   <p style="margin:0 0 24px"><a href="${esc(APP_URL)}/dashboard" style="background:#2E63F6;color:#fff;border-radius:8px;padding:10px 18px;text-decoration:none;font-weight:600;display:inline-block">לתשובות המוכנות</a></p>
-  <p style="color:#94a3b8;font-size:12px">קיבלתם את המייל כי חיברתם את פרופיל העסק שלכם בגוגל ל-Pagey. <a href="${esc(unsub)}" style="color:#94a3b8">הפסקת קבלת סיכומים והתראות במייל</a></p>
+  <p style="color:#94a3b8;font-size:12px">קיבלתם את המייל כי חיברתם את כרטיס העסק שלכם בגוגל ל-Pagey. <a href="${esc(unsub)}" style="color:#94a3b8">הפסקת קבלת סיכומים והתראות במייל</a></p>
 </div>`;
   return { subject, html, text };
 }

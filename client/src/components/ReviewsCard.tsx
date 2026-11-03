@@ -43,7 +43,7 @@ function BusinessReviews({ b }: { b: Saved }) {
   const snippet =
     `<iframe src="${widgetSrc}" title="ביקורות Google" width="100%" height="560" ` +
     `style="border:0;max-width:640px" loading="lazy"></iframe>`;
-  const wa = `https://wa.me/?text=${encodeURIComponent(`היי, תודה שבחרת ב${b.name}! נשמח אם תכתבו לנו ביקורת בגוגל, זה לוקח דקה: ${link}`)}`;
+  const wa = `https://wa.me/?text=${encodeURIComponent(`היי, תודה שבחרתם ב${b.name}! נשמח אם תכתבו לנו ביקורת בגוגל, זה לוקח דקה: ${link}`)}`;
 
   return (
     <div className="rounded-lg border border-slate-200 p-4 flex flex-col gap-4">
@@ -51,7 +51,7 @@ function BusinessReviews({ b }: { b: Saved }) {
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
-          <RoleTag who="you" /> לשלוח ללקוחות מרוצים קישור לכתיבת ביקורת
+          <RoleTag who="you" /> לשלוח ללקוחות קישור לכתיבת ביקורת
         </div>
         <input
           readOnly
@@ -85,11 +85,11 @@ function BusinessReviews({ b }: { b: Saved }) {
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
-          <RoleTag who="we" /> ווידג'ט ביקורות לאתר שלכם
+          <RoleTag who="we" /> הצגת ביקורות באתר שלכם
         </div>
         <p className="text-xs text-slate-500">
-          הדביקו את הקוד באתר, במקום שבו תרצו להציג ביקורות. הווידג'ט מושך את הביקורות מגוגל בכל צפייה,
-          מציג עד 5 ביקורות לפי בחירת גוגל, ומקשר לביקורת המקורית.
+          הדביקו את הקוד באתר, במקום שבו תרצו להציג ביקורות. הביקורות נטענות מגוגל בכל צפייה
+          (עד 5, לפי הבחירה של גוגל), וכל אחת מקושרת לביקורת המקורית.
         </p>
         <textarea
           readOnly
@@ -112,7 +112,7 @@ function BusinessReviews({ b }: { b: Saved }) {
         {preview && (
           <iframe
             src={widgetSrc}
-            title="תצוגה מקדימה של ווידג'ט הביקורות"
+            title="תצוגה מקדימה של הביקורות באתר"
             className="w-full rounded-lg border border-slate-200"
             style={{ height: 560, maxWidth: 640 }}
           />
@@ -147,12 +147,12 @@ export default function ReviewsCard() {
       <div>
         <h3 className="text-base font-semibold text-slate-900">ביקורות בגוגל</h3>
         <p className="mt-1 text-sm text-slate-500">
-          ביקורות הן מהגורמים החזקים ביותר בדירוג בגוגל מפות. אנחנו נותנים לכם את הכלים, ואתם מבקשים מהלקוחות.
+          ביקורות עוזרות ללקוחות חדשים להחליט למי לפנות. אנחנו נותנים לכם את הכלים, ואתם מבקשים מהלקוחות.
         </p>
       </div>
       {list === null ? null : list.length === 0 ? (
         <p className="text-sm text-slate-500">
-          חברו קודם את העסק שלכם בבדיקה למעלה ("זה העסק שלי, חברו אותו"), ואז יופיעו כאן קישור לביקורת וווידג'ט.
+          חברו קודם את העסק שלכם בבדיקה למעלה ("זה העסק שלי, חברו אותו"), ואז יופיעו כאן קישור לביקורת וקוד להצגת הביקורות באתר.
         </p>
       ) : (
         list.map(b => <BusinessReviews key={b.id} b={b} />)

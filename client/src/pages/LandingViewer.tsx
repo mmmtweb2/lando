@@ -3981,7 +3981,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   empty, shown BEFORE the price so the user isn't surprised. */}
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 text-center leading-relaxed">
                 {planStatus
-                  ? 'יתרת הדפים שלך לפרסום היא 0, ולכן פרסום הדף הזה עולה 249 ש״ח.'
+                  ? 'יתרת הדפים שלך לפרסום היא 0, ולכן פרסום הדף הזה עולה ₪249.'
                   : 'לא הצלחנו לקרוא את יתרת הדפים שלך, ולכן נדרש תשלום חד־פעמי על הדף הזה.'}
               </div>
 
@@ -3991,11 +3991,11 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   <span className="text-sm font-semibold text-slate-700">שחרור דף נחיתה לשנה</span>
                   {publishQuote ? (
                     <span className="text-left">
-                      <span className="text-sm text-slate-400 line-through">249 ש״ח</span>{' '}
-                      <span className="text-xl font-extrabold text-emerald-600">{publishQuote.finalAmount} ש״ח</span>
+                      <span className="text-sm text-slate-400 line-through">₪249</span>{' '}
+                      <span className="text-xl font-extrabold text-emerald-600">₪{publishQuote.finalAmount}</span>
                     </span>
                   ) : (
-                    <span className="text-xl font-extrabold text-slate-900">249 ש״ח</span>
+                    <span className="text-xl font-extrabold text-slate-900">₪249</span>
                   )}
                 </div>
                 <div className="border-t border-slate-200 pt-2.5 flex flex-col gap-1.5 text-sm text-slate-600">
@@ -4018,7 +4018,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   on, and hiding that would be selling the expensive option to
                   someone we know we could serve for less. */}
               <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 text-center leading-relaxed">
-                מפרסמים כמה דפים? <Link to="/dashboard?bundles=1" className="font-semibold text-[#2E63F6] hover:underline">חבילת דפים</Link> מוזילה את המחיר לדף ל־198 ₪ (5 דפים) או 149 ₪ (10 דפים).
+                מפרסמים כמה דפים? <Link to="/dashboard?bundles=1" className="font-semibold text-[#2E63F6] hover:underline">חבילת דפים</Link> מוזילה את המחיר לדף ל־₪198 (5 דפים) או ₪149 (10 דפים).
               </div>
 
               {/* Secure redirect notice — card details are entered on SUMIT's

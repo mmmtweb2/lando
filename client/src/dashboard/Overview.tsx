@@ -129,7 +129,7 @@ function SetupOverview({ input, go, setTick, ticksOnServer }: Pick<Props, 'input
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--ink)]">
           <strong className="font-bold text-[var(--accent-strong)]">{r.label}.</strong> {TIER_LINE[r.tier]}
         </p>
-        <p className="mt-1 text-sm text-[var(--muted)]">אחרי שהכול מסומן, עוברים אוטומטית לשלב השני: ניטור וצמיחה.</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">אחרי שהכול מסומן, עוברים אוטומטית לשלב השני: ניהול שוטף.</p>
       </section>
 
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
@@ -162,7 +162,7 @@ function Welcome({ setTick }: { setTick: Props['setTick'] }) {
         <p className="dv2-tag">שלב 1 הושלם</p>
         <h2 id="dv2-welcome" className="mt-3 text-2xl font-bold text-[var(--ink)]">העסק <span>מוקם</span>. עוברים לשלב השני.</h2>
         <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--muted)]">
-          כל צעדי ההקמה מאחוריכם, ואין צורך לחזור אליהם. מעכשיו הדשבורד הוא לניטור ולצמיחה: מתחרים, ביקורות ופניות. רשימת ההקמה נשארת זמינה בתפריט, בלשונית ״ההקמה שלי״.
+          כל צעדי ההקמה מאחוריכם, ואין צורך לחזור אליהם. מעכשיו הדשבורד הוא לניהול שוטף: מתחרים, ביקורות ופניות. רשימת ההקמה נשארת זמינה בתפריט, בלשונית ״ההקמה שלי״.
         </p>
       </div>
       <button type="button" className="dv2-btn" onClick={() => void setTick('phase2_ack', true)}>מעבר לשלב השני <ArrowLeft size={16} aria-hidden /></button>
@@ -174,17 +174,17 @@ function Welcome({ setTick }: { setTick: Props['setTick'] }) {
 
 interface Action { icon: ReactNode; title: string; body: string; who: 'we' | 'you'; view: View; cta: string }
 const ACTIONS: Action[] = [
-  { icon: <Search size={20} />, title: 'בדיקה מחודשת מול המתחרים', who: 'we', view: 'profile', cta: 'בדוק עכשיו',
+  { icon: <Search size={20} />, title: 'בדיקה מחודשת מול המתחרים', who: 'we', view: 'profile', cta: 'בדקו עכשיו',
     body: 'מומלץ פעם בחודש. רואים אם הפער מהמובילים באזור השתנה.' },
   { icon: <Star size={20} />, title: 'עוד ביקורות מלקוחות', who: 'you', view: 'reviews', cta: 'לקישור הביקורות',
-    body: 'שולחים את הקישור או מציגים את קוד ה-QR ללקוחות מרוצים.' },
+    body: 'שולחים את הקישור או מציגים את קוד ה-QR ללקוחות.' },
   { icon: <FileText size={20} />, title: 'תוכן חדש לחיפוש', who: 'we', view: 'content', cta: 'לתוכן',
     body: 'עוד דף או ערכת תוכן לביטוי חיפוש שעדיין לא כיסיתם.' },
   { icon: <Inbox size={20} />, title: 'מעבר על הפניות', who: 'you', view: 'leads', cta: 'לפניות',
     body: 'שיחות, וואטסאפ וטפסים במקום אחד. כדאי לחזור לכל פנייה.' },
 ];
 const SOON: { title: string; body: string }[] = [
-  { title: 'סטטיסטיקות פרופיל מגוגל', body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מהפרופיל.' },
+  { title: 'סטטיסטיקות כרטיס העסק מגוגל', body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מכרטיס העסק.' },
   { title: 'ביקורות אוטומטיות', body: 'בקשת ביקורת נשלחת ללקוח אחרי שהשירות הסתיים.' },
   { title: 'סיכום חודשי', body: 'דוח קצר בסוף החודש: מה השתפר ומה עושים הלאה.' },
 ];
@@ -200,14 +200,14 @@ function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: n
 }
 
 const GBP_ACTION: Action = {
-  icon: <BarChart3 size={20} />, title: 'הנתונים של הפרופיל בגוגל', who: 'we', view: 'profile', cta: 'לצפייה',
-  body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מהפרופיל ב-30 הימים האחרונים.',
+  icon: <BarChart3 size={20} />, title: 'הנתונים של כרטיס העסק בגוגל', who: 'we', view: 'profile', cta: 'לצפייה',
+  body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מכרטיס העסק ב-30 הימים האחרונים.',
 };
 
 function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go'>) {
   const next = deriveOngoingNext(input);
   const actions = gbpEnabled ? [GBP_ACTION, ...ACTIONS] : ACTIONS;
-  const soon = gbpEnabled ? SOON.filter((s) => s.title !== 'סטטיסטיקות פרופיל מגוגל') : SOON;
+  const soon = gbpEnabled ? SOON.filter((s) => s.title !== 'סטטיסטיקות כרטיס העסק מגוגל') : SOON;
   return (
     <div className="flex flex-col gap-6">
       <section className="dv2-hero p-5 sm:p-6" aria-labelledby="dv2-month">
@@ -250,7 +250,7 @@ function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input'
       )}
 
       <section aria-labelledby="dv2-actions">
-        <SectionTitle id="dv2-actions" title="מה אפשר לעשות" hint="פעולות קבועות שמשפרות את המקום שלכם בגוגל." />
+        <SectionTitle id="dv2-actions" title="מה אפשר לעשות" hint="פעולות קבועות שכדאי לעשות מדי חודש." />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {actions.map((a) => (
             <li key={a.title} className="dv2-card-flat flex flex-col p-4">

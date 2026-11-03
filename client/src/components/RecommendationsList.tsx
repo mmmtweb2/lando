@@ -13,7 +13,7 @@ const IMPACT_STYLE: Record<Impact, string> = {
 export default function RecommendationsList({ audit }: { audit: Pick<Audit, 'items'> }) {
   const recs = buildRecommendations(audit);
   if (recs.length === 0) {
-    return <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">לא מצאנו כרגע מה לשפר בפרופיל. נמשיך לעקוב ולהתריע אם משהו משתנה.</p>;
+    return <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">לא מצאנו כרגע מה לשפר בכרטיס העסק שלכם בגוגל.</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -22,7 +22,7 @@ export default function RecommendationsList({ audit }: { audit: Pick<Audit, 'ite
         {recs.map((r, i) => (
           <li key={r.key} className="rounded-lg border border-slate-100 bg-white p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-slate-900"><span className="text-slate-400">{i + 1}.</span> {r.title}</span>
+              <span className="text-sm font-medium text-slate-900"><span className="text-slate-600">{i + 1}.</span> {r.title}</span>
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${IMPACT_STYLE[r.impact]}`}>{IMPACT_LABEL[r.impact]}</span>
             </div>
             {r.why && <p className="mt-1.5 text-xs leading-relaxed text-slate-600"><span className="font-semibold text-slate-700">למה זה חשוב: </span>{r.why}</p>}

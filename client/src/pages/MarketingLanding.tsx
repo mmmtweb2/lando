@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -200,20 +200,21 @@ function FeatureCard({ icon, title, desc, dark = false }: { icon: React.ReactNod
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
       className="rounded-2xl bg-white border mb-3 overflow-hidden transition-colors"
       style={{ borderColor: open ? PRIMARY : '#E2E8F5', boxShadow: '0 2px 12px rgba(14,33,72,0.05)' }}>
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between gap-4 px-6 py-5 text-right">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={panelId} className="w-full flex items-center justify-between gap-4 px-6 py-5 text-right">
         <span className="font-bold text-lg" style={{ color: NAVY }}>{q}</span>
         <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
           style={{ background: open ? PRIMARY : '#EEF1FB', color: open ? '#fff' : PRIMARY }}>
-          <ChevronDown size={18} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          <ChevronDown size={18} aria-hidden className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+          <motion.div id={panelId} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden">
             <p className="px-6 pb-5 text-base leading-relaxed text-slate-500">{a}</p>
           </motion.div>
@@ -327,7 +328,7 @@ export default function MarketingLanding() {
           <div className="flex items-center gap-3">
             <Link to="/login" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-[#2E63F6] transition">התחברות</Link>
             <Link to="/create" className="rounded-xl px-4 py-2 text-sm font-bold text-white shadow-sm hover:opacity-90 transition" style={{ background: GRAD }}>
-              צור דף חינם
+              צרו דף בחינם
             </Link>
             <button onClick={() => setMenuOpen((o) => !o)} className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 transition" aria-label="תפריט">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -361,7 +362,7 @@ export default function MarketingLanding() {
               className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.1] tracking-tight">
               דף נחיתה מקצועי<br />
               <span style={{ background: GRAD, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                בפחות מ-60 שניות
+                בדקה בערך
               </span>
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
@@ -377,7 +378,7 @@ export default function MarketingLanding() {
                 איך זה עובד
               </a>
             </motion.div>
-            <p className="mt-4 text-xs text-slate-400">ניסיון חינם · ללא כרטיס אשראי · תשלום רק כשמפרסמים</p>
+            <p className="mt-4 text-xs text-slate-600">ניסיון חינם · ללא כרטיס אשראי · תשלום רק כשמפרסמים</p>
           </div>
 
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
@@ -388,7 +389,7 @@ export default function MarketingLanding() {
             </div>
             <div className="absolute bottom-8 left-24 hidden sm:block">
               <div className="bg-white border rounded-2xl rounded-bl-sm px-3.5 py-2 text-xs font-bold shadow-md" style={{ borderColor: '#C6D2F2', color: NAVY }}>
-                60 שניות זה כל מה שצריך ✦
+                דקה בערך וזה מוכן ✦
               </div>
             </div>
           </motion.div>
@@ -466,7 +467,7 @@ export default function MarketingLanding() {
                 <div className="p-4 flex items-center justify-between">
                   <div>
                     <p className="font-bold text-slate-800">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.tag}</p>
+                    <p className="text-xs text-slate-600">{p.tag}</p>
                   </div>
                   <span className="text-sm font-semibold text-[#2E63F6] group-hover:gap-2 inline-flex items-center gap-1 transition-all">
                     צפייה <ArrowLeft size={15} />
@@ -501,7 +502,7 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">249</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ דף, חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ דף, חד־פעמי</span>
             </div>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', '10 קרדיטי AI במתנה לעריכות', 'עד 2 יצירות דפים כלולות', 'טופס לידים ואזור אישי', 'חידוש שנתי — 99 ₪ בלבד'].map((f) => (
@@ -518,9 +519,9 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">990</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">198 ₪ לדף — חיסכון של 20%</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">₪198 לדף — חיסכון של 20%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['5 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '75 קרדיטי AI במתנה', 'עד 10 יצירות דפים כלולות', 'חידוש שנתי מוזל — 79 ₪ לדף', 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
@@ -537,9 +538,9 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">1,490</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-400 mr-1">/ חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">149 ₪ לדף — חיסכון של כ-40%</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">₪149 לדף — חיסכון של כ-40%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['10 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '150 קרדיטי AI במתנה', 'עד 20 יצירות דפים כלולות', 'חידוש שנתי מוזל — 59 ₪ לדף', 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
@@ -568,7 +569,7 @@ export default function MarketingLanding() {
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
           <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
-          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה 990 ₪ (198 ₪ לדף) וחבילת 10 דפים 1,490 ₪ (149 ₪ לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את מחיר החידוש השנתי (79 ₪ לדף בחבילת 5, 59 ₪ בחבילת 10, במקום 99 ₪). רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-350 ₪, גם על דף בודד. רוכשים מהאזור האישי." />
+          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה ₪990 (₪198 לדף) וחבילת 10 דפים ₪1,490 (₪149 לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את מחיר החידוש השנתי (₪79 לדף בחבילת ₪5,59 בחבילת 10, במקום ₪99). רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-₪350, גם על דף בודד. רוכשים מהאזור האישי." />
           <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
         </div>
       </Section>
@@ -597,8 +598,8 @@ export default function MarketingLanding() {
               href="https://wa.me/16465358055"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white transition hover:scale-105"
-              style={{ background: '#25D366' }}>
+              className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:scale-105"
+              style={{ background: '#25D366', color: '#052E16' }}>
               <WhatsAppIcon size={18} /> WhatsApp
             </a>
           </div>
@@ -613,7 +614,7 @@ export default function MarketingLanding() {
               <h2 className="text-3xl sm:text-4xl font-extrabold">הדף הבא של העסק שלכם<br />מחכה להיבנות</h2>
               <p className="mt-4 text-white/90">נסו עכשיו — בונים בחינם, משלמים רק כשמפרסמים.</p>
               <Link to="/create" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-base font-extrabold shadow-lg hover:scale-105 transition" style={{ color: PRIMARY }}>
-                צור דף נחיתה עכשיו <ArrowLeft size={18} />
+                צרו דף נחיתה עכשיו <ArrowLeft size={18} />
               </Link>
             </div>
           </HeadFrame>
@@ -627,9 +628,9 @@ export default function MarketingLanding() {
             <LandoMark size={26} />
             <span className="font-bold">{BRAND}</span>
           </div>
-          <p className="text-xs text-slate-400">© {new Date().getFullYear()} {BRAND} · דפי נחיתה מבוססי AI לעסקים בישראל</p>
+          <p className="text-xs text-slate-600">© {new Date().getFullYear()} {BRAND} · דפי נחיתה מבוססי AI לעסקים בישראל</p>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-500">
-            <Link to="/create" className="hover:text-[#2E63F6] transition">צור דף</Link>
+            <Link to="/create" className="hover:text-[#2E63F6] transition">צרו דף</Link>
             <Link to="/login" className="hover:text-[#2E63F6] transition">התחברות</Link>
             <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
             <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
