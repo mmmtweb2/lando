@@ -769,3 +769,12 @@ quota cap there.
 - **Migration 041** (run once, re-runnable): only `ADD COLUMN IF NOT EXISTS` on `seo_journey`. Until it runs everything keeps working: reads fall back to the old columns and only the new path is unavailable (saving it returns an error).
 - **Events:** `setup_step_completed` with `step_id=profile_pending` (once). No name in the event.
 - **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`, `scripts/test-admin-ops.ts`. Browser check at 375px with a mocked API: guide → form → waiting screen → finish → activate → connect later.
+
+---
+
+## חלק 69 – ניסוחי "אחריות" שנוצרו בדפי הלקוחות (לפי הוראת אבי, 3.11)
+
+- **סריקה:** דפי השיווק (`MarketingLanding`), `LandingViewer` והמסמכים המשפטיים נקיים מהבטחת דירוג, "עדכון אוטומטי בגוגל" או אחריות לתוצאה. כל ההופעות של "אחריות" שם הן הגבלות אחריות משפטיות תקינות.
+- **נמצא ותוקן ב-`src/services/ai.service.ts`:** תוכן ברירת מחדל והדוגמאות בפרומפט כללו "100% אחריות", שאלה "האם יש אחריות? כן…", "תשלום אחרי תוצאה" ו"עשרות לקוחות מרוצים". אלה טענות שהעסק לא אמר ונכתבות בשמו. הוחלפו בניסוחים ניטרליים, ונוסף כלל בפרומפט שאוסר אחריות, החזר כספי, "תשלום אחרי תוצאה" או הבטחת תוצאה/דירוג אלא אם נכתבו בקלט.
+- **לא שונה:** "נחזור תוך 24 שעות" ו"מגיבים תוך שעות" בתוכן ברירת המחדל (התחייבות זמן, לא תוצאה); אפשר לרכך בהמשך. דפים שכבר נוצרו לא מושפעים.
+- **בדיקה:** `tsc` של השרת נקי. שינוי בקובץ שרת בבעלות Pagey בלבד, בלי מיגרציה ובלי משתני סביבה.
