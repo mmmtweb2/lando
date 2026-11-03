@@ -7,7 +7,7 @@ export type Consent = 'granted' | 'denied' | null;
 
 /** Pages where measurement may run: public marketing pages only, never account/admin/customer pages. */
 export function marketingPath(pathname: string): boolean {
-  return pathname === '/' || pathname === '/audit';
+  return pathname === '/' || pathname === '/audit' || pathname === '/seo';
 }
 
 export function readConsent(): Consent {
