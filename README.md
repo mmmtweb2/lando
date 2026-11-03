@@ -779,3 +779,10 @@ quota cap there.
 - **אירועים (`dataLayer` דרך `lib/track`):** `seo_page_view` (עם UTM), `seo_scroll_50/90`, `seo_cta_audit_click {location}`, `seo_plans_view`, `seo_plan_click {plan}`, `seo_faq_open {question_id}`, ו-`Concierge_Clicked {location:'seo'}`. הכפתורים מובילים ל-`/audit?utm_source=seo_page`. כפתור הוואטסאפ של הפרימיום נעלם כשאין `CONCIERGE_WHATSAPP`.
 - **עדיין לא מחובר (קבצי gate, ממתין לאישור אבי):** (1) נתיב `/seo` ב-`client/src/App.tsx`; (2) `/seo` ב-`marketingPath` ב-`client/src/lib/gtm.ts` כדי ש-GTM ייטען אחרי הסכמה. עד אז העמוד לא נגיש.
 - **הערה:** האקורדיון בשאלות הנפוצות הוא `<details>` מקורי, כך שהתוכן קיים ב-DOM גם בלי JavaScript. העמוד נטען בצד הלקוח; אם רוצים HTML מוכן מהשרת (כמו בדפי הנחיתה) זה שינוי נפרד.
+
+---
+
+## חלק 71 – חיבור `/seo` (אושר על ידי אבי, כולל קובץ של איציק)
+
+- `client/src/App.tsx`: נתיב ציבורי `/seo` → `SeoLanding`. `client/src/lib/gtm.ts`: `marketingPath` כולל `/seo`, כך ש-GTM נטען בעמוד רק אחרי הסכמה (`/seo-plan` נשאר מחוץ לרשימה). `scripts/test-gtm.ts` עודכן.
+- אין מיגרציה ואין משתני סביבה חדשים.
