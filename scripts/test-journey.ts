@@ -10,15 +10,19 @@ import {
 import { postPublicEvent, postAccountEvent, postActivate } from '../src/controllers/journey.controller';
 
 type Row = Record<string, any>;
-const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }, { email: 'd@x.co' }, { email: 'e@x.co' }] };
+const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], seo_businesses: [], funnel_events: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }, { email: 'd@x.co' }, { email: 'e@x.co' }, { email: 'keep@x.co', credits: 99 }, { email: 'link@x.co' }, { email: 'own@x.co' }] };
 let missing = false;
+let hideProfileOnce: string | null = null; // simulates /api/users/auth creating the row between our read and our insert
 const MILESTONES = ['signup', 'setup_completed', 'activation_requested', 'activated_beta', 'payment_succeeded', 'day7_active', 'day30_active'];
 (supabase as any).from = (table: string) => {
-  const t = tables[table]; const f: Array<(r: Row) => boolean> = []; let op = 'select'; let patch: Row = {}; let conflict = '';
+  const t = tables[table]; const f: Array<(r: Row) => boolean> = []; let op = 'select'; let patch: Row = {}; let conflict = ''; let many = false;
   const run = (): any => {
     if (missing && (table === 'seo_journey' || table === 'journey_events')) return { data: null, error: { code: '42P01', message: 'relation does not exist' } };
     if (op === 'insert') {
       if (table === 'seo_journey' && t.some((r) => r.email === patch.email)) return { data: null, error: { code: '23505', message: 'dup' } };
+      if (table === 'seo_journey' && !tables.user_profiles.some((r) => r.email === patch.email)) return { data: null, error: { code: '23503', message: 'FK user_profiles' } };
+      if (table === 'user_profiles' && t.some((r) => r.email === patch.email)) return { data: null, error: { code: '23505', message: 'dup' } };
+      if (table === 'seo_businesses') { t.push({ id: `b${t.length + 1}`, created_at: new Date().toISOString(), website_url: null, landing_page_id: null, ...patch }); return { data: t[t.length - 1], error: null }; }
       if (table === 'journey_events' && patch.email && MILESTONES.includes(patch.event) && t.some((r) => r.email === patch.email && r.event === patch.event)) return { data: null, error: { code: '23505', message: 'dup' } };
       t.push({ stage: 'registered', place_id: null, activation_requested_at: null, beta_activated_at: null, setup_at: null, ready_at: null, registered_at: patch.registered_at ?? new Date().toISOString(), ...patch });
       return { data: null, error: null };
@@ -28,12 +32,14 @@ const MILESTONES = ['signup', 'setup_completed', 'activation_requested', 'activa
       if (ex) Object.assign(ex, patch); else t.push({ ...patch }); return { data: null, error: null };
     }
     if (op === 'update') { t.filter((r) => f.every((fn) => fn(r))).forEach((r) => Object.assign(r, patch)); return { data: null, error: null }; }
+    if (table === 'user_profiles' && hideProfileOnce && f.some((fn) => fn({ email: hideProfileOnce })) ) { hideProfileOnce = null; return { data: null, error: null }; }
     const rows = t.filter((r) => f.every((fn) => fn(r)));
-    return { data: rows[0] ?? null, error: null };
+    return { data: many ? rows : rows[0] ?? null, error: null };
   };
   const q: any = {
     select: () => q, eq: (k: string, v: unknown) => { f.push((r) => r[k] === v); return q; },
-    insert: (p: Row) => { op = 'insert'; patch = p; return Promise.resolve(run()); },
+    order: () => { many = true; return q; },
+    insert: (p: Row) => { op = 'insert'; patch = p; const r = run(); const pr: any = Promise.resolve(r); pr.select = () => ({ single: () => Promise.resolve(r.error ? r : { data: patch, error: null }) }); return pr; },
     upsert: (p: Row, o: { onConflict: string }) => { op = 'upsert'; patch = p; conflict = o.onConflict; return Promise.resolve(run()); },
     update: (p: Row) => { op = 'update'; patch = p; return q; },
     maybeSingle: () => Promise.resolve(run()), then: (ok: any) => ok(run()),
@@ -173,6 +179,47 @@ const code = async (p: Promise<unknown>) => { try { await p; return null; } catc
   await start('c@x.co', null, null, now);
   await recordDashboardView('c@x.co', now);
   assert.deepEqual(events('c@x.co'), ['signup', 'dashboard_viewed'], 'a new account has no milestone yet');
+
+  // ── race at /start: the profile row does not exist yet (or appears mid-way); no 500, nothing overwritten ──
+  assert.equal(tables.user_profiles.some((x) => x.email === 'new@x.co'), false);
+  v = await start('new@x.co', null, null, now);
+  assert.equal(v.started, true, 'start creates the missing profile first instead of failing on the FK');
+  assert.equal(tables.user_profiles.filter((x) => x.email === 'new@x.co').length, 1);
+  await start('keep@x.co', null, null, now);
+  assert.equal(tables.user_profiles.find((x) => x.email === 'keep@x.co')!.credits, 99, 'an existing profile is never overwritten');
+  hideProfileOnce = 'race@x.co'; tables.user_profiles.push({ email: 'race@x.co' });
+  v = await start('race@x.co', null, null, now);
+  assert.equal(v.started, true, 'losing the insert race (23505) re-reads the winner');
+  assert.equal(tables.user_profiles.filter((x) => x.email === 'race@x.co').length, 1);
+
+  // ── the business chosen in /start becomes the dashboard's business (once, place_id from the journey) ──
+  const { linkJourneyBusiness } = await import('../src/services/journeyBusiness.service');
+  const realFetch = globalThis.fetch; let placeCalls = 0; let placeOk = true;
+  (globalThis as any).fetch = async (url: string) => {
+    placeCalls++;
+    if (!placeOk) return new Response('boom', { status: 500 });
+    return new Response(JSON.stringify({ id: GOOD, displayName: { text: 'קפה נעמי' }, websiteUri: 'https://x.co', rating: 4.9 }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  process.env.GOOGLE_PLACES_API_KEY = 'fake-key';
+  await start('link@x.co', null, null, now); await setBusiness('link@x.co', GOOD, now);
+  assert.equal(await linkJourneyBusiness('nobody@x.co', now), 'nothing');
+  placeOk = false;
+  assert.equal(await linkJourneyBusiness('link@x.co', now), 'skipped', 'Places down: nothing saved, no marker, retried next time');
+  assert.equal(tables.seo_businesses.length, 0); assert.equal(tables.seo_journey.find((x) => x.email === 'link@x.co')!.business_linked_at, undefined);
+  placeOk = true;
+  assert.equal(await linkJourneyBusiness('link@x.co', now), 'linked');
+  assert.deepEqual(tables.seo_businesses.map((b) => [b.owner_email, b.google_place_id, b.name, b.website_url]), [['link@x.co', GOOD, 'קפה נעמי', null]], 'place_id + the confirmed name only');
+  assert.ok(tables.seo_journey.find((x) => x.email === 'link@x.co')!.business_linked_at);
+  const callsAfter = placeCalls;
+  assert.equal(await linkJourneyBusiness('link@x.co', now), 'already'); assert.equal(placeCalls, callsAfter, 'no second Places call');
+  tables.seo_businesses.length = 0; // the customer removed the business on purpose
+  assert.equal(await linkJourneyBusiness('link@x.co', now), 'already'); assert.equal(tables.seo_businesses.length, 0, 'a removed business is not added back');
+  await start('own@x.co', null, null, now); await setBusiness('own@x.co', GOOD, now);
+  tables.seo_businesses.push({ id: 'own1', owner_email: 'own@x.co', name: 'שלי', google_place_id: 'ChIJmine123456', created_at: '2026-01-01' });
+  const c2 = placeCalls;
+  assert.equal(await linkJourneyBusiness('own@x.co', now), 'already'); assert.equal(placeCalls, c2, 'a business the customer connected themselves is kept, no Places call');
+  assert.equal(tables.seo_businesses.filter((b) => b.owner_email === 'own@x.co').length, 1);
+  globalThis.fetch = realFetch; delete process.env.GOOGLE_PLACES_API_KEY;
 
   // ── public events: only known events with a valid anonymous id; always 204 ──
   const before = tables.journey_events.length;

@@ -44,6 +44,17 @@ export async function ensureUserProfile(email: string): Promise<MinimalProfile> 
     .select('email, credits, is_admin')
     .single();
 
+  if (error && error.code === '23505') {
+    // Lost the race with the other insert path (POST /api/users/auth creates the same row at the same moment
+    // right after sign-up). The row exists now: return it instead of failing the caller with a 500.
+    const { data: winner } = await supabase
+      .from('user_profiles')
+      .select('email, credits, is_admin')
+      .eq('email', normalized)
+      .maybeSingle();
+    if (winner) return winner as MinimalProfile;
+  }
+
   if (error || !created) {
     throw new Error(`Failed to create user profile: ${error?.message ?? 'unknown error'}`);
   }

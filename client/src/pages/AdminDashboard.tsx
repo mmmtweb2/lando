@@ -487,7 +487,7 @@ export default function AdminDashboard() {
   // ── Leads from the public Audit page (/audit) ─────────────────────────────
   interface AuditLeadRow {
     id: string; name: string; phone: string; place_id: string; business_name: string | null;
-    score: number | null; consent_at: string; utm_source: string | null; utm_campaign: string | null; created_at: string;
+    score: number | null; consent_at: string; utm_source: string | null; utm_campaign: string | null; created_at: string; handled_at?: string | null;
   }
   const [auditLeads, setAuditLeads] = useState<AuditLeadRow[]>([]);
   const [auditLeadsNote, setAuditLeadsNote] = useState<string | null>(null);
@@ -503,6 +503,14 @@ export default function AdminDashboard() {
         setAuditLeadsNote(b.notMigrated ? 'הטבלה עדיין לא נוצרה (מיגרציה 031).' : null);
       })
       .catch((e: Error) => setAuditLeadsNote(e.message));
+  }
+
+  async function markLeadHandled(id: string, handled: boolean) {
+    try {
+      const r = await adminFetch(`/api/admin/audit-leads/${encodeURIComponent(id)}/handled`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handled }) });
+      if (!r.ok) throw new Error();
+      loadAuditLeads();
+    } catch { setAuditLeadsNote('הסימון נכשל (חסרה מיגרציה 042?).'); }
   }
 
   // ── Google Business Profile connection settings (Stage 6.3) ───────────────
@@ -1068,6 +1076,7 @@ export default function AdminDashboard() {
                       <th className="px-4 py-2.5 font-medium">ציון</th>
                       <th className="px-4 py-2.5 font-medium">מקור</th>
                       <th className="px-4 py-2.5 font-medium">הסכמה</th>
+                      <th className="px-4 py-2.5 font-medium">טיפול</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1081,6 +1090,11 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 text-slate-700">{l.score ?? '—'}</td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{[l.utm_source, l.utm_campaign].filter(Boolean).join(' / ') || '—'}</td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{new Date(l.consent_at).toLocaleString('he-IL')}</td>
+                        <td className="px-4 py-3 text-xs">
+                          {l.handled_at
+                            ? <button type="button" onClick={() => markLeadHandled(l.id, false)} className="text-slate-400 underline" title="לחצו לביטול הסימון">טופל</button>
+                            : <button type="button" onClick={() => markLeadHandled(l.id, true)} className="text-[#2E63F6] underline">סמן כטופל</button>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

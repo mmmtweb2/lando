@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { CheckCircle2, Loader2, MessageCircle, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authFetch } from '../lib/api';
 import BusinessAuditCard from '../components/BusinessAuditCard';
 import RecommendationsList from '../components/RecommendationsList';
 import { takePlace, trackAccount } from '../lib/journeyClient';
+import { getPublicConfig } from '../lib/publicConfig';
 import type { Audit } from '../lib/auditShared';
 import { buildRecommendations } from '../lib/recommendations';
 
@@ -22,12 +23,36 @@ interface View {
 }
 
 const STEPS = ['העסק', 'המלצות', 'הפעלה'];
+// Accounts are activated by hand when self-activation is off, and no email is sent when that happens: say so.
+const REQUESTED_TEXT = 'קיבלנו את הבקשה שלכם. אנחנו מפעילים חשבונות בטא ידנית, ובינתיים לא נשלחת הודעה אוטומטית. חזרו לכאן בעוד יום או יומיים, או כתבו לנו ונבדוק.';
 const stepOf = (s: View['state']) => (s === 'registered' ? 0 : s === 'setup' ? 1 : s === 'ready_to_activate' ? 2 : 3);
 
 async function call(path: string, method = 'POST', body?: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
   const r = await authFetch(`/api/seo/journey${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, data };
+}
+
+// The one contact channel that exists today: the concierge WhatsApp number from the server
+// (CONCIERGE_WHATSAPP, via /api/public/config); without it, the support email already used in the dashboard.
+const SUPPORT_EMAIL = 'tirnoer.digital@gmail.com';
+
+function ContactLink({ text }: { text: string }) {
+  const [number, setNumber] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getPublicConfig().then(c => { if (alive) setNumber(c?.concierge ?? null); });
+    return () => { alive = false; };
+  }, []);
+  const href = number
+    ? `https://wa.me/${number}?text=${encodeURIComponent(text)}`
+    : `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Pagey')}&body=${encodeURIComponent(text)}`;
+  return (
+    <a href={href} target={number ? '_blank' : undefined} rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 self-start rounded-lg border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+      {number ? <MessageCircle size={16} /> : <Mail size={16} />} {number ? 'כתבו לנו בוואטסאפ' : 'כתבו לנו במייל'}
+    </a>
+  );
 }
 
 function Progress({ step }: { step: number }) {
@@ -57,7 +82,7 @@ function Recommendations({ placeId, onDone, busy }: { placeId: string; onDone: (
   }, [placeId]);
 
   if (failed) return <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">לא הצלחנו לטעון את הבדיקה כרגע. נסו לרענן את הדף.</p>;
-  if (!audit) return <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> בודקים את הפרופיל שלכם…</p>;
+  if (!audit) return <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> בודקים את כרטיס העסק שלכם בגוגל…</p>;
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -84,7 +109,7 @@ function WaitingForProfile({ name, onDone, busy, onChoose }: { name: string | nu
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-extrabold text-slate-900">מתכוננים בזמן שהפרופיל ממתין{name ? ` (${name})` : ''}</h1>
+        <h1 className="text-xl font-extrabold text-slate-900">מתכוננים בזמן שכרטיס העסק ממתין{name ? ` (${name})` : ''}</h1>
         <p className="mt-1 text-sm text-slate-600">אימות בגוגל יכול לקחת כמה ימים, ואין סיבה לעצור. כך תהיו מוכנים ברגע שהוא יאושר:</p>
       </div>
       <ol className="flex flex-col gap-2">
@@ -100,7 +125,7 @@ function WaitingForProfile({ name, onDone, busy, onChoose }: { name: string | nu
         {busy ? 'רגע…' : 'סיימתי, ממשיכים'}
       </button>
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-4">
-        <p className="text-sm font-medium text-slate-900">הפרופיל כבר אושר?</p>
+        <p className="text-sm font-medium text-slate-900">כרטיס העסק כבר אושר?</p>
         <BusinessAuditCard mode="account" onSelect={onChoose} hideNoProfile />
       </div>
     </section>
@@ -114,28 +139,43 @@ export default function StartJourney() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [startFailed, setStartFailed] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const started = useRef(false);
 
   useEffect(() => { document.title = 'ההקמה שלכם | Pagey'; }, []);
 
-  // Start the journey once, then carry over the business picked on /audit (if any).
+  // Start the journey, then carry over the business picked on /audit (if any). Right after sign-up the
+  // account may still be being created on the server, so a failed start is retried once by itself and
+  // then offered as a button, never a dead end.
+  const begin = useCallback(async () => {
+    setError(null); setStartFailed(false);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const s = await call('/start', 'POST', {});
+        if (s.ok) {
+          let v = s.data as unknown as View;
+          const place = takePlace();
+          if (place && v.state === 'registered') {
+            const p = await call('/business', 'PUT', { placeId: place });
+            if (p.ok) v = p.data as unknown as View;
+          }
+          setView(v);
+          return;
+        }
+        if (s.status < 500) { setError(String(s.data.error ?? 'לא הצלחנו להתחיל. נסו שוב.')); setStartFailed(true); return; }
+      } catch { /* network: retry below */ }
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+    }
+    setStartFailed(true);
+    setError('לא הצלחנו להתחיל את ההקמה, זה קורה לפעמים ברגע ההרשמה. לחצו על "נסו שוב".');
+  }, []);
+
   useEffect(() => {
     if (!user || started.current) return;
     started.current = true;
-    (async () => {
-      try {
-        const s = await call('/start', 'POST', {});
-        if (!s.ok) { setError(String(s.data.error ?? 'לא הצלחנו להתחיל. נסו שוב.')); return; }
-        let v = s.data as unknown as View;
-        const place = takePlace();
-        if (place && v.state === 'registered') {
-          const p = await call('/business', 'PUT', { placeId: place });
-          if (p.ok) v = p.data as unknown as View;
-        }
-        setView(v);
-      } catch { setError('לא הצלחנו להתחיל. בדקו את החיבור ונסו שוב.'); }
-    })();
-  }, [user]);
+    void begin();
+  }, [user, begin]);
 
   const step = view?.state;
   useEffect(() => { if (step === 'ready_to_activate') trackAccount('activation_viewed'); }, [step]);
@@ -161,13 +201,13 @@ export default function StartJourney() {
   }, []);
 
   const activate = useCallback(async () => {
-    setBusy(true); setError(null); setMsg(null);
+    setBusy(true); setError(null); setErrorCode(null); setMsg(null);
     const r = await call('/activate');
     setBusy(false);
     if (r.status === 402) { navigate(String(r.data.next ?? '/seo-plan')); return; }
-    if (!r.ok) { setError(String(r.data.error ?? 'משהו השתבש. נסו שוב.')); return; }
+    if (!r.ok) { setError(String(r.data.error ?? 'משהו השתבש. נסו שוב.')); setErrorCode(typeof r.data.code === 'string' ? r.data.code : null); return; }
     setView(r.data as unknown as View);
-    if (r.data.requested) setMsg('קיבלנו את הבקשה שלכם. אנחנו מפעילים חשבונות בטא ידנית, ונעדכן אתכם במייל.');
+    if (r.data.requested) setMsg(REQUESTED_TEXT);
   }, [navigate]);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><Loader2 size={28} className="animate-spin text-indigo-500" /></div>;
@@ -184,6 +224,10 @@ export default function StartJourney() {
       <main className="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-8">
         {!view && !error && <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> טוענים…</p>}
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
+        {startFailed && !view && (
+          <button type="button" onClick={() => { started.current = true; void begin(); }} className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0]">נסו שוב</button>
+        )}
+        {error && errorCode === 'beta_ended' && <ContactLink text="היי, תקופת הבטא שלי ב-Pagey הסתיימה ואשמח שנדבר על ההמשך." />}
 
         {view && (
           <>
@@ -213,7 +257,10 @@ export default function StartJourney() {
               <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5">
                 <h1 className="text-xl font-extrabold text-slate-900">מוכנים להפעלה</h1>
                 {view.requested ? (
-                  <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{msg ?? 'הבקשה שלכם התקבלה. נפעיל את החשבון ונעדכן אתכם במייל.'}</p>
+                  <>
+                    <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{msg ?? REQUESTED_TEXT}</p>
+                    <ContactLink text="היי, ביקשתי להפעיל את חשבון הבטא שלי ב-Pagey ואשמח לעדכון." />
+                  </>
                 ) : (
                   <>
                     <p className="text-sm text-slate-600">
@@ -238,8 +285,8 @@ export default function StartJourney() {
             )}
 
             {view.profilePending && !view.placeId && view.state !== 'setup' && (
-              <section className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white p-5" aria-label="חיבור הפרופיל">
-                <h2 className="text-base font-bold text-slate-900">הפרופיל שלכם בגוגל עוד ממתין לאימות</h2>
+              <section className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white p-5" aria-label="חיבור כרטיס העסק">
+                <h2 className="text-base font-bold text-slate-900">כרטיס העסק שלכם בגוגל עוד ממתין לאימות</h2>
                 <p className="text-sm text-slate-600">כשגוגל תאשר אותו, חפשו אותו כאן כדי לחבר אותו ולקבל את הבדיקה המלאה.</p>
                 <BusinessAuditCard mode="account" onSelect={choose} hideNoProfile />
               </section>

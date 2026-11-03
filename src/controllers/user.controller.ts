@@ -38,6 +38,8 @@ function generateAffiliateCode(): string {
   return randomBytes(3).toString('hex').toUpperCase(); // 6 chars e.g. "A3F9C1"
 }
 
+const retriedAuth = new WeakSet<Request>();
+
 export async function authUser(req: Request, res: Response): Promise<void> {
   // Identity comes ONLY from the verified Supabase session (req.authEmail, set
   // by requireAuth) — never from the request body. Previously this endpoint
@@ -165,6 +167,13 @@ export async function authUser(req: Request, res: Response): Promise<void> {
     .single();
 
   if (error) {
+    // The profile row can also be created by ensureUserProfile() (journey start, credits badge) at the same
+    // moment. Losing that race is not an error: run once more, the "returning user" branch above answers.
+    if (error.code === '23505' && !retriedAuth.has(req)) {
+      retriedAuth.add(req);
+      await authUser(req, res);
+      return;
+    }
     res.status(500).json({ error: error.message });
     return;
   }
