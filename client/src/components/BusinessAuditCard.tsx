@@ -12,6 +12,7 @@ import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
 import RecommendationsList from './RecommendationsList';
 import { rememberPlace, trackPublic } from '../lib/journeyClient';
+import { buildRecommendations } from '../lib/recommendations';
 
 // Stage 5.5.2 — find the customer's business on Google Maps and show a live Audit.
 // All Google calls go through our server (/api/seo/places/*); the API key never
@@ -132,7 +133,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
 
   // The recommendations list is on screen as soon as the audit is (public funnel step).
   useEffect(() => {
-    if (isPublic && audit) trackPublic('recs_viewed', { place_id: audit.placeId });
+    if (isPublic && audit) trackPublic('recs_viewed', { place_id: audit.placeId, top: buildRecommendations(audit)[0]?.key });
   }, [isPublic, audit?.placeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (s: Suggestion) => runAudit(s.placeId, s.name);

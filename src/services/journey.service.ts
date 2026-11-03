@@ -22,8 +22,8 @@ export function betaDays(): number {
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
-export const PUBLIC_EVENTS = ['audit_started', 'audit_completed', 'recs_viewed'] as const;
-export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed'] as const;
+export const PUBLIC_EVENTS = ['audit_started', 'audit_completed', 'recs_viewed', 'concierge_clicked'] as const;
+export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed', 'concierge_clicked'] as const;
 export const SERVER_EVENTS = [
   'lead_captured', 'signup', 'setup_completed', 'activation_requested', 'activated_beta',
   'payment_started', 'payment_succeeded', 'day7_active', 'day30_active',
@@ -48,6 +48,7 @@ export function cleanProps(raw: unknown): Record<string, string | number | boole
   const o = raw as Record<string, unknown>;
   if (typeof o.step_id === 'string' && WORD.test(o.step_id)) out.step_id = o.step_id;
   if (typeof o.mode === 'string' && WORD.test(o.mode)) out.mode = o.mode;
+  if (typeof o.top === 'string' && WORD.test(o.top)) out.top = o.top; // the biggest gap found (a recommendation key)
   if (typeof o.place_id === 'string' && PLACE_ID.test(o.place_id)) out.place_id = o.place_id;
   if (typeof o.n === 'number' && Number.isFinite(o.n) && o.n >= 0 && o.n <= 1000) out.n = Math.round(o.n);
   if (typeof o.ok === 'boolean') out.ok = o.ok;

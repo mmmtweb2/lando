@@ -7,6 +7,7 @@ import BusinessAuditCard from '../components/BusinessAuditCard';
 import RecommendationsList from '../components/RecommendationsList';
 import { takePlace, trackAccount } from '../lib/journeyClient';
 import type { Audit } from '../lib/auditShared';
+import { buildRecommendations } from '../lib/recommendations';
 
 // /start — the journey after the public Audit: sign up -> pick the business -> go through the
 // recommendations -> activate. The server owns the state (registered / setup / ready_to_activate /
@@ -49,7 +50,7 @@ function Recommendations({ placeId, onDone, busy }: { placeId: string; onDone: (
     // Rerun the audit from the place id: nothing about the business was stored except that id.
     authFetch(`/api/seo/places/${encodeURIComponent(placeId)}/audit`)
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('audit'))))
-      .then(b => { if (alive) { setAudit(b.audit as Audit); trackAccount('recs_viewed', { place_id: placeId }); } })
+      .then(b => { if (alive) { setAudit(b.audit as Audit); trackAccount('recs_viewed', { place_id: placeId, top: buildRecommendations(b.audit as Audit)[0]?.key }); } })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [placeId]);

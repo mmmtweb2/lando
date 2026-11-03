@@ -3,6 +3,7 @@
 // user_products (the entitlement everything else reads). The state rules are in
 // subscriptionState.ts; the SUMIT field names are in sumitRecurring.ts.
 
+import { withHeartbeat } from './opsMetrics.service';
 import { logEvent } from './journey.service';
 import { supabase } from '../config/supabase';
 import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
@@ -246,7 +247,7 @@ export async function sweepSubscriptions(now = new Date()): Promise<number> {
 
 const SWEEP_EVERY_MS = 6 * 60 * 60 * 1000;
 export function startSubscriptionSweep(): void {
-  const run = () => { sweepSubscriptions().catch(e => console.error('[SUBSCRIPTION] sweep crashed:', e)); };
+  const run = () => { withHeartbeat('subscriptions', sweepSubscriptions).catch(e => console.error('[SUBSCRIPTION] sweep crashed:', e)); };
   setTimeout(run, 60 * 1000);
   setInterval(run, SWEEP_EVERY_MS).unref?.();
 }

@@ -41,7 +41,7 @@ export function attribution(): Attribution {
 }
 
 /** Anonymous visitor event. Never throws, never waits. */
-export function trackPublic(event: 'audit_started' | 'audit_completed' | 'recs_viewed', props: Record<string, unknown> = {}): void {
+export function trackPublic(event: 'audit_started' | 'audit_completed' | 'recs_viewed' | 'concierge_clicked', props: Record<string, unknown> = {}): void {
   try {
     void fetch('/api/public/journey/event', {
       method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
@@ -51,7 +51,7 @@ export function trackPublic(event: 'audit_started' | 'audit_completed' | 'recs_v
 }
 
 /** Signed-in customer event. */
-export function trackAccount(event: 'recs_viewed' | 'activation_viewed' | 'setup_step_completed' | 'dashboard_viewed', props: Record<string, unknown> = {}): void {
+export function trackAccount(event: 'recs_viewed' | 'activation_viewed' | 'setup_step_completed' | 'dashboard_viewed' | 'concierge_clicked', props: Record<string, unknown> = {}): void {
   try {
     void authFetch('/api/seo/journey/event', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, props, anonId: anonId(), attribution: attribution() }),
