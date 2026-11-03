@@ -46,7 +46,7 @@ export default function PublicAudit() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
-    document.title = 'בדיקת פרופיל העסק בגוגל מפות, בחינם | Pagey';
+    document.title = 'בדיקת כרטיס העסק בגוגל מפות, בחינם | Pagey';
     let alive = true;
     getPublicConfig().then(c => { if (alive) setEnabled(c ? c.auditEnabled : null); });
     return () => { alive = false; };

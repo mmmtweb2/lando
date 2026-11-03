@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-external-leads.ts
+// Run: npx tsx scripts/test-external-leads.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
@@ -9,6 +9,26 @@ import { getMyLeads } from '../src/controllers/landing.controller';
 import { supabase } from '../src/config/supabase';
 
 const BIZ = '11111111-1111-4111-8111-111111111111';
+
+// Dates are derived from "now" (never hard-coded): the controller only counts events since the
+// start of the current month in Israel time, so every fixture is placed relative to that instant.
+function israelMonthStart(now: Date): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit' }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === 'year')?.value);
+  const m = Number(parts.find((p) => p.type === 'month')?.value);
+  const guess = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', timeZoneName: 'longOffset' })
+    .formatToParts(guess).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+02:00';
+  const mm = /GMT([+-])(\d{2}):(\d{2})/.exec(off);
+  const minutes = mm ? (mm[1] === '-' ? -1 : 1) * (Number(mm[2]) * 60 + Number(mm[3])) : 120;
+  return new Date(guess.getTime() - minutes * 60_000);
+}
+const MONTH_START = israelMonthStart(new Date());
+const DAY_MS = 86_400_000;
+/** An instant `n` days after the start of the current month (n >= 1 keeps it inside the month). */
+const inThisMonth = (n: number) => new Date(MONTH_START.getTime() + n * DAY_MS).toISOString();
+/** An instant well before the current month. */
+const longAgo = () => new Date(MONTH_START.getTime() - 60 * DAY_MS).toISOString();
 
 // ── the snippet, run in a fake browser ──
 function runSnippet(attr: string | null, src = 'https://pagey.co.il/w/track.js') {
@@ -66,7 +86,7 @@ let dbError = false;
   const rows = () => db[table].filter(r => f.every(fn => fn(r)));
   const run = (): any => {
     if (dbError && table === 'lead_events') return { data: null, error: { message: 'boom' }, count: null };
-    if (op === 'insert') { db[table].push({ id: `e${db[table].length}`, created_at: new Date(2026, 9, db[table].length + 1).toISOString(), ...patch }); return { data: null, error: null }; }
+    if (op === 'insert') { db[table].push({ id: `e${db[table].length}`, created_at: inThisMonth(db[table].length + 1), ...patch }); return { data: null, error: null }; }
     const m = rows().slice().sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, lim);
     return { data: head ? null : m, error: null, count: withCount ? rows().length : null };
   };
@@ -110,10 +130,10 @@ function res() { const r: any = { code: 200, body: undefined, headers: {} as Rec
   delete process.env.SEO_TRACK_DAILY_CAP;
 
   // feed + counts
-  db.lead_events.push({ id: 'w1', business_id: BIZ, event_type: 'whatsapp', source_url: 'https://shop/', created_at: new Date(2026, 9, 20).toISOString() });
-  db.lead_events.push({ id: 'smoke', business_id: BIZ, event_type: 'call', source_url: 'smoke-test', created_at: new Date(2026, 9, 21).toISOString() });
-  db.lead_events.push({ id: 'old', business_id: BIZ, event_type: 'call', source_url: 'x', created_at: new Date(2026, 0, 1).toISOString() });
-  const ext = await getExternalLeads('o@x.co', new Date(2026, 9, 1).toISOString());
+  db.lead_events.push({ id: 'w1', business_id: BIZ, event_type: 'whatsapp', source_url: 'https://shop/', created_at: inThisMonth(20) });
+  db.lead_events.push({ id: 'smoke', business_id: BIZ, event_type: 'call', source_url: 'smoke-test', created_at: inThisMonth(21) });
+  db.lead_events.push({ id: 'old', business_id: BIZ, event_type: 'call', source_url: 'x', created_at: longAgo() });
+  const ext = await getExternalLeads('o@x.co', MONTH_START.toISOString());
   assert.ok(ext.items.every(i => i.id !== 'smoke'), 'smoke events excluded');
   assert.ok(ext.items.some(i => i.id === 'w1' && i.page_name === 'שרברב דני (אתר חיצוני)' && i.landing_page_id === BIZ));
   assert.equal(ext.month.whatsapp, 1); assert.equal(ext.month.call, 1, 'only this month, no smoke'); assert.equal(ext.month.email, 0);
@@ -132,7 +152,7 @@ function res() { const r: any = { code: 200, body: undefined, headers: {} as Rec
   assert.deepEqual(r.body, { items: [], summary: { month_total: 0, month_whatsapp: 0, month_call: 0, month_form: 0, month_email: 0, month_link: 0 } });
   // ... and Pagey pages + external events merge into one feed
   db.landing_pages.push({ id: 'P1', owner_email: 'o@x.co', slug: 'danny', business_name: 'דף דני', parent_id: null });
-  db.lead_events.push({ id: 'pw', landing_page_id: 'P1', event_type: 'whatsapp', source_url: 'https://p/', created_at: new Date(2026, 9, 22).toISOString() });
+  db.lead_events.push({ id: 'pw', landing_page_id: 'P1', event_type: 'whatsapp', source_url: 'https://p/', created_at: inThisMonth(22) });
   r = res(); await getMyLeads({ authEmail: 'o@x.co' } as any, r);
   assert.equal(r.body.summary.month_whatsapp, 2, 'page + external whatsapp both counted');
   assert.deepEqual(r.body.items.map((i: any) => i.page_name).slice(0, 2), ['דף דני', 'שרברב דני (אתר חיצוני)']);

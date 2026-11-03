@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-reviews-widget.ts
+// Run: npx tsx scripts/test-reviews-widget.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
@@ -100,7 +100,8 @@ let entitlement: any[] = [{ product: 'seo_autopilot', status: 'active', current_
   return q;
 };
 let fetchCalls = 0;
-globalThis.fetch = (async () => { fetchCalls++; return new Response(JSON.stringify(data), { status: 200 }); }) as typeof fetch;
+// Count only Google Places traffic; supabase.rpc (ops usage counter) also goes through fetch.
+globalThis.fetch = (async (url: unknown) => { if (String(url).includes('googleapis.com')) fetchCalls++; return new Response(JSON.stringify(data), { status: 200 }); }) as typeof fetch;
 
 (async () => {
   process.env.GOOGLE_PLACES_API_KEY = 'K';

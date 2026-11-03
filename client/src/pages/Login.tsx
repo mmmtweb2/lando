@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { trackEvent } from '../lib/analytics';
+import { translateAuthError } from '../lib/authErrors';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 type InfoScreen = null | 'magic' | 'confirm' | 'reset';
@@ -66,7 +67,7 @@ export default function Login() {
         // already exists (anti-enumeration). Tell the user the truth instead of
         // showing a misleading "check your email" screen.
         if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-          setError('כתובת המייל כבר רשומה. התחברו עם הסיסמה, או הגדירו סיסמה ב-Supabase אם נרשמתם בעבר עם קישור.');
+          setError('כתובת המייל כבר רשומה. התחברו עם הסיסמה, או לחצו על "שכחתי סיסמה" כדי להגדיר סיסמה, אם נרשמתם בעבר עם קישור.');
           setMode('signin');
           return;
         }
@@ -148,7 +149,7 @@ export default function Login() {
             >
               <CheckCircle size={48} className="text-emerald-500" />
               <div>
-                <p className="text-lg font-bold text-slate-800">בדוק את תיבת המייל שלך 📩</p>
+                <p className="text-lg font-bold text-slate-800">בדקו את תיבת המייל שלכם 📩</p>
                 <p className="text-sm text-slate-500 mt-2 leading-relaxed">
                   {info === 'magic'
                     ? 'שלחנו קישור התחברות לכתובת '
@@ -158,12 +159,12 @@ export default function Login() {
                   <span dir="ltr" className="font-mono font-medium text-slate-700">{email}</span>
                 </p>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-xs">
+              <p className="text-xs text-slate-600 leading-relaxed max-w-xs">
                 {info === 'magic'
-                  ? 'לחץ על הקישור במייל כדי להיכנס לדשבורד.'
+                  ? 'לחצו על הקישור במייל כדי להיכנס לדשבורד.'
                   : info === 'reset'
-                  ? 'לחץ על הקישור במייל כדי להגדיר סיסמה חדשה.'
-                  : 'אשר את כתובת המייל ואז תוכל להתחבר עם הסיסמה שלך.'}
+                  ? 'לחצו על הקישור במייל כדי להגדיר סיסמה חדשה.'
+                  : 'אשרו את כתובת המייל ואז תוכלו להתחבר עם הסיסמה שלכם.'}
               </p>
               <button
                 onClick={() => { setInfo(null); setMode('signin'); setPassword(''); }}
@@ -188,13 +189,14 @@ export default function Login() {
               </div>
 
               {mode === 'forgot' ? (
-                <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+                <form onSubmit={handleForgotPassword} className="flex flex-col gap-4" noValidate>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                      <Mail size={15} className="text-[#2E63F6]" />
+                    <label htmlFor="forgot-email" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                      <Mail size={15} className="text-[#2E63F6]" aria-hidden="true" />
                       כתובת אימייל
                     </label>
                     <input
+                      id="forgot-email" name="email" autoComplete="email"
                       type="email" autoFocus required dir="ltr"
                       placeholder="you@example.com"
                       value={email}
@@ -204,7 +206,7 @@ export default function Login() {
                   </div>
 
                   {error && (
-                    <p className="text-xs text-red-500 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
+                    <p role="alert" className="text-xs text-red-700 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
                       {error}
                     </p>
                   )}
@@ -215,7 +217,7 @@ export default function Login() {
                     className="flex items-center justify-center gap-2 w-full rounded-xl bg-[#2E63F6] py-3 text-sm font-semibold text-white hover:bg-[#1E4FD6] active:scale-95 disabled:opacity-50 transition mt-1"
                   >
                     {forgotLoading ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-                    {forgotLoading ? 'שולח...' : 'שלח קישור לאיפוס'}
+                    {forgotLoading ? 'שולחים...' : 'שליחת קישור לאיפוס'}
                   </button>
 
                   <button
@@ -228,13 +230,14 @@ export default function Login() {
                 </form>
               ) : (
                 <>
-                  <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
+                  <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4" noValidate>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                        <Mail size={15} className="text-[#2E63F6]" />
+                      <label htmlFor="login-email" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                        <Mail size={15} className="text-[#2E63F6]" aria-hidden="true" />
                         כתובת אימייל
                       </label>
                       <input
+                        id="login-email" name="email" autoComplete="email"
                         type="email" autoFocus required dir="ltr"
                         placeholder="you@example.com"
                         value={email}
@@ -245,8 +248,8 @@ export default function Login() {
 
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                          <Lock size={15} className="text-[#2E63F6]" />
+                        <label htmlFor="login-password" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                          <Lock size={15} className="text-[#2E63F6]" aria-hidden="true" />
                           סיסמה
                         </label>
                         {mode === 'signin' && (
@@ -260,6 +263,7 @@ export default function Login() {
                         )}
                       </div>
                       <input
+                        id="login-password" name="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                         type="password" required dir="ltr"
                         placeholder="לפחות 6 תווים"
                         value={password}
@@ -269,7 +273,7 @@ export default function Login() {
                     </div>
 
                     {error && (
-                      <p className="text-xs text-red-500 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
+                      <p role="alert" className="text-xs text-red-700 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
                         {error}
                       </p>
                     )}
@@ -280,25 +284,25 @@ export default function Login() {
                       className="flex items-center justify-center gap-2 w-full rounded-xl bg-[#2E63F6] py-3 text-sm font-semibold text-white hover:bg-[#1E4FD6] active:scale-95 disabled:opacity-50 transition mt-1"
                     >
                       {loading ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-                      {loading ? 'רגע...' : mode === 'signin' ? 'התחבר' : 'צור חשבון'}
+                      {loading ? 'רגע...' : mode === 'signin' ? 'התחברות' : 'יצירת חשבון'}
                     </button>
                   </form>
 
                   <div className="mt-4 text-center text-sm text-slate-500">
                     {mode === 'signin' ? (
                       <button onClick={() => { setMode('signup'); setError(null); }} className="text-[#2E63F6] hover:text-[#0E2148] transition">
-                        אין לך חשבון? הרשמה →
+                        אין לכם חשבון? הרשמה →
                       </button>
                     ) : (
                       <button onClick={() => { setMode('signin'); setError(null); }} className="text-[#2E63F6] hover:text-[#0E2148] transition">
-                        כבר יש לך חשבון? התחברות →
+                        כבר יש לכם חשבון? התחברות →
                       </button>
                     )}
                   </div>
 
                   <div className="flex items-center gap-3 my-5">
                     <div className="h-px flex-1 bg-slate-100" />
-                    <span className="text-xs text-slate-400">או</span>
+                    <span className="text-xs text-slate-600">או</span>
                     <div className="h-px flex-1 bg-slate-100" />
                   </div>
 
@@ -308,7 +312,7 @@ export default function Login() {
                     className="flex items-center justify-center gap-2 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 active:scale-95 disabled:opacity-50 transition"
                   >
                     {magicLoading ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-                    {magicLoading ? 'שולח...' : 'התחבר עם קישור למייל (ללא סיסמה)'}
+                    {magicLoading ? 'שולחים...' : 'התחברות עם קישור למייל (ללא סיסמה)'}
                   </button>
                 </>
               )}
@@ -316,10 +320,10 @@ export default function Login() {
           )}
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-400">
+        <p className="mt-4 text-center text-xs text-slate-600">
           ✦ Pagey
         </p>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
           <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
           <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
           <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
@@ -327,14 +331,4 @@ export default function Login() {
       </motion.div>
     </div>
   );
-}
-
-// Friendly Hebrew messages for the common Supabase auth errors.
-function translateAuthError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : '';
-  if (/invalid login credentials/i.test(msg)) return 'אימייל או סיסמה שגויים';
-  if (/already registered|already exists/i.test(msg)) return 'כתובת המייל כבר רשומה — נסו להתחבר';
-  if (/password should be at least/i.test(msg)) return 'הסיסמה חייבת להכיל לפחות 6 תווים';
-  if (/email not confirmed/i.test(msg)) return 'יש לאשר קודם את כתובת המייל (בדקו את תיבת הדואר)';
-  return msg || 'שגיאת התחברות, נסו שוב';
 }

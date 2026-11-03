@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Phone, Navigation, MousePointerClick, Eye } from 'lucide-react';
 import { authFetch } from '../lib/api';
 
-// Business Profile numbers of the customer's own Google account (Stage 6.3). Shown only when the
+// Business-card numbers of the customer's own Google account (Stage 6.3). Shown only when the
 // server says the feature is on. The numbers are read live from Google and are not stored here.
 
 interface Totals { calls: number; directions: number; website: number; impressions: number }
@@ -10,7 +10,7 @@ type Stats =
   | { kind: 'ok'; title: string; totals: Totals }
   | { kind: 'choose'; locations: { name: string; title: string }[] }
   | { kind: 'reconnect' }
-  | { kind: 'error'; detail: string }
+  | { kind: 'error' }
   | { kind: 'quota' };
 
 const RETURN_MSG: Record<string, string> = {
@@ -45,10 +45,10 @@ export default function GbpCard() {
       const b = await r.json().catch(() => ({}));
       if (r.status === 409) setStats({ kind: 'reconnect' });
       else if (b.code === 'quota_pending') setStats({ kind: 'quota' });
-      else if (!r.ok) setStats({ kind: 'error', detail: typeof b.detail === 'string' ? b.detail : '' });
+      else if (!r.ok) setStats({ kind: 'error' }); // the technical detail the server may send is never shown
       else if (b.needsChoice) setStats({ kind: 'choose', locations: b.locations ?? [] });
       else setStats({ kind: 'ok', title: b.location?.title ?? '', totals: b.totals });
-    } catch { setStats({ kind: 'error', detail: '' }); }
+    } catch { setStats({ kind: 'error' }); }
   }, []);
 
   const loadStatus = useCallback(async () => {
@@ -95,14 +95,14 @@ export default function GbpCard() {
 
   return (
     <section className="dv2-card p-5 sm:p-6" aria-labelledby="gbp-title">
-      <h2 id="gbp-title" className="text-lg font-bold text-[var(--ink)]">הנתונים של הפרופיל בגוגל</h2>
+      <h2 id="gbp-title" className="text-lg font-bold text-[var(--ink)]">הנתונים של כרטיס העסק בגוגל</h2>
       {returnMsg && <p className="mt-1 text-sm text-[var(--ink)]">{returnMsg}</p>}
       {err && <p className="mt-2 text-sm text-red-600" role="alert">{err}</p>}
 
       {!status.connected && (
         <>
           <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
-            מחברים את חשבון גוגל שמנהל את הפרופיל, ורואים כמה אנשים התקשרו, ביקשו הגעה או נכנסו לאתר ב-30 הימים האחרונים. אנחנו קוראים נתונים בלבד ולא משנים דבר בפרופיל. אפשר לנתק בכל רגע.
+            מחברים את חשבון גוגל שמנהל את כרטיס העסק, ורואים כמה אנשים התקשרו, ביקשו הגעה או נכנסו לאתר ב-30 הימים האחרונים. אנחנו קוראים נתונים בלבד ולא משנים דבר בכרטיס העסק. אפשר לנתק בכל רגע.
           </p>
           {connectBtn('חיבור חשבון גוגל')}
         </>
@@ -128,8 +128,7 @@ export default function GbpCard() {
       )}
       {stats?.kind === 'error' && (
         <>
-          <p className="mt-1 text-sm text-[var(--muted)]">לא הצלחנו לקרוא את הנתונים מגוגל כרגע.</p>
-          {stats.detail && <p className="mt-1 break-words text-xs text-[var(--muted)]" dir="ltr">{stats.detail}</p>}
+          <p className="mt-1 text-sm text-[var(--muted)]">לא הצלחנו לקרוא את הנתונים מגוגל כרגע. נסו שוב בעוד כמה דקות.</p>
           <button type="button" className="dv2-btn-ghost mt-3" onClick={loadStats}>נסו שוב</button>
         </>
       )}

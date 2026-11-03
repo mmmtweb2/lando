@@ -19,14 +19,14 @@ export const WEIGHT: Record<string, number> = { reviews: 25, rating: 25, photos:
 const ORDER = Object.keys(WEIGHT); // stable tie-break: the order above
 
 const WHY: Record<string, string> = {
-  reviews: 'ביקורות רבות ועדכניות משכנעות לקוחות לבחור בכם, וגוגל מתחשבת בהן בדירוג.',
-  rating: 'דירוג גבוה גורם ללקוח ללחוץ ולהתקשר, ולא לעבור לעסק הבא ברשימה.',
+  reviews: 'ביקורות רבות ועדכניות עוזרות ללקוחות להחליט למי לפנות.',
+  rating: 'דירוג גבוה עוזר ללקוח להחליט לפנות אליכם, ולא לעבור לעסק הבא ברשימה.',
   photos: 'לקוחות מסתכלים בתמונות לפני שהם מחליטים למי לפנות.',
-  website: 'אתר או דף נחיתה נותנים ללקוח מקום לקרוא עוד ולפנות אליכם, וגוגל יודעת לאן להפנות אותו.',
-  phone: 'בלי מספר טלפון בפרופיל אי אפשר להתקשר בלחיצה אחת מהמפה.',
-  hours: 'שעות פעילות מאפשרות להציג אתכם כפתוחים כשמחפשים עסק פתוח עכשיו.',
-  category: 'הקטגוריה קובעת באילו חיפושים העסק שלכם יופיע.',
-  status: 'פרופיל שמסומן כסגור כמעט לא מקבל פניות.',
+  website: 'אתר או דף נחיתה נותנים ללקוח מקום לקרוא עוד ולפנות אליכם.',
+  phone: 'בלי מספר טלפון בכרטיס העסק אי אפשר להתקשר בלחיצה אחת מהמפה.',
+  hours: 'שעות פעילות מעודכנות עוזרות ללקוחות לדעת מתי אפשר להגיע או להתקשר.',
+  category: 'הקטגוריה מסבירה ללקוחות איזה סוג עסק אתם.',
+  status: 'כרטיס עסק שמסומן כסגור כמעט לא מקבל פניות.',
 };
 
 const impactOf = (points: number): Impact => (points >= 20 ? 'high' : points >= 8 ? 'medium' : 'low');
@@ -44,7 +44,7 @@ export function buildRecommendations(audit: Pick<Audit, 'items'>): Recommendatio
           why: WHY[i.key] ?? '',
           how: i.youDo || i.tip || i.weDo,
           weDo,
-          weDoLabel: weDo === 'now' ? 'נטפל בזה בשבילך אחרי ההרשמה' : weDo === 'soon' ? 'בקרוב: נטפל בזה בשבילך' : null,
+          weDoLabel: weDo === 'now' ? 'נטפל בזה בשבילכם אחרי ההרשמה' : weDo === 'soon' ? 'בקרוב: נטפל בזה בשבילכם' : null,
         } as Recommendation,
         open,
       };

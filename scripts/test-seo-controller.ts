@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-seo-controller.ts
+// Run: npx tsx scripts/test-seo-controller.ts
 // The controller imports the supabase client; give it inert env so it can load (no DB is touched here).
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';

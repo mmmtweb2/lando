@@ -79,8 +79,8 @@ export interface DigestStats { businessName: string | null; prevLabel: string; i
 export function suggestion(s: DigestStats): string {
   if (!s.businessName) return 'חברו את העסק בלשונית "הפרופיל שלי", וקבלו בדיקה מול המתחרים באזור.';
   if (s.inquiries === 0) return 'עוד לא נספרו פניות. כדאי לוודא שהמעקב מחובר לאתר ולשתף ללקוחות את הקישור לביקורת.';
-  if (s.reviewAsks === 0) return 'בקשו ביקורת מכמה לקוחות מרוצים, בלשונית "ביקורות". ביקורות חדשות משפרות את הדירוג.';
-  if (s.inquiries < s.inquiriesBefore) return 'הפניות ירדו מעט. כדאי לעדכן תמונות ושעות פתיחה בפרופיל, ולהוסיף תוכן חדש.';
+  if (s.reviewAsks === 0) return 'בקשו ביקורת מכמה לקוחות, בלשונית "ביקורות". ביקורות חדשות עוזרות ללקוחות להחליט למי לפנות.';
+  if (s.inquiries < s.inquiriesBefore) return 'הפניות ירדו מעט. כדאי לעדכן תמונות ושעות פתיחה בכרטיס העסק שלכם בגוגל, ולהוסיף תוכן חדש.';
   return 'ממשיכים באותו כיוון. עוד כמה בקשות ביקורת החודש ועוד תוכן אחד יחזיקו את המומנטום.';
 }
 

@@ -1295,7 +1295,7 @@ export default function Wizard() {
       <ToggleSwitch
         checked={form.include_testimonials}
         onChange={(v) => update('include_testimonials', v)}
-        label="הוסף אזור המלצות מלקוחות (Testimonials)"
+        label="הוספת אזור המלצות מלקוחות"
       />
       {/* Optional real quote — genuinely optional: leaving these empty keeps the
           existing placeholder-quote behavior (hidden from real visitors until

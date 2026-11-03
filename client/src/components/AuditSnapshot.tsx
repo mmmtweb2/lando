@@ -82,7 +82,7 @@ export const SnapshotCard = forwardRef<HTMLDivElement, { audit: Audit }>(functio
 
       <div>
         <div style={{ fontSize: 34, fontWeight: 800, marginBottom: 18 }}>
-          {findings.length > 0 ? 'מה הכי כדאי לחזק' : 'הפרופיל במצב טוב'}
+          {findings.length > 0 ? 'מה הכי כדאי לחזק' : 'כרטיס העסק במצב טוב'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {findings.map(f => (

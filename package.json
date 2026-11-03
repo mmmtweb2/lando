@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node scripts/run-all-tests.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

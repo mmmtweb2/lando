@@ -198,7 +198,7 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
           <p className="mt-2 text-sm leading-relaxed text-slate-500 max-w-xl">
             {hasBalance
               ? 'כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.'
-              : 'פרסום דף בודד עולה 249 ₪, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־198 ₪ (5 דפים) או 149 ₪ (10 דפים).'}
+              : 'פרסום דף בודד עולה ₪249, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־₪198 (5 דפים) או ₪149 (10 דפים).'}
           </p>
         </div>
         <button onClick={onBuyBundle} className={`${btnSecondary} flex-shrink-0`}>
@@ -319,7 +319,7 @@ function RenewalNotice({
         disabled={busy}
         className={`mt-2.5 w-full rounded-lg px-3 py-2 text-xs font-medium text-white transition-colors disabled:opacity-50 ${frozen ? 'bg-slate-800 hover:bg-slate-900' : 'bg-amber-600 hover:bg-amber-700'}`}
       >
-        {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ${renewalPrice} ₪`}
+        {busy ? 'רגע…' : `${frozen ? 'החזירו לאוויר' : 'חדשו לשנה נוספת'} — ₪${renewalPrice}`}
       </button>
       {/* Same pre-payment disclosure as the other paid entry points. No
           checkbox here: a renewal re-buys a product this owner already bought
@@ -1037,7 +1037,7 @@ export default function Dashboard() {
               </div>
               <div className="p-6 flex flex-col gap-4">
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  דף בודד עולה {singlePagePrice} ₪, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
+                  דף בודד עולה ₪{singlePagePrice}, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
                   בלי מנוי, בלי חידוש, בלי תאריך תפוגה. היתרה נשארת בחשבון עד שתשתמשו בה.
                 </p>
                 {plan && plan.pageCredits > 0 && (

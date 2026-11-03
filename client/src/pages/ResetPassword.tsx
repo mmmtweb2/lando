@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { translateAuthError } from '../lib/authErrors';
 
 // Page the Supabase password-reset email links to (redirectTo set in
 // Login.tsx's handleForgotPassword). Supabase's recovery link, once opened,
@@ -42,7 +43,7 @@ export default function ResetPassword() {
       setDone(true);
       setTimeout(() => navigate('/dashboard', { replace: true }), 1800);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'לא הצלחנו לעדכן את הסיסמה, נסו שוב');
+      setError(translateAuthError(err, 'לא הצלחנו לעדכן את הסיסמה, נסו שוב'));
     } finally {
       setBusy(false);
     }
@@ -97,13 +98,14 @@ export default function ResetPassword() {
                 <p className="text-sm text-slate-500 mt-1">בחרו סיסמה חדשה לחשבון שלכם</p>
               </div>
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                    <Lock size={15} className="text-[#2E63F6]" />
+                  <label htmlFor="reset-password" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                    <Lock size={15} className="text-[#2E63F6]" aria-hidden="true" />
                     סיסמה חדשה
                   </label>
                   <input
+                    id="reset-password" name="new-password" autoComplete="new-password"
                     type="password" autoFocus required dir="ltr"
                     placeholder="לפחות 6 תווים"
                     value={password}
@@ -114,11 +116,12 @@ export default function ResetPassword() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                    <Lock size={15} className="text-[#2E63F6]" />
+                  <label htmlFor="reset-password-confirm" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                    <Lock size={15} className="text-[#2E63F6]" aria-hidden="true" />
                     אימות סיסמה
                   </label>
                   <input
+                    id="reset-password-confirm" name="confirm-password" autoComplete="new-password"
                     type="password" required dir="ltr"
                     placeholder="הזינו שוב את הסיסמה"
                     value={confirm}
@@ -129,7 +132,7 @@ export default function ResetPassword() {
                 </div>
 
                 {error && (
-                  <p className="text-xs text-red-500 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
+                  <p role="alert" className="text-xs text-red-700 rounded-lg bg-red-50 px-3 py-2 text-center border border-red-100">
                     {error}
                   </p>
                 )}
@@ -140,14 +143,14 @@ export default function ResetPassword() {
                   className="flex items-center justify-center gap-2 w-full rounded-xl bg-[#2E63F6] py-3 text-sm font-semibold text-white hover:bg-[#1E4FD6] active:scale-95 disabled:opacity-50 transition mt-1"
                 >
                   {busy || !ready ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-                  {busy ? 'שומר...' : !ready ? 'טוען...' : 'שמור סיסמה חדשה'}
+                  {busy ? 'שומרים...' : !ready ? 'טוענים...' : 'שמירת סיסמה חדשה'}
                 </button>
               </form>
             </>
           )}
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-400">
+        <p className="mt-4 text-center text-xs text-slate-600">
           ✦ Pagey
         </p>
       </motion.div>

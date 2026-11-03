@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-seo-child.ts
+// Run: npx tsx scripts/test-seo-child.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 delete process.env.ANTHROPIC_API_KEY;

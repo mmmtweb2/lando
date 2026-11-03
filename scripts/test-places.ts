@@ -1,4 +1,4 @@
-// Run: npx ts-node --transpile-only scripts/test-places.ts
+// Run: npx tsx scripts/test-places.ts
 // Pure-logic + mocked-fetch checks for Stage 5.5.2. No network, no key, no DB.
 import assert from 'node:assert/strict';
 import { buildAudit, buildBenchmark } from '../src/services/placesAudit';
@@ -52,7 +52,8 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const mock = (status: number, body: unknown) => {
     globalThis.fetch = (async (url: string, init: RequestInit) => {
-      calls.push({ url, init });
+      // Count only Google Places traffic; supabase.rpc (ops usage counter) also goes through fetch.
+      if (String(url).includes('googleapis.com')) calls.push({ url, init });
       return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
     }) as typeof fetch;
   };
@@ -88,7 +89,8 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
   const comps = (rs: Array<[number, number]>) => rs.map(([r, c], i) => ({ id: `c${i}`, rating: r, userRatingCount: c }));
   const mockRoutes = (place: unknown, nearby: { status: number; body: unknown }) => {
     globalThis.fetch = (async (url: string, init: RequestInit) => {
-      calls.push({ url, init });
+      // Count only Google Places traffic; supabase.rpc (ops usage counter) also goes through fetch.
+      if (String(url).includes('googleapis.com')) calls.push({ url, init });
       const isNearby = String(url).endsWith('places:searchNearby');
       const r = isNearby ? nearby : { status: 200, body: place };
       return new Response(JSON.stringify(r.body), { status: r.status });

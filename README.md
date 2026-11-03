@@ -828,3 +828,14 @@ quota cap there.
 
 - `client/src/App.tsx`: נתיב ציבורי `/seo` → `SeoLanding`. `client/src/lib/gtm.ts`: `marketingPath` כולל `/seo`, כך ש-GTM נטען בעמוד רק אחרי הסכמה (`/seo-plan` נשאר מחוץ לרשימה). `scripts/test-gtm.ts` עודכן.
 - אין מיגרציה ואין משתני סביבה חדשים.
+
+## חלק 75 – ניסוח, נגישות ובדיקות (fix/copy-a11y-tests)
+
+- **ניסוח ללקוחות:** "פרופיל" / Business Profile / GBP / SEO הוחלפו ב"כרטיס העסק שלכם בגוגל" (לשון רבים) בכרטיסי הלקוח, באימיילים ובהודעות שרת. הוסרו ניסוחים שרומזים על דירוג ("משפרות את הדירוג", "קובע באילו חיפושים תופיעו", "מהגורמים החזקים ביותר בדירוג") ונוסחו מחדש כעובדה ניטרלית. "ניטור", "ווידג'ט", "Testimonials" ו"דפי חיפוש" פושטו. "נעקוב ונתריע" הוסר או סומן "בקרוב". "בפחות מ-60 שניות" הפך ל"בדקה בערך" (כולל תגיות העמוד). פורמט מחיר אחיד `₪249` במקומות הפשוטים; המספרים לא שונו.
+- **תשובות לביקורות (`ReviewDraftsCard` + `reviewDrafts.controller.ts`):** השרת מחזיר `canPublish` רק כשהחיבור לגוגל הצליח לאחרונה (פעימת `gbp_google`). כל עוד המכסה ממתינה, הכרטיס מציג רק "העתקת התשובה" והנחיה להדביק בכרטיס העסק; כפתור הפרסום מופיע רק כש-`canPublish` אמת. הודעות השגיאה ומייל ההתראה לא מבטיחים פרסום.
+- **דליפה טכנית:** נוספה `client/src/lib/authErrors.ts` (תרגום שגיאות התחברות לעברית). `Login`, `ResetPassword` ו-`SetPasswordCard` לא מציגים עוד טקסט אנגלי גולמי או "Supabase"; `GbpCard` לא מציג עוד `stats.detail`.
+- **תוכן ברירת מחדל של ה-AI (`getMockContent`):** תבנית ניטרלית בלי "עסק מוביל", שנות ניסיון, "תוצאות מיידיות", הבטחות זמן, תגי אמון או מספרים. מנגנון המקום-שומר לעדויות נשאר (מסונן מהמבקרים).
+- **נגישות:** `htmlFor`/`id` ב-Login וב-ResetPassword, `noValidate` בטפסי Login, `role="alert"` בשגיאות (Login, CouponField, SeoSubscriptionCard), `aria-expanded` באקורדיון השאלות ובכפתור הגדרת הסיסמה, תיבת החיפוש ב-`BusinessAuditCard` כ-combobox/listbox/option עם ניווט מקלדת ואזור `aria-live`. ניגודיות: `text-slate-400` → `600` בטקסטים קטנים בקבצים שנגענו בהם, כפתור WhatsApp עם טקסט כהה על הירוק.
+- **בדיקות:** `npm test` מריץ את כל `scripts/test-*.ts` עם `npx tsx` (`scripts/run-all-tests.mjs`), מספק משתני Supabase דמה רק אם חסרים, ויוצא עם קוד שגיאה בכל כשל. תוקנו: ספירת קריאות `rpc` כקריאות Places (`test-places`, `test-reviews-widget`), תאריכים קבועים (`test-external-leads` נגזר מ"עכשיו"), סדר טעינת env תחת tsx (`scripts/_env-seo-subscription.ts`), וטבלת `journey_events` חסרה במוק של `test-seo-subscription` (מקור הלוג `[JOURNEY] event crashed`; הקוד האמיתי לא קורס).
+- **מיגרציה 003:** נעשתה אידמפוטנטית (בדיקה ב-`information_schema.columns` לפני שינוי שם העמודה, והסרת האילוץ לפני יצירתו). אין מיגרציות חדשות ואין משתני סביבה חדשים.
+- **תלויות:** `npm audit fix` (ללא `--force`) בשרת. נשארו 2 פגיעויות בינוניות ב-`nodemon`/`minimatch` (כלי פיתוח בלבד); התיקון דורש שדרוג major ולכן לא בוצע.

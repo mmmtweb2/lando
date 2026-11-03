@@ -102,7 +102,7 @@ export function creditHtml(businessId?: string): string {
   if (process.env.WIDGET_CREDIT_ENABLED === 'false') return '';
   const campaign = (businessId ?? '').replace(/[^a-f0-9]/gi, '').slice(0, 8) || 'widget';
   const href = `${APP_URL}/audit?utm_source=widget&utm_medium=reviews&utm_campaign=${campaign}`;
-  return `<p class="credit">בדיקה חינמית לפרופיל שלכם בגוגל: <a href="${esc(href)}" target="_blank" rel="noopener">Powered by Pagey</a></p>`;
+  return `<p class="credit">בדיקה חינמית לכרטיס העסק שלכם בגוגל: <a href="${esc(href)}" target="_blank" rel="noopener">Powered by Pagey</a></p>`;
 }
 
 function shell(inner: string): string {
@@ -139,5 +139,5 @@ export function renderReviewsFallback(placeId: string, businessId?: string): str
 
 /** Business missing, not entitled, or widget disabled. Reveals nothing about why. */
 export function renderReviewsUnavailable(): string {
-  return shell(`<div class="box"><p class="note">הווידג'ט אינו זמין כרגע.</p></div>`);
+  return shell(`<div class="box"><p class="note">הצגת הביקורות אינה זמינה כרגע.</p></div>`);
 }

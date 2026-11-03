@@ -11,7 +11,7 @@ export function RoleTag({ who, soon = false }: { who: 'we' | 'you'; soon?: boole
       >
         {we ? 'אנחנו' : 'אתם'}
       </span>
-      {soon && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">בקרוב</span>}
+      {soon && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">בקרוב</span>}
     </span>
   );
 }
