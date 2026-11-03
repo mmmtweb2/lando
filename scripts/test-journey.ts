@@ -4,13 +4,13 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
 import { supabase } from '../src/config/supabase';
 import {
-  JourneyError, activate, cleanAttribution, cleanProps, completeSetup, dayMilestone, deriveState, logEvent, peek,
+  JourneyError, activate, cleanAttribution, cleanProps, completeSetup, cleanBusinessName, setPendingProfile, dayMilestone, deriveState, logEvent, peek,
   recordDashboardView, setBusiness, start,
 } from '../src/services/journey.service';
 import { postPublicEvent, postAccountEvent, postActivate } from '../src/controllers/journey.controller';
 
 type Row = Record<string, any>;
-const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }, { email: 'd@x.co' }] };
+const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }, { email: 'd@x.co' }, { email: 'e@x.co' }] };
 let missing = false;
 const MILESTONES = ['signup', 'setup_completed', 'activation_requested', 'activated_beta', 'payment_succeeded', 'day7_active', 'day30_active'];
 (supabase as any).from = (table: string) => {
@@ -92,6 +92,23 @@ const code = async (p: Promise<unknown>) => { try { await p; return null; } catc
   assert.equal(v.state, 'ready_to_activate');
   await completeSetup('a@x.co', now);
   assert.equal(events('a@x.co').filter((e) => e === 'setup_completed').length, 1, 'setup_completed once');
+
+  // ── no Google profile yet (task #12): the setup is not blocked ──
+  assert.equal(cleanBusinessName('  קפה   נעמי '), 'קפה נעמי'); assert.equal(cleanBusinessName('א'), null); assert.equal(cleanBusinessName('x'.repeat(81)), null);
+  assert.equal(cleanBusinessName(5), null); assert.equal(cleanBusinessName('<script>'), 'script');
+  await start('e@x.co', null, null, now);
+  assert.equal(await code(setPendingProfile('e@x.co', '', now)), 'bad_name');
+  assert.equal(await code(completeSetup('e@x.co', now)), 'no_business', 'neither a place nor a pending profile');
+  let pv = await setPendingProfile('e@x.co', 'קפה נעמי', now);
+  assert.deepEqual([pv.state, pv.profilePending, pv.pendingName, pv.placeId], ['setup', true, 'קפה נעמי', null]);
+  pv = await setPendingProfile('e@x.co', 'קפה נעמי חיפה', now);
+  assert.equal(pv.pendingName, 'קפה נעמי חיפה');
+  assert.equal(events('e@x.co').filter((x) => x === 'setup_step_completed').length, 1, 'logged once');
+  pv = await completeSetup('e@x.co', now);
+  assert.deepEqual([pv.state, pv.profilePending], ['ready_to_activate', true], 'pending verification does not block finishing the setup');
+  pv = await setBusiness('e@x.co', GOOD, now);
+  assert.deepEqual([pv.state, pv.profilePending, pv.pendingName, pv.placeId], ['ready_to_activate', false, null, GOOD], 'picking the business later clears the marker, keeps the stage');
+  assert.equal(await code(setPendingProfile('e@x.co', 'קפה נעמי', now)), 'has_business');
 
   // ── the payment gate changes behaviour, not data ──
   process.env.PAYMENT_GATE_ENABLED = 'true'; process.env.BETA_SELF_ACTIVATION = 'true';

@@ -1,4 +1,4 @@
-import { getJourney, postAccountEvent, postActivate, postSetupComplete, putBusiness, startJourney } from '../controllers/journey.controller';
+import { getJourney, postAccountEvent, postActivate, postSetupComplete, putBusiness, putPendingProfile, startJourney } from '../controllers/journey.controller';
 import { dismissDraft, listDrafts, publishDraft } from '../controllers/reviewDrafts.controller';
 import { getBusinessServices, putBusinessServices } from '../controllers/businessServices.controller';
 import express, { Router } from 'express';
@@ -73,6 +73,7 @@ const journeyLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: 'יו�
 router.get('/journey', journeyLimiter, requireAuth, getJourney);
 router.post('/journey/start', journeyLimiter, requireAuth, startJourney);
 router.put('/journey/business', journeyLimiter, requireAuth, putBusiness);
+router.put('/journey/profile-pending', journeyLimiter, requireAuth, putPendingProfile);
 router.post('/journey/setup-complete', journeyLimiter, requireAuth, postSetupComplete);
 router.post('/journey/activate', journeyLimiter, requireAuth, postActivate);
 router.post('/journey/event', journeyLimiter, requireAuth, postAccountEvent);

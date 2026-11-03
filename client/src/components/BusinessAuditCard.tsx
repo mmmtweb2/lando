@@ -25,7 +25,7 @@ function newSessionToken(): string {
   try { return crypto.randomUUID(); } catch { return `s${Date.now()}${Math.random().toString(36).slice(2, 10)}`; }
 }
 
-export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void }) {
+export default function BusinessAuditCard({ mode = 'account', onSelect, onPending, hideNoProfile = false }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void; onPending?: (name: string) => Promise<void> | void; hideNoProfile?: boolean }) {
   // 'public' = the signed-out /audit page: no login, no saved businesses, a lead form instead of
   // "connect this business to my account". Same card, same score (the server wraps the same code).
   const isPublic = mode === 'public';
@@ -211,7 +211,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
       )}
 
       {noProfile ? (
-        <NoProfileGuide onBack={() => setNoProfile(false)} />
+        <NoProfileGuide onBack={() => setNoProfile(false)} onPending={isPublic ? undefined : onPending} />
       ) : (
         <>
           <div className="relative">
@@ -254,13 +254,15 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={() => { setNoProfile(true); setSuggestions([]); setAudit(null); setError(null); }}
-            className="self-start text-sm font-medium text-[#2E63F6] hover:underline"
-          >
-            אין לי פרופיל בגוגל מפות
-          </button>
+          {!hideNoProfile && (
+            <button
+              type="button"
+              onClick={() => { setNoProfile(true); setSuggestions([]); setAudit(null); setError(null); }}
+              className="self-start text-sm font-medium text-[#2E63F6] hover:underline"
+            >
+              אין לי פרופיל בגוגל מפות
+            </button>
+          )}
         </>
       )}
 

@@ -90,6 +90,9 @@ assert.deepEqual(byEmail('a@x.co').premium, { status: 'active', lastCardUpdate: 
 assert.equal(byEmail('stuck@x.co').premium, null);
 assert.deepEqual(premiumOnly(journeys, premium).map((x) => x.email), ['ghost@x.co']);
 
+const pp = users([J('pp@x.co', { profile_state: 'pending_verification', pending_name: 'קפה נעמי' }), J('np@x.co')], [], [], now);
+assert.deepEqual(pp.map((x) => [x.profilePending, x.pendingName]).sort(), [[false, null], [true, 'קפה נעמי']]);
+
 // revenue
 const rv = revenue({ journeys, products, subs, premium, now });
 assert.deepEqual([rv.payingCustomers, rv.betaStarted, rv.betaToPaid, rv.betaToPaidPct, rv.readyToPay, rv.subsNeedingAttention], [2, 2, 1, 50, 1, 1]);

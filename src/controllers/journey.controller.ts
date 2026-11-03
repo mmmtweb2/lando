@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import {
-  JourneyError, activate, completeSetup, isAccountEvent, isPublicEvent, logEvent, peek, recordDashboardView, setBusiness, start, validAnonId,
+  JourneyError, activate, completeSetup, isAccountEvent, isPublicEvent, logEvent, peek, recordDashboardView, setBusiness, setPendingProfile, start, validAnonId,
 } from '../services/journey.service';
 
 function fail(res: Response, e: unknown): void {
@@ -9,6 +9,8 @@ function fail(res: Response, e: unknown): void {
       not_migrated: [503, 'ההקמה עדיין לא הופעלה.', 'journey_not_migrated'],
       bad_place: [400, 'העסק לא תקין. בחרו אותו מהרשימה.', 'bad_place'],
       no_business: [409, 'קודם בוחרים את העסק.', 'no_business'],
+      bad_name: [400, 'כתבו את שם העסק (2 עד 80 תווים).', 'bad_name'],
+      has_business: [409, 'כבר בחרתם עסק מגוגל.', 'has_business'],
       not_ready: [409, 'צריך להשלים את ההקמה לפני ההפעלה.', 'not_ready'],
       payment_required: [402, 'ההפעלה כוללת תשלום.', 'payment_required'],
       beta_ended: [409, 'תקופת הבטא שלכם הסתיימה. כדי להמשיך, כתבו לנו ונסדר את ההמשך.', 'beta_ended'],
@@ -42,6 +44,12 @@ export async function startJourney(req: Request, res: Response): Promise<void> {
 export async function putBusiness(req: Request, res: Response): Promise<void> {
   const email = who(req, res); if (!email) return;
   try { res.json(await setBusiness(email, (req.body ?? {}).placeId)); } catch (e) { fail(res, e); }
+}
+
+/** PUT /api/seo/journey/profile-pending { name } — the business has no verified Google profile yet. */
+export async function putPendingProfile(req: Request, res: Response): Promise<void> {
+  const email = who(req, res); if (!email) return;
+  try { res.json(await setPendingProfile(email, (req.body ?? {}).name)); } catch (e) { fail(res, e); }
 }
 
 /** POST /api/seo/journey/setup-complete */
