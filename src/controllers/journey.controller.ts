@@ -11,6 +11,7 @@ function fail(res: Response, e: unknown): void {
       no_business: [409, 'קודם בוחרים את העסק.', 'no_business'],
       not_ready: [409, 'צריך להשלים את ההקמה לפני ההפעלה.', 'not_ready'],
       payment_required: [402, 'ההפעלה כוללת תשלום.', 'payment_required'],
+      beta_ended: [409, 'תקופת הבטא שלכם הסתיימה. כדי להמשיך, כתבו לנו ונסדר את ההמשך.', 'beta_ended'],
     };
     const x = m[e.code];
     if (x) { res.status(x[0]).json({ error: x[1], code: x[2], ...(e.code === 'payment_required' ? { next: '/seo-plan' } : {}) }); return; }

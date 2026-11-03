@@ -165,7 +165,7 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
           : rating >= ratingTarget
             ? ''
             : `הדירוג שלכם נמוך מ-${ratingTarget.toFixed(1)}, היעד לפי ${vs}.`,
-      weDo: 'נשלח בקשות ביקורת אוטומטיות ללקוחות מרוצים, ונעקוב אחרי הדירוג.',
+      weDo: 'נכין לכם בקשות ביקורת מוכנות לשליחה ללקוחות מרוצים, ונעקוב אחרי ממוצע הכוכבים.',
       weDoAvailability: 'soon',
       youDo: rating !== null && rating >= ratingTarget ? '' : 'לתת שירות טוב ולענות לביקורות שליליות בנימוס.',
     },
@@ -190,7 +190,7 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
       tip: photosCapped
         ? `יש לפחות ${PLACES_PHOTO_CAP} תמונות. היעד הוא ${PHOTO_GOAL}, והספירה המדויקת תתאפשר לאחר חיבור הפרופיל.`
         : `יש רק ${photoCount} תמונות. מומלץ להעלות תמונות אמיתיות מהעבודה בשטח.`,
-      weDo: 'נאסוף תמונות שתשלחו לנו בוואטסאפ ונעלה אותן לפרופיל.',
+      weDo: 'נכין לכם רשימת תמונות מומלצות והוראות קצרות להעלאה לפרופיל. ההעלאה עצמה נעשית אצלכם בגוגל.',
       weDoAvailability: 'soon',
       youDo: 'לצלם בסיום כל עבודה ולשלוח לנו את התמונות. עד אז, אפשר להעלות ישירות לפרופיל בגוגל.',
     },
