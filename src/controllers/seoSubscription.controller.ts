@@ -1,4 +1,5 @@
 import { logEvent } from '../services/journey.service';
+import { recordHeartbeat } from '../services/opsMetrics.service';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
@@ -114,9 +115,12 @@ export async function subscriptionWebhook(req: Request, res: Response): Promise<
   const ref = pickField(bag, 'ExternalIdentifier', 'ref');
   if (!ref || !UUID.test(ref)) { res.status(200).json({ ok: true, applied: 'no_ref' }); return; }
   try {
-    res.status(200).json({ ok: true, applied: await verifyAndApply(ref, bag) });
+    const applied = await verifyAndApply(ref, bag);
+    void recordHeartbeat('sumit_webhook', null);
+    res.status(200).json({ ok: true, applied });
   } catch (e) {
     console.error('[SUBSCRIPTION] webhook handling failed:', e instanceof Error ? e.message : e);
+    void recordHeartbeat('sumit_webhook', e);
     res.status(500).json({ ok: false });   // SUMIT may retry
   }
 }

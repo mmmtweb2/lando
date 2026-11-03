@@ -7,6 +7,7 @@ import { adminAuditLeads } from '../controllers/publicAudit.controller';
 import { adminGbpConfig } from '../controllers/gbpConfig.controller';
 import { adminListGrants, adminGrant, adminRevoke } from '../controllers/betaAccess.controller';
 import { adminListFeedback, adminMarkSeen } from '../controllers/feedback.controller';
+import { adminSeoOverview, adminSeoFunnel, adminSeoUsers, adminSeoRevenue, adminSeoHealth, adminSeoFeedback, adminSetManualPremium } from '../controllers/adminSeo.controller';
 import { adminPreview, adminTest } from '../controllers/digest.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
@@ -43,6 +44,15 @@ router.post('/digest/test', requireAuth, requireAdmin, adminTest);
 // Feedback from testers (migration 034).
 router.get('/feedback', requireAuth, requireAdmin, adminListFeedback);
 router.post('/feedback/:id/seen', requireAuth, requireAdmin, adminMarkSeen);
+
+// Admin tabs of the Google-promotion product (task #10, migration 040).
+router.get('/seo/overview', requireAuth, requireAdmin, adminSeoOverview);
+router.get('/seo/funnel', requireAuth, requireAdmin, adminSeoFunnel);
+router.get('/seo/users', requireAuth, requireAdmin, adminSeoUsers);
+router.get('/seo/revenue', requireAuth, requireAdmin, adminSeoRevenue);
+router.get('/seo/health', requireAuth, requireAdmin, adminSeoHealth);
+router.get('/seo/feedback', requireAuth, requireAdmin, adminSeoFeedback);
+router.put('/seo/manual-premium', requireAuth, requireAdmin, adminSetManualPremium);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for
 // context — these give an admin a way to inspect and resolve a payment stuck

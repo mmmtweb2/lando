@@ -5,6 +5,7 @@
 //   • Field masks are explicit and minimal: Places bills by the fields requested.
 //   • Never logs the key or full upstream bodies.
 
+import { countPlacesCall } from './opsMetrics.service';
 import {
   buildAudit, buildBenchmark, compareCategory, type Benchmark, type BusinessAudit, type CategoryComparison,
   type CategoryPeer, type CompetitorSnapshot, type PlaceSnapshot,
@@ -62,6 +63,7 @@ export function isValidPlaceId(id: unknown): id is string {
 }
 
 async function call(url: string, init: RequestInit): Promise<unknown> {
+  countPlacesCall(url); // billed per request, so counted before it is sent
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
