@@ -130,6 +130,7 @@ interface LandingPage {
   design_style?: string | null;
   isOwner?: boolean;
   status?: 'draft' | 'published' | null;
+  created_at?: string | null;
   published_at?: string | null;
   expires_at?: string | null;
   page_goal?: string | null;
@@ -226,6 +227,9 @@ const V = {
 };
 
 const VIEW = { viewport: { once: true, margin: '-80px' } } as const;
+
+// Pages created on/after this instant default to the v2 design (2026-11-03 UTC).
+const DESIGN_V2_FROM = Date.parse('2026-11-03T00:00:00Z');
 
 // ── Design v2 ("?design=2") helpers ─────────────────────────────────────────
 // Neutral, business-agnostic icons for service/process cards (the AI content
@@ -1046,8 +1050,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   }, [page]);
 
   // ── Design v2 flag + scroll state (hooks — must stay above early returns) ──
-  const designV2 = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('design') === '2';
+  // Default: v2 for pages created on/after DESIGN_V2_FROM (new pages), the
+  // classic design for older pages. ?design=2 / ?design=1 force either way.
+  // Child (SEO/autopilot) pages are never switched by default.
+  const designParam = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('design') : null;
+  const designV2 = designParam === '2'
+    || (designParam !== '1'
+      && !!page && !page.parent_id
+      && !!page.created_at && Date.parse(page.created_at) >= DESIGN_V2_FROM);
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
