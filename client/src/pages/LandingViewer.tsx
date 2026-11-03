@@ -2,8 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { shareUrl } from '../lib/pageUrl';
 import { Helmet } from 'react-helmet-async';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2 } from 'lucide-react';
+import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
+import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -130,6 +130,7 @@ interface LandingPage {
   design_style?: string | null;
   isOwner?: boolean;
   status?: 'draft' | 'published' | null;
+  created_at?: string | null;
   published_at?: string | null;
   expires_at?: string | null;
   page_goal?: string | null;
@@ -226,6 +227,61 @@ const V = {
 };
 
 const VIEW = { viewport: { once: true, margin: '-80px' } } as const;
+
+// Pages created on/after this instant default to the v2 design. Set to the
+// epoch so v2 applies to every existing page too (decided 2026-11-03: no paying
+// users yet). Raise it to a date to grandfather older pages on the classic look.
+const DESIGN_V2_FROM = Date.parse('1970-01-01T00:00:00Z');
+
+// ── Design v2 ("?design=2") helpers ─────────────────────────────────────────
+// Neutral, business-agnostic icons for service/process cards (the AI content
+// carries no per-item icon, and a wrong-meaning icon is worse than a generic
+// one) — they replace the numbered badges.
+const NEUTRAL_ICONS = [Sparkles, Star, Zap, Gem, Award, Target, Layers, Compass];
+function neutralIcon(i: number, size = 26) {
+  const Icon = NEUTRAL_ICONS[i % NEUTRAL_ICONS.length];
+  return <Icon size={size} strokeWidth={1.8} />;
+}
+
+// Animated counter: shows the final number until it scrolls into view, then
+// counts up from 0. The number is always taken from the page's own text.
+function CountUp({ to, reduce }: { to: number; reduce: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-60px' });
+  const [v, setV] = useState(to);
+  useEffect(() => {
+    if (!inView || reduce) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const pr = Math.min(1, (t - t0) / 1600);
+      setV(Math.round(to * (1 - Math.pow(1 - pr, 3))));
+      if (pr < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, to, reduce]);
+  return <span ref={ref} className="tabular-nums">{v.toLocaleString('en-US')}</span>;
+}
+
+// Splits "ניסיון של 12 שנה" → before / 12 / after. Skips phone-like or huge numbers.
+function parseStat(text: string): { before: string; n: number; after: string } | null {
+  const m = /(\d{1,3}(?:,\d{3})+|\d+)/.exec(text);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(n) || m[1].replace(/,/g, '').length > 6) return null;
+  return { before: text.slice(0, m.index), n, after: text.slice(m.index + m[1].length) };
+}
+
+// Thin reading-progress bar glued under the fixed header.
+function ScrollProgress({ color }: { color: string }) {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 28, mass: 0.3 });
+  return (
+    <motion.div aria-hidden className="fixed top-16 inset-x-0 h-[3px] z-[49] origin-right pointer-events-none"
+      style={{ scaleX, backgroundColor: color }} />
+  );
+}
 
 // ─── WhatsApp SVG icon ────────────────────────────────────────────────────────
 
@@ -994,6 +1050,30 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     viewTrackedRef.current = true;
     fetch(`/api/landing/${page.slug}/track-view`, { method: 'POST' }).catch(() => {});
   }, [page]);
+
+  // ── Design v2 flag + scroll state (hooks — must stay above early returns) ──
+  // Default: v2 for pages created on/after DESIGN_V2_FROM (new pages), the
+  // classic design for older pages. ?design=2 / ?design=1 force either way.
+  // Child (SEO/autopilot) pages are never switched by default.
+  const designParam = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('design') : null;
+  const designV2 = designParam === '2'
+    || (designParam !== '1'
+      && !!page && !page.parent_id
+      && (!page.created_at || Date.parse(page.created_at) >= DESIGN_V2_FROM));
+  const reduceMotion = useReducedMotion();
+  const [scrolled, setScrolled] = useState(false);
+  const { scrollY } = useScroll();
+  const heroImgY = useTransform(scrollY, [0, 800], [0, 140]);
+  const heroTxtY = useTransform(scrollY, [0, 600], [0, -70]);
+  const heroTxtOpacity = useTransform(scrollY, [0, 520], [1, 0]);
+  useEffect(() => {
+    if (!designV2) return;
+    const on = () => setScrolled(window.scrollY > 24);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, [designV2]);
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
@@ -2014,6 +2094,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   function renderProcessBlock(isAlt: boolean) {
     const steps = ai_content.process_steps ?? [];
     if (!steps.length) return null;
+    if (designV2) return renderProcessCardsV2(isAlt);
     const variant = resolveProcessVariant(steps.length);
     if (variant === 'timeline') return renderProcessTimelineBlock(isAlt);
     return renderProcessHorizontalBlock(isAlt);
@@ -2428,8 +2509,81 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     return 'split';                             // warm/playful/tech — image beside copy
   }
 
+  // v2 hero: used on the classic macro layout only, never in edit mode (the
+  // editor needs the EditableImage slot of the legacy hero), never fullbleed.
+  function heroV2On() {
+    if (!designV2 || isEditingMode || structural !== 'classic') return false;
+    const first = (ai_content.layout_composition ?? getFallbackComposition())[0];
+    return (first === 'hero_center' || first === 'hero_split') && resolveHeroVariant() !== 'fullbleed';
+  }
+
+  function renderHeroV2Block() {
+    const rm = !!reduceMotion;
+    const up = (d: number) => rm ? {} : {
+      initial: { opacity: 0, y: 28 }, animate: { opacity: 1, y: 0 },
+      transition: { duration: 0.8, delay: d, ease: EASE_SMOOTH },
+    };
+    const dark = heroOnGradient === '#ffffff';
+    return (
+      <section className={`relative flex flex-col items-center justify-center text-center px-6 min-h-[92vh] overflow-hidden pb-28 ${layoutPt}`}
+        style={{ background: heroBg, color: heroOnGradient }}>
+        {heroImageUrl && (
+          <motion.img src={heroImageUrl} alt="" aria-hidden
+            className="absolute inset-x-0 -top-36 w-full h-[calc(100%+9rem)] object-cover pointer-events-none"
+            style={{ opacity: 0.32, mixBlendMode: 'luminosity', y: rm ? 0 : heroImgY }}
+            initial={rm ? false : { scale: 1.14 }} animate={{ scale: 1 }}
+            transition={{ duration: 2.6, ease: EASE_SMOOTH }} />
+        )}
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.14) 0%, transparent 60%), linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.22))' }} />
+        <div className="lando-blob absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full blur-3xl opacity-30 pointer-events-none"
+          style={{ backgroundColor: accent }} />
+        <div className="lando-blob absolute -bottom-32 -left-24 w-[380px] h-[380px] rounded-full blur-3xl opacity-25 pointer-events-none"
+          style={{ backgroundColor: secondary, animationDelay: '-9s' }} />
+        <div className="absolute inset-0 opacity-[0.10] pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+
+        <motion.div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl mx-auto py-16"
+          style={rm ? undefined : { y: heroTxtY, opacity: heroTxtOpacity }}>
+          {logo_url && (
+            <motion.img src={logo_url} alt={business_name} {...up(0.05)}
+              className="h-20 w-20 object-contain shadow-xl"
+              style={{ borderRadius: vibe === 'luxury' ? '4px' : '20px', background: 'rgba(255,255,255,0.22)', padding: '8px', backdropFilter: 'blur(6px)' }} />
+          )}
+          <motion.p {...up(0.12)} className="text-xs font-semibold tracking-[0.28em] uppercase opacity-75">{business_name}</motion.p>
+          <motion.div {...up(0.2)}>
+            <AccentedHeroTitle
+              className="text-5xl sm:text-6xl lg:text-7xl font-black leading-[1.05] tracking-tight drop-shadow-lg"
+              value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
+              onCommit={(v) => setEdit('hero.title', v)}
+              isEditing={false}
+              accentColor={secondaryAccent} />
+          </motion.div>
+          {heroTagline && (
+            <motion.p {...up(0.32)} className="text-lg sm:text-2xl leading-relaxed max-w-xl opacity-90 drop-shadow">
+              {getEdit('hero.subtitle', heroTagline)}
+            </motion.p>
+          )}
+          <motion.a {...up(0.45)} href={primaryCtaHref} target="_blank" rel="noopener noreferrer"
+            onClick={() => handleCtaClick()}
+            whileHover={rm ? undefined : { scale: 1.05 }} whileTap={rm ? undefined : { scale: 0.97 }}
+            className="mt-2 inline-flex items-center gap-3 px-9 py-4 text-lg font-extrabold rounded-full"
+            style={{
+              backgroundColor: dark ? '#ffffff' : primary,
+              color: dark ? primary : onPrimary,
+              boxShadow: '0 18px 40px -12px rgba(0,0,0,0.45)',
+            }}>
+            {ctaIcon}{ctaText}
+          </motion.a>
+        </motion.div>
+        <ChevronDown aria-hidden size={30} className="absolute bottom-8 inset-x-0 mx-auto animate-bounce opacity-70" />
+      </section>
+    );
+  }
+
   function renderHeroBlock() {
     const variant = resolveHeroVariant();
+    if (heroV2On()) return renderHeroV2Block();
     if (variant === 'fullbleed') return renderHeroFullBleedBlock();
     if (variant === 'split') return renderHeroSplitBlock(pageVariantSeed() % 2 === 0);
     return renderHeroCenterBlock();
@@ -2496,7 +2650,111 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     return pageVariantSeed() % 2 === 0 ? 'timeline' : 'horizontal';
   }
 
+  function renderServicesCardsV2(isAlt: boolean) {
+    if (!services.length) return null;
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    const n = services.length;
+    const cols = n === 4 ? 'lg:grid-cols-4' : n === 2 ? '' : 'lg:grid-cols-3';
+    return (
+      <motion.section className="px-6 py-24" style={bg ?? { backgroundColor: '#fafafa' }}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-6xl mx-auto">
+          <motion.div variants={V.classic.item} className="text-center mb-14">
+            {sectionKicker(ai_content.services_kicker || 'השירותים שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.services_heading || 'מה אנחנו מציעים'}</h2>
+            {divider}
+          </motion.div>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${cols} gap-6 ${n === 1 ? 'max-w-xl mx-auto' : ''}`}>
+            {services.map((s, i) => {
+              const img = serviceImageSource[i];
+              return (
+                <motion.div key={s.id ?? i} variants={V.classic.item}
+                  className={`group relative overflow-hidden ${theme.cardRadius} bg-white flex flex-col gap-4 p-7 border shadow-sm transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl cursor-default`}
+                  style={{ borderColor: `${primary}1f` }}>
+                  <div className="absolute top-0 inset-x-0 h-1 origin-right scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
+                    style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
+                  {(img || (isEditingMode && !!canEdit)) && (
+                    <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                      className="w-[calc(100%+3.5rem)] -mx-7 -mt-7 h-44" style={imgTreatmentStyle}
+                      isEditingMode={isEditingMode} canEdit={!!canEdit}
+                      onEditClick={() => openImageModal(`service_${i}`)} />
+                  )}
+                  <div className={`w-14 h-14 ${theme.badgeRadius} flex items-center justify-center text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6`}
+                    style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})` }}>
+                    {neutralIcon(i)}
+                  </div>
+                  <EditableText as="h3" className="font-extrabold text-xl text-slate-800 leading-snug"
+                    value={getEdit(`services.${i}.title`, s.title)}
+                    onCommit={(v) => setEdit(`services.${i}.title`, v)}
+                    isEditing={isEditingMode} />
+                  <EditableText as="p" className="text-[15px] leading-relaxed" style={{ color: clrMuted }}
+                    value={getEdit(`services.${i}.description`, s.description)}
+                    onCommit={(v) => setEdit(`services.${i}.description`, v)}
+                    isEditing={isEditingMode} />
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
+  function renderProcessCardsV2(isAlt: boolean) {
+    const steps = ai_content.process_steps ?? [];
+    if (!steps.length) return null;
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    const n = steps.length;
+    const singleRow = n <= 4;
+    const cols = n === 1 ? 'max-w-md mx-auto' : n === 2 ? 'sm:grid-cols-2 max-w-3xl mx-auto'
+      : n === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3';
+    return (
+      <motion.section className="relative overflow-hidden px-6 py-24" style={bg ?? { backgroundColor: '#ffffff' }}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-6xl mx-auto">
+          <motion.div variants={V.classic.item} className="text-center mb-14">
+            {sectionKicker(ai_content.process_kicker || 'התהליך שלנו')}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}>{ai_content.process_heading || 'איך זה עובד'}</h2>
+            {divider}
+          </motion.div>
+          <div className={`grid grid-cols-1 gap-6 lg:gap-10 ${cols}`}>
+            {steps.map((step, i) => (
+              <motion.div key={step.step_number ?? i} variants={V.classic.item} className="relative">
+                <div className={`group relative overflow-hidden h-full ${theme.cardRadius} bg-white p-7 border shadow-sm transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-xl flex flex-col gap-4`}
+                  style={{ borderColor: `${primary}1f` }}>
+                  <span aria-hidden className="absolute -top-3 left-4 text-8xl font-black leading-none select-none pointer-events-none"
+                    style={{ color: primary, opacity: 0.07 }}>
+                    {String(step.step_number ?? i + 1).padStart(2, '0')}
+                  </span>
+                  <div className={`relative w-14 h-14 ${theme.badgeRadius} flex items-center justify-center text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}
+                    style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})` }}>
+                    {neutralIcon(i + 2)}
+                  </div>
+                  <EditableText as="h3" className="relative font-extrabold text-lg text-slate-800 leading-snug"
+                    value={getEdit(`process_steps.${i}.title`, step.title)}
+                    onCommit={(v) => setEdit(`process_steps.${i}.title`, v)}
+                    isEditing={isEditingMode} />
+                  <EditableText as="p" className="relative text-[15px] leading-relaxed" style={{ color: clrMuted }}
+                    value={getEdit(`process_steps.${i}.description`, step.description)}
+                    onCommit={(v) => setEdit(`process_steps.${i}.description`, v)}
+                    isEditing={isEditingMode} />
+                </div>
+                {singleRow && i < n - 1 && (
+                  <div aria-hidden className="hidden lg:flex absolute top-1/2 -left-8 -translate-y-1/2 w-8 h-8 rounded-full items-center justify-center bg-white shadow-md z-10"
+                    style={{ color: primary }}>
+                    <ChevronLeft size={18} />
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
   function renderServicesBlock(isAlt: boolean) {
+    if (designV2) return renderServicesCardsV2(isAlt);
     const variant = resolveServicesVariant();
     if (variant === 'bento') return renderServicesBentoBlock(isAlt);
     if (variant === 'rows') return renderServicesRowsBlock(isAlt);
@@ -2892,10 +3150,23 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})` }}>
                   <Check size={18} color="#fff" />
                 </div>
-                <EditableText as="h3" className="font-bold text-slate-800 leading-tight"
-                  value={getEdit(`benefits.${i}.title`, b.title)}
-                  onCommit={(v) => setEdit(`benefits.${i}.title`, v)}
-                  isEditing={isEditingMode} />
+                {(() => {
+                  const st = designV2 && !isEditingMode ? parseStat(getEdit(`benefits.${i}.title`, b.title)) : null;
+                  return st ? (
+                    <h3 className="font-extrabold text-2xl text-slate-800 leading-tight">
+                      {st.before}
+                      <span className="text-4xl font-black" style={{ color: primary }}>
+                        <CountUp to={st.n} reduce={!!reduceMotion} />
+                      </span>
+                      {st.after}
+                    </h3>
+                  ) : (
+                    <EditableText as="h3" className="font-bold text-slate-800 leading-tight"
+                      value={getEdit(`benefits.${i}.title`, b.title)}
+                      onCommit={(v) => setEdit(`benefits.${i}.title`, v)}
+                      isEditing={isEditingMode} />
+                  );
+                })()}
                 <EditableText as="p" className="text-sm leading-relaxed" style={{ color: clrMuted }}
                   value={getEdit(`benefits.${i}.description`, b.description)}
                   onCommit={(v) => setEdit(`benefits.${i}.description`, v)}
@@ -3315,6 +3586,25 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     }
 
     // classic (default)
+    if (designV2 && !isEditingMode) {
+      // v2: every section after the hero slides up over the previous one with
+      // a rounded top edge — a layered, smooth-scroll "sheet" feel.
+      return (
+        <div className="flex flex-col">
+          {nodes.map((node, i) => i === 0 ? node : (
+            <motion.div key={i}
+              className="relative -mt-10 rounded-t-[2.5rem] overflow-hidden shadow-[0_-18px_40px_-22px_rgba(15,23,42,0.4)]"
+              style={{ zIndex: i }}
+              initial={reduceMotion ? false : { opacity: 0, y: 48 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.05 }}
+              transition={{ duration: 0.7, ease: EASE_SMOOTH }}>
+              {node}
+            </motion.div>
+          ))}
+        </div>
+      );
+    }
     return <div className="flex flex-col">{nodes}</div>;
   }
 
@@ -3489,11 +3779,16 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       </Helmet>
 
       {/* Sticky glassmorphism header */}
-      <header className="fixed top-0 inset-x-0 z-50 h-16 backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm">
+      <header className={`fixed top-0 inset-x-0 z-50 h-16 transition-all duration-300 ${
+        designV2 && heroV2On() && !scrolled
+          ? 'bg-transparent border-b border-transparent'
+          : 'backdrop-blur-md bg-white/80 border-b border-slate-100/60 shadow-sm'}`}>
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
           <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
             className="text-sm font-semibold px-4 py-2 transition hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: primary, color: onPrimary, borderRadius: vibe === 'luxury' ? '4px' : '10px' }}>
+            style={designV2 && heroV2On() && !scrolled
+              ? { backgroundColor: 'rgba(255,255,255,0.18)', color: heroOnGradient, border: `1px solid ${heroOnGradient}55`, borderRadius: '999px', backdropFilter: 'blur(6px)' }
+              : { backgroundColor: primary, color: onPrimary, borderRadius: designV2 ? '999px' : vibe === 'luxury' ? '4px' : '10px' }}>
             {ctaText}
           </a>
           {canEdit && user?.email && (
@@ -3505,7 +3800,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           )}
           <div className="flex items-center gap-2.5 min-w-0">
             {logo_url && <img src={logo_url} alt={business_name} className="h-8 w-8 rounded-lg object-contain flex-shrink-0" />}
-            <span className="font-bold text-slate-800 text-sm truncate">{business_name}</span>
+            <span className="font-bold text-slate-800 text-sm truncate transition-colors duration-300"
+              style={designV2 && heroV2On() && !scrolled ? { color: heroOnGradient } : undefined}>{business_name}</span>
           </div>
         </div>
       </header>
@@ -3613,7 +3909,23 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         </div>
       )}
 
+      {designV2 && <ScrollProgress color={primary} />}
+
       {/* Primary CTA FAB — WhatsApp or external link */}
+      {designV2 ? (
+        <motion.a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
+          aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
+          initial={reduceMotion ? false : { scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 1.2 }}
+          whileHover={reduceMotion ? undefined : { scale: 1.06 }} whileTap={reduceMotion ? undefined : { scale: 0.95 }}
+          className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center gap-2.5 h-14 w-14 sm:w-auto sm:px-6 rounded-full text-white font-bold text-sm`}
+          style={{ backgroundColor: useExternalLink ? primary : '#25D366', boxShadow: '0 14px 34px -8px rgba(0,0,0,0.4)' }}>
+          <span className="absolute inset-0 rounded-full animate-ping opacity-25 pointer-events-none"
+            style={{ backgroundColor: useExternalLink ? primary : '#4ade80' }} />
+          <span className="relative hidden sm:inline">{useExternalLink ? ctaText : 'דברו איתנו'}</span>
+          <span className="relative">{useExternalLink ? <ExternalLinkIcon size={22} /> : <WhatsAppIcon size={26} />}</span>
+        </motion.a>
+      ) : (
       <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
         aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
         className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
@@ -3622,12 +3934,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           style={{ backgroundColor: useExternalLink ? primary : '#4ade80' }} />
         {useExternalLink ? <ExternalLinkIcon size={24} /> : <WhatsAppIcon size={26} />}
       </a>
+      )}
 
       {/* Secondary WhatsApp FAB — only shown on external-link pages as a contact fallback, and only when a real WhatsApp number exists */}
       {useExternalLink && waUrl && (
         <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick(waUrl)}
           aria-label="פתח שיחת WhatsApp"
-          className={`fixed ${fabBottom} left-24 z-50 flex items-center justify-center w-12 h-12 rounded-full text-white shadow-lg transition-all duration-300`}
+          className={`fixed ${designV2 ? (toolbarVisible ? 'bottom-36' : 'bottom-24') : fabBottom} ${designV2 ? 'left-6' : 'left-24'} z-50 flex items-center justify-center w-12 h-12 rounded-full text-white shadow-lg transition-all duration-300`}
           style={{ backgroundColor: '#25D366' }}>
           <WhatsAppIcon size={22} />
         </a>
