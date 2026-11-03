@@ -228,8 +228,10 @@ const V = {
 
 const VIEW = { viewport: { once: true, margin: '-80px' } } as const;
 
-// Pages created on/after this instant default to the v2 design (2026-11-03 UTC).
-const DESIGN_V2_FROM = Date.parse('2026-11-03T00:00:00Z');
+// Pages created on/after this instant default to the v2 design. Set to the
+// epoch so v2 applies to every existing page too (decided 2026-11-03: no paying
+// users yet). Raise it to a date to grandfather older pages on the classic look.
+const DESIGN_V2_FROM = Date.parse('1970-01-01T00:00:00Z');
 
 // ── Design v2 ("?design=2") helpers ─────────────────────────────────────────
 // Neutral, business-agnostic icons for service/process cards (the AI content
@@ -1058,7 +1060,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const designV2 = designParam === '2'
     || (designParam !== '1'
       && !!page && !page.parent_id
-      && !!page.created_at && Date.parse(page.created_at) >= DESIGN_V2_FROM);
+      && (!page.created_at || Date.parse(page.created_at) >= DESIGN_V2_FROM));
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
