@@ -3,8 +3,21 @@ import { Card, State } from './adminUi';
 import { PREMIUM_LABEL, STATE_LABEL, day, ils, useAdminData, type Fetcher } from './adminData';
 
 interface Premium { status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null }
-interface Row { email: string; state: string; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string; premium: Premium | null; profilePending?: boolean; pendingName?: string | null }
+interface Row { email: string; state: string; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string; premium: Premium | null; profilePending?: boolean; pendingName?: string | null; activationRequestedAt?: string | null; placeName?: string | null; phone?: string | null }
 interface Data { users: Row[]; premiumWithoutJourney: { email: string; status: Premium['status']; last_card_update: string | null; monthly_price: number | string | null; note: string | null }[] }
+
+const HELLO = 'שלום, ראיתי שהתחלתם להגדיר את כרטיס העסק שלכם בגוגל ב-Pagey ורציתי לבדוק אם אפשר לעזור.';
+
+/** Mail always; WhatsApp only when a phone is known (left by the same business in the free check). */
+function Contact({ email, phone }: { email: string; phone?: string | null }) {
+  const wa = phone ? `https://wa.me/972${phone.replace(/^0/, '')}?text=${encodeURIComponent(HELLO)}` : null;
+  return (
+    <span className="flex items-center gap-2 text-xs">
+      <a href={`mailto:${email}?subject=${encodeURIComponent('Pagey')}&body=${encodeURIComponent(HELLO)}`} className="text-[#2E63F6] underline">מייל</a>
+      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline" title="הטלפון מהבדיקה החינמית של אותו עסק">וואטסאפ</a>}
+    </span>
+  );
+}
 
 function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email: string; current: Premium | null; adminFetch: Fetcher; onDone: () => void; onCancel: () => void }) {
   const [status, setStatus] = useState<Premium['status']>(current?.status ?? 'active');
@@ -89,13 +102,15 @@ export default function SeoUsersTab({ adminFetch }: { adminFetch: Fetcher }) {
             <table className="w-full text-sm">
               <thead><tr className="text-xs text-slate-400 text-right">
                 <th className="px-5 py-2 font-medium">לקוח</th><th className="px-3 py-2 font-medium">סטטוס</th><th className="px-3 py-2 font-medium">נרשם</th>
-                <th className="px-3 py-2 font-medium">התקדמות אחרונה</th><th className="px-3 py-2 font-medium">מקור</th><th className="px-3 py-2 font-medium">פרימיום ידני</th><th className="px-3 py-2" />
+                <th className="px-3 py-2 font-medium">התקדמות אחרונה</th><th className="px-3 py-2 font-medium">מקור</th><th className="px-3 py-2 font-medium">פרימיום ידני</th><th className="px-3 py-2 font-medium">יצירת קשר</th><th className="px-3 py-2" />
               </tr></thead>
               <tbody className="divide-y divide-slate-50">
                 {rows.flatMap((u) => [
                   <tr key={u.email}>
-                    <td className="px-5 py-2 text-slate-700" dir="ltr">{u.email}</td>
-                    <td className="px-3 py-2">{STATE_LABEL[u.state] ?? u.state}{u.stuck && <span className="mr-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">תקוע</span>}{u.profilePending && <span className="mr-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700" title={u.pendingName ?? undefined}>ממתין לאימות פרופיל</span>}</td>
+                    <td className="px-5 py-2 text-slate-700"><span dir="ltr">{u.email}</span>{u.placeName && <span className="block text-xs text-slate-400" dir="auto">{u.placeName}</span>}</td>
+                    <td className="px-3 py-2">{STATE_LABEL[u.state] ?? u.state}{u.stuck && <span className="mr-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">תקוע</span>}{u.profilePending && <span className="mr-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700" title={u.pendingName ?? undefined}>ממתין לאימות פרופיל</span>}{u.activationRequestedAt && (['registered', 'setup', 'ready_to_activate'].includes(u.state)
+                      ? <span className="mr-2 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">ממתין להפעלה (ביקש ב-{day(u.activationRequestedAt)})</span>
+                      : <span className="mr-2 text-xs text-slate-400">ביקש הפעלה ב-{day(u.activationRequestedAt)}</span>)}</td>
                     <td className="px-3 py-2 text-slate-500">{day(u.registeredAt)}</td>
                     <td className="px-3 py-2 text-slate-500">{day(u.lastProgressAt)}</td>
                     <td className="px-3 py-2 text-slate-500" dir="auto">{u.source}</td>
@@ -104,9 +119,10 @@ export default function SeoUsersTab({ adminFetch }: { adminFetch: Fetcher }) {
                         <span>{PREMIUM_LABEL[u.premium.status]} · כרטיס עודכן {day(u.premium.lastCardUpdate)}{u.premium.monthlyPrice != null && ` · ${ils(u.premium.monthlyPrice)}/חודש`}</span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
+                    <td className="px-3 py-2"><Contact email={u.email} phone={u.phone} /></td>
                     <td className="px-3 py-2"><button type="button" onClick={() => setEditing(editing === u.email ? null : u.email)} className="text-xs text-[#2E63F6] underline">{u.premium ? 'עריכה' : 'סמן כפרימיום ידני'}</button></td>
                   </tr>,
-                  ...(editing === u.email ? [<tr key={`${u.email}-edit`}><td colSpan={7} className="p-0"><PremiumEditor email={u.email} current={u.premium} adminFetch={adminFetch} onCancel={() => setEditing(null)} onDone={() => { setEditing(null); reload(); }} /></td></tr>] : []),
+                  ...(editing === u.email ? [<tr key={`${u.email}-edit`}><td colSpan={8} className="p-0"><PremiumEditor email={u.email} current={u.premium} adminFetch={adminFetch} onCancel={() => setEditing(null)} onDone={() => { setEditing(null); reload(); }} /></td></tr>] : []),
                 ])}
               </tbody>
             </table>

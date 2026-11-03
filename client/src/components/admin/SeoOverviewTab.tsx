@@ -5,6 +5,7 @@ interface Alert { level: 'warn' | 'bad'; text: string; tab?: string }
 interface Overview {
   signupsWeek: number; signupsPrev: number; setupsCompleted: number; setupsWeek: number; activeBeta: number; activePaid: number; stuck: number;
   manualPremiumActive: number; alerts: Alert[];
+  todo: { stuck: number; pendingActivation: number; auditLeadsUnhandled: number | null; premiumStale: number };
   mrr: { sumit: number; manual: number; total: number; goal: number; goalPct: number };
 }
 
@@ -12,8 +13,30 @@ export default function SeoOverviewTab({ adminFetch, goTab }: { adminFetch: Fetc
   const { data, error, loading, reload } = useAdminData<Overview>(adminFetch, '/api/admin/seo/overview');
   if (!data) return <State loading={loading} error={error} retry={reload} />;
   const delta = data.signupsWeek - data.signupsPrev;
+  const t = data.todo;
+  const todo: { label: string; n: number | null; tab: string }[] = [
+    { label: 'לקוחות תקועים (ללא התקדמות 48 שעות)', n: t.stuck, tab: 'users' },
+    { label: 'בקשות הפעלה שממתינות לכם', n: t.pendingActivation, tab: 'users' },
+    { label: 'פניות מהבדיקה החינמית שלא טופלו (30 ימים)', n: t.auditLeadsUnhandled, tab: 'funnel' },
+    { label: 'לקוחות פרימיום ידני שהכרטיס שלהם לא עודכן 30 יום', n: t.premiumStale, tab: 'users' },
+  ];
+  const open = todo.filter((x) => x.n);
   return (
     <div className="flex flex-col gap-6">
+      <Card title="מה לעשות היום" sub={open.length ? undefined : 'אין משימות פתוחות. הכול מטופל.'}>
+        <ul className="divide-y divide-slate-100">
+          {todo.map((x) => (
+            <li key={x.label} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
+              <span className={x.n ? 'text-slate-800' : 'text-slate-400'}>
+                <span className={`inline-block min-w-[2rem] font-bold ${x.n ? 'text-amber-600' : 'text-slate-300'}`}>{x.n ?? '—'}</span> {x.label}
+                {x.n === null && <span className="text-xs text-slate-400"> (לא זמין, חסרה מיגרציה 042)</span>}
+              </span>
+              {x.n ? <button type="button" onClick={() => goTab(x.tab)} className="text-xs text-[#2E63F6] underline shrink-0">פתח</button> : null}
+            </li>
+          ))}
+        </ul>
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="נרשמו ב-7 ימים" value={data.signupsWeek} sub={`${delta >= 0 ? '+' : ''}${delta} לעומת השבוע הקודם`} />
         <Stat label="סיימו הקמה" value={data.setupsCompleted} sub={`${data.setupsWeek} מהם השבוע`} />
