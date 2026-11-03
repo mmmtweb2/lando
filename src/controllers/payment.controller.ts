@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { logFunnelEvent } from '../services/funnel.service';
 import { beginRedirect, getPayment, summitConfigured } from '../services/summit.service';
+import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { publishPageWithCredit } from './landing.controller';
 import { CREDIT_PACKS, grantCreditsForPack } from './user.controller';
 import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey, renewalPriceFor } from '../config/billing';
@@ -375,7 +376,33 @@ async function sumitPaymentIdAlreadyConsumed(sumitPaymentId: string, exceptRowId
     console.error('[PAYMENT] reuse check failed:', error.message);
     return true;
   }
-  return (data ?? []).length > 0;
+  if ((data ?? []).length > 0) return true;
+
+  // The same rule across products: a SUMIT PaymentID that already moved a MONTHLY SUBSCRIPTION
+  // (seo_subscription_events) cannot also settle a one-time payment. migrations/044 enforces this in
+  // the database; checking here keeps it a clean 'needs_review'. A missing table (migration 030 not
+  // run) means no subscription can have used it; any other error fails closed.
+  const { data: ev, error: evErr } = await supabase
+    .from('seo_subscription_events')
+    .select('id')
+    .eq('sumit_payment_id', sumitPaymentId)
+    .limit(1);
+  if (evErr) {
+    if (evErr.code === '42P01' || /seo_subscription_events/.test(evErr.message) && /does not exist|schema cache/.test(evErr.message)) return false;
+    console.error('[PAYMENT] cross-product reuse check failed:', evErr.message);
+    return true;
+  }
+  return (ev ?? []).length > 0;
+}
+
+/** Binds a verified SUMIT payment to THIS payments row (ExternalIdentifier = payments.id). Returns a failure reason or null. */
+function bindingFailure(p: { externalIdentifiers: string[] }, payId: string): string | null {
+  const b = evaluateBinding(p.externalIdentifiers, payId);
+  if (b.ok) {
+    if (b.state === 'unverifiable') noteUnverifiable('payment', payId);
+    return null;
+  }
+  return `binding failed (${b.state}): ${b.reason}`;
 }
 
 /** Grants the purchased value for an already-verified payment. Shared by the
@@ -478,6 +505,7 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
   const sumitPaymentId = extractSumitPaymentId(req.query as Record<string, unknown>);
 
   let verified = false;
+  let bindErr: string | null = null;
   let verifyDetail = 'no matching PaymentID param in query';
   if (sumitPaymentId) {
     const p = await getPayment(sumitPaymentId);
@@ -487,6 +515,8 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
       verifyDetail = `SUMIT reports ValidPayment=false (status: ${p.status ?? 'unknown'})`;
     } else if (p.amount + 0.001 < pay.amount) {
       verifyDetail = `amount mismatch: SUMIT reports ${p.amount}, expected >= ${pay.amount}`;
+    } else if ((bindErr = bindingFailure(p, pay.id)) !== null) {
+      verifyDetail = bindErr;
     } else if (await sumitPaymentIdAlreadyConsumed(sumitPaymentId, pay.id)) {
       verifyDetail = `SUMIT PaymentID ${sumitPaymentId} was already used to settle another payment row`;
     } else {
@@ -599,6 +629,12 @@ export async function reverifyPayment(req: Request, res: Response): Promise<void
   const p = await getPayment(pay.sumit_payment_id);
   if (!p || !p.valid || p.amount + 0.001 < pay.amount) {
     res.status(409).json({ error: 'Still not verifiable', detail: p ?? null });
+    return;
+  }
+  const unbound = bindingFailure(p, pay.id);
+  if (unbound) {
+    // An admin who has confirmed the charge by hand in the SUMIT dashboard can still use force-activate.
+    res.status(409).json({ error: `This SUMIT payment is not bound to this checkout (${unbound}). If you confirmed the charge manually in SUMIT, use force-activate.` });
     return;
   }
   if (await sumitPaymentIdAlreadyConsumed(pay.sumit_payment_id, pay.id)) {

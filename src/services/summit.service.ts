@@ -3,6 +3,8 @@
 // Summit_Payment_Spec.md). All calls carry Credentials in the body; the PRIVATE
 // API key lives only here (server), never in the browser.
 
+import { extractExternalIdentifiers } from './paymentBinding';
+
 const BASE = process.env.SUMIT_API_BASE || 'https://api.sumit.co.il';
 const COMPANY_ID = process.env.SUMIT_COMPANY_ID;
 const API_KEY = process.env.SUMIT_API_KEY;
@@ -74,6 +76,10 @@ export interface VerifiedPayment {
   valid: boolean;
   amount: number;
   status?: string;
+  /** Every ExternalIdentifier SUMIT returned for this payment (ours: payments.id / seo_subscriptions.id). May be empty. */
+  externalIdentifiers: string[];
+  /** SUMIT's customer id for the payment, when returned. */
+  customerId?: string;
 }
 
 /**
@@ -87,13 +93,19 @@ export async function getPayment(paymentId: number | string): Promise<VerifiedPa
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ Credentials: credentials(), PaymentID: Number(paymentId) }),
     });
-    const json = (await r.json()) as SumitEnvelope<{ Payment?: { ValidPayment?: boolean; Amount?: number; Status?: string | null } }>;
+    const json = (await r.json()) as SumitEnvelope<{ Payment?: { ValidPayment?: boolean; Amount?: number; Status?: string | null; CustomerID?: number | string | null } }>;
     if (json.Status !== 0 || !json.Data?.Payment) {
       console.error('[SUMIT] getPayment: non-success response', { paymentId, status: json.Status, error: json.UserErrorMessage ?? json.TechnicalErrorDetails });
       return null;
     }
     const pay = json.Data.Payment;
-    return { valid: Boolean(pay.ValidPayment), amount: pay.Amount ?? 0, status: pay.Status ?? undefined };
+    return {
+      valid: Boolean(pay.ValidPayment),
+      amount: pay.Amount ?? 0,
+      status: pay.Status ?? undefined,
+      externalIdentifiers: extractExternalIdentifiers(json.Data),
+      customerId: pay.CustomerID != null && String(pay.CustomerID).trim() ? String(pay.CustomerID) : undefined,
+    };
   } catch (e) {
     // A network hiccup here must never crash the return handler — it should
     // just fail closed (verified: false -> 'needs_review'), same as an
