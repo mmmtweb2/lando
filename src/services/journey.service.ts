@@ -22,8 +22,8 @@ export function betaDays(): number {
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
-export const PUBLIC_EVENTS = ['audit_started', 'audit_completed', 'recs_viewed'] as const;
-export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed'] as const;
+export const PUBLIC_EVENTS = ['audit_started', 'audit_completed', 'recs_viewed', 'concierge_clicked'] as const;
+export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed', 'concierge_clicked'] as const;
 export const SERVER_EVENTS = [
   'lead_captured', 'signup', 'setup_completed', 'activation_requested', 'activated_beta',
   'payment_started', 'payment_succeeded', 'day7_active', 'day30_active',
@@ -48,6 +48,7 @@ export function cleanProps(raw: unknown): Record<string, string | number | boole
   const o = raw as Record<string, unknown>;
   if (typeof o.step_id === 'string' && WORD.test(o.step_id)) out.step_id = o.step_id;
   if (typeof o.mode === 'string' && WORD.test(o.mode)) out.mode = o.mode;
+  if (typeof o.top === 'string' && WORD.test(o.top)) out.top = o.top; // the biggest gap found (a recommendation key)
   if (typeof o.place_id === 'string' && PLACE_ID.test(o.place_id)) out.place_id = o.place_id;
   if (typeof o.n === 'number' && Number.isFinite(o.n) && o.n >= 0 && o.n <= 1000) out.n = Math.round(o.n);
   if (typeof o.ok === 'boolean') out.ok = o.ok;
@@ -95,11 +96,12 @@ export interface JourneyRow {
   email: string; stage: Stage; place_id: string | null; anon_id: string | null;
   registered_at: string; setup_at: string | null; ready_at: string | null;
   activation_requested_at: string | null; beta_activated_at: string | null;
+  profile_state: 'pending_verification' | null; pending_name: string | null;
 }
-const COLS = 'email, stage, place_id, anon_id, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at';
+const COLS = 'email, stage, place_id, anon_id, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, profile_state, pending_name';
 
 export class JourneyError extends Error {
-  constructor(public readonly code: 'not_migrated' | 'bad_place' | 'no_business' | 'not_ready' | 'payment_required' | 'db', message?: string) { super(message ?? code); }
+  constructor(public readonly code: 'not_migrated' | 'bad_place' | 'no_business' | 'not_ready' | 'payment_required' | 'beta_ended' | 'bad_name' | 'has_business' | 'db', message?: string) { super(message ?? code); }
 }
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
 const dbErr = (e: { message: string }) => (missing(e.message) ? new JourneyError('not_migrated') : new JourneyError('db', e.message));
@@ -112,8 +114,14 @@ export async function entitlementOf(email: string, now = new Date()): Promise<{ 
   return r && isEntitled(r, now) ? { entitled: true, source: r.source } : { entitled: false, source: null };
 }
 
+const COLS_BEFORE_041 = 'email, stage, place_id, anon_id, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at';
 export async function getRow(email: string): Promise<JourneyRow | null> {
-  const { data, error } = await supabase.from('seo_journey').select(COLS).eq('email', email).maybeSingle();
+  let { data, error } = await supabase.from('seo_journey').select(COLS).eq('email', email).maybeSingle();
+  // Migration 041 not run yet: the journey keeps working, only the "no Google profile yet" path is unavailable.
+  if (error && /profile_state|pending_name/.test(error.message)) {
+    ({ data, error } = await supabase.from('seo_journey').select(COLS_BEFORE_041).eq('email', email).maybeSingle());
+    if (!error && data) data = { ...(data as object), profile_state: null, pending_name: null } as typeof data;
+  }
   if (error) throw dbErr(error);
   return (data as JourneyRow | null) ?? null;
 }
@@ -123,6 +131,8 @@ export const gates = (): Gates => ({ paymentGate: paymentGateEnabled(), betaSelf
 
 export interface JourneyView {
   state: JourneyState; placeId: string | null; requested: boolean; started: boolean; gates: Gates;
+  /** The owner has no verified Google profile yet; the rest of the setup is not blocked. */
+  profilePending: boolean; pendingName: string | null;
 }
 
 async function view(email: string, row: JourneyRow | null, now: Date): Promise<JourneyView> {
@@ -133,6 +143,8 @@ async function view(email: string, row: JourneyRow | null, now: Date): Promise<J
     requested: !!row?.activation_requested_at,
     started: !!row,
     gates: gates(),
+    profilePending: row?.profile_state === 'pending_verification' && !row?.place_id,
+    pendingName: row?.profile_state === 'pending_verification' && !row?.place_id ? row?.pending_name ?? null : null,
   };
 }
 
@@ -161,7 +173,7 @@ const touch = (patch: Record<string, unknown>) => ({ ...patch, updated_at: new D
 export async function setBusiness(email: string, placeId: unknown, now = new Date()): Promise<JourneyView> {
   if (typeof placeId !== 'string' || !PLACE_ID.test(placeId)) throw new JourneyError('bad_place');
   const row = (await getRow(email)) ?? (await (async () => { await start(email, null, null, now); return getRow(email); })());
-  const patch: Record<string, unknown> = { place_id: placeId };
+  const patch: Record<string, unknown> = { place_id: placeId, profile_state: null, pending_name: null, profile_pending_at: null };
   if (row && row.stage === 'registered') { patch.stage = 'setup'; patch.setup_at = now.toISOString(); }
   const { error } = await supabase.from('seo_journey').update(touch(patch)).eq('email', email);
   if (error) throw dbErr(error);
@@ -169,10 +181,36 @@ export async function setBusiness(email: string, placeId: unknown, now = new Dat
   return view(email, await getRow(email), now);
 }
 
+export function cleanBusinessName(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  const s = v.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim();
+  return s.length >= 2 && s.length <= 80 ? s : null;
+}
+
+/**
+ * Step 1, alternative: the business has no Google profile yet (or it is waiting for verification). The setup
+ * continues without a place id; picking the business later (setBusiness) clears the marker. registered -> setup.
+ */
+export async function setPendingProfile(email: string, name: unknown, now = new Date()): Promise<JourneyView> {
+  const clean = cleanBusinessName(name);
+  if (!clean) throw new JourneyError('bad_name');
+  const row = (await getRow(email)) ?? (await (async () => { await start(email, null, null, now); return getRow(email); })());
+  if (row?.place_id) throw new JourneyError('has_business');
+  const first = row?.profile_state !== 'pending_verification';
+  const patch: Record<string, unknown> = { profile_state: 'pending_verification', pending_name: clean };
+  if (first) patch.profile_pending_at = now.toISOString();
+  if (row && row.stage === 'registered') { patch.stage = 'setup'; patch.setup_at = now.toISOString(); }
+  const { error } = await supabase.from('seo_journey').update(touch(patch)).eq('email', email);
+  if (error) throw dbErr(error);
+  if (first) await logEvent({ event: 'setup_step_completed', email, props: { step_id: 'profile_pending' } });
+  return view(email, await getRow(email), now);
+}
+
 /** Step 2: the customer went through the recommendations. setup -> ready_to_activate. */
 export async function completeSetup(email: string, now = new Date()): Promise<JourneyView> {
   const row = await getRow(email);
-  if (!row || !row.place_id) throw new JourneyError('no_business');
+  if (!row || (!row.place_id && row.profile_state !== 'pending_verification')) throw new JourneyError('no_business');
   if (row.stage !== 'ready_to_activate') {
     const { error } = await supabase.from('seo_journey').update(touch({ stage: 'ready_to_activate', ready_at: now.toISOString() })).eq('email', email);
     if (error) throw dbErr(error);
@@ -204,6 +242,8 @@ export async function activate(email: string, now = new Date()): Promise<Activat
     return { ...(await view(email, await getRow(email), now)), requested: true };
   }
 
+  // The free beta is single-use: once it has run out, a new click must not grant another round.
+  if (row.beta_activated_at) throw new JourneyError('beta_ended');
   await grantAccess(email, betaDays(), now);
   const { error } = await supabase.from('seo_journey').update(touch({ beta_activated_at: now.toISOString() })).eq('email', email);
   if (error) throw dbErr(error);

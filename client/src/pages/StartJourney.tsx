@@ -7,6 +7,7 @@ import BusinessAuditCard from '../components/BusinessAuditCard';
 import RecommendationsList from '../components/RecommendationsList';
 import { takePlace, trackAccount } from '../lib/journeyClient';
 import type { Audit } from '../lib/auditShared';
+import { buildRecommendations } from '../lib/recommendations';
 
 // /start — the journey after the public Audit: sign up -> pick the business -> go through the
 // recommendations -> activate. The server owns the state (registered / setup / ready_to_activate /
@@ -17,6 +18,7 @@ interface View {
   state: 'registered' | 'setup' | 'ready_to_activate' | 'active_beta' | 'active';
   placeId: string | null; requested: boolean; started: boolean;
   gates: { paymentGate: boolean; betaSelfActivation: boolean };
+  profilePending?: boolean; pendingName?: string | null;
 }
 
 const STEPS = ['העסק', 'המלצות', 'הפעלה'];
@@ -49,7 +51,7 @@ function Recommendations({ placeId, onDone, busy }: { placeId: string; onDone: (
     // Rerun the audit from the place id: nothing about the business was stored except that id.
     authFetch(`/api/seo/places/${encodeURIComponent(placeId)}/audit`)
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('audit'))))
-      .then(b => { if (alive) { setAudit(b.audit as Audit); trackAccount('recs_viewed', { place_id: placeId }); } })
+      .then(b => { if (alive) { setAudit(b.audit as Audit); trackAccount('recs_viewed', { place_id: placeId, top: buildRecommendations(b.audit as Audit)[0]?.key }); } })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [placeId]);
@@ -67,6 +69,41 @@ function Recommendations({ placeId, onDone, busy }: { placeId: string; onDone: (
         {busy ? 'רגע…' : 'עברתי על ההמלצות, ממשיכים'}
       </button>
     </div>
+  );
+}
+
+const PREP: { title: string; body: string }[] = [
+  { title: 'קטגוריה ראשית', body: 'הסוג שהכי מתאר מה אתם עושים (למשל "מוסך" ולא "עסק"). היא קובעת באילו חיפושים תופיעו.' },
+  { title: 'תיאור קצר של העסק', body: 'שתיים או שלוש שורות: מה אתם עושים, לאיזה אזור ומה מייחד אתכם. בלי מחירים ובלי קישורים.' },
+  { title: 'שעות פעילות וטלפון', body: 'שעות מדויקות לכל יום, כולל חגים, ומספר שמקבלים בו שיחות.' },
+  { title: '5 עד 10 תמונות', body: 'חזית העסק, פנים, עבודות שביצעתם וצוות. תמונות אמיתיות עדיפות על תמונות מלאי.' },
+];
+
+/** Setup continues while Google creates/verifies the profile: what to prepare now, and a way to connect it once approved. */
+function WaitingForProfile({ name, onDone, busy, onChoose }: { name: string | null; onDone: () => void; busy: boolean; onChoose: (placeId: string) => void }) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-xl font-extrabold text-slate-900">מתכוננים בזמן שהפרופיל ממתין{name ? ` (${name})` : ''}</h1>
+        <p className="mt-1 text-sm text-slate-600">אימות בגוגל יכול לקחת כמה ימים, ואין סיבה לעצור. כך תהיו מוכנים ברגע שהוא יאושר:</p>
+      </div>
+      <ol className="flex flex-col gap-2">
+        {PREP.map((p, i) => (
+          <li key={p.title} className="rounded-lg border border-slate-100 bg-white p-3">
+            <p className="text-sm font-medium text-slate-900">{i + 1}. {p.title}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{p.body}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">בקרוב: נכין לכם טקסטים מוכנים להעתקה על בסיס הפרטים האלה.</p>
+      <button type="button" onClick={onDone} disabled={busy} className="self-start rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-60">
+        {busy ? 'רגע…' : 'סיימתי, ממשיכים'}
+      </button>
+      <div className="flex flex-col gap-2 border-t border-slate-200 pt-4">
+        <p className="text-sm font-medium text-slate-900">הפרופיל כבר אושר?</p>
+        <BusinessAuditCard mode="account" onSelect={onChoose} hideNoProfile />
+      </div>
+    </section>
   );
 }
 
@@ -110,6 +147,12 @@ export default function StartJourney() {
     if (r.ok) setView(r.data as unknown as View); else setError(String(r.data.error ?? 'לא הצלחנו לשמור את העסק.'));
   }, []);
 
+  const pendingProfile = useCallback(async (name: string) => {
+    setError(null);
+    const r = await call('/profile-pending', 'PUT', { name });
+    if (r.ok) setView(r.data as unknown as View); else setError(String(r.data.error ?? 'לא הצלחנו לשמור. נסו שוב.'));
+  }, []);
+
   const finishRecs = useCallback(async () => {
     setBusy(true); setError(null);
     const r = await call('/setup-complete');
@@ -150,7 +193,7 @@ export default function StartJourney() {
               <section className="flex flex-col gap-3">
                 <h1 className="text-xl font-extrabold text-slate-900">איזה עסק נחזק?</h1>
                 <p className="text-sm text-slate-600">חפשו את העסק שלכם ובחרו אותו מהרשימה.</p>
-                <BusinessAuditCard mode="account" onSelect={choose} />
+                <BusinessAuditCard mode="account" onSelect={choose} onPending={pendingProfile} />
                 {busy && <p className="text-xs text-slate-500">שומרים…</p>}
               </section>
             )}
@@ -160,6 +203,10 @@ export default function StartJourney() {
                 <h1 className="text-xl font-extrabold text-slate-900">ההמלצות לעסק שלכם</h1>
                 <Recommendations placeId={view.placeId} onDone={finishRecs} busy={busy} />
               </section>
+            )}
+
+            {view.state === 'setup' && !view.placeId && view.profilePending && (
+              <WaitingForProfile name={view.pendingName ?? null} onDone={finishRecs} busy={busy} onChoose={choose} />
             )}
 
             {view.state === 'ready_to_activate' && (
@@ -187,6 +234,14 @@ export default function StartJourney() {
                 <h1 className="flex items-center gap-2 text-xl font-extrabold text-emerald-900"><CheckCircle2 size={22} /> החשבון פעיל</h1>
                 <p className="text-sm text-emerald-900">{view.state === 'active_beta' ? 'הופעלתם בגרסת הבטא. אפשר להתחיל.' : 'הכול מוכן. אפשר להתחיל.'}</p>
                 <Link to="/dashboard" className="self-start rounded-lg bg-[#2E63F6] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#2552d0]">לדשבורד</Link>
+              </section>
+            )}
+
+            {view.profilePending && !view.placeId && view.state !== 'setup' && (
+              <section className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white p-5" aria-label="חיבור הפרופיל">
+                <h2 className="text-base font-bold text-slate-900">הפרופיל שלכם בגוגל עוד ממתין לאימות</h2>
+                <p className="text-sm text-slate-600">כשגוגל תאשר אותו, חפשו אותו כאן כדי לחבר אותו ולקבל את הבדיקה המלאה.</p>
+                <BusinessAuditCard mode="account" onSelect={choose} hideNoProfile />
               </section>
             )}
           </>

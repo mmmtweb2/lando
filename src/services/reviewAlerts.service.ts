@@ -14,6 +14,7 @@
 //   • Unverified against live Google until the access request is approved: covered by tests with
 //     fake Google responses only.
 
+import { recordHeartbeat, withHeartbeat } from './opsMetrics.service';
 import { Resend } from 'resend';
 import { supabase } from '../config/supabase';
 import { gbpOAuthConfig } from '../config/gbp';
@@ -122,6 +123,7 @@ export async function sweepReviewAlerts(now = new Date(), deps: SweepDeps = real
     try {
       const got = await deps.fetchReviews(email);
       if (got) {
+        void recordHeartbeat('gbp_google', null);
         const fresh = candidates(got.reviews, now).slice(0, MAX_NEW_DRAFTS_PER_ACCOUNT);
         const claimed = await deps.claim(fresh.map(r => ({
           owner_email: email, review_id: r.id, location_name: got.location, rating: r.rating,
@@ -139,6 +141,7 @@ export async function sweepReviewAlerts(now = new Date(), deps: SweepDeps = real
     } catch (e) {
       out.failed++;
       const msg = e instanceof Error ? e.message : String(e);
+      void recordHeartbeat('gbp_google', /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 120));
       // Quota-pending is expected until Google approves access: one short line, no detail.
       console.error('[REVIEW-ALERTS] one account failed:', /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 160));
     }
@@ -214,7 +217,7 @@ const realDeps: SweepDeps = {
 
 export function startReviewAlertSweep(): void {
   if (!reviewAlertsEnabled()) return;
-  const run = () => { sweepReviewAlerts().catch((e) => console.error('[REVIEW-ALERTS] sweep crashed:', e)); };
+  const run = () => { withHeartbeat('review_alerts', sweepReviewAlerts).catch((e) => console.error('[REVIEW-ALERTS] sweep crashed:', e)); };
   setTimeout(run, 5 * 60 * 1000);
   setInterval(run, SWEEP_EVERY_MS).unref?.();
 }

@@ -12,6 +12,7 @@ import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
 import RecommendationsList from './RecommendationsList';
 import { rememberPlace, trackPublic } from '../lib/journeyClient';
+import { buildRecommendations } from '../lib/recommendations';
 
 // Stage 5.5.2 — find the customer's business on Google Maps and show a live Audit.
 // All Google calls go through our server (/api/seo/places/*); the API key never
@@ -24,7 +25,7 @@ function newSessionToken(): string {
   try { return crypto.randomUUID(); } catch { return `s${Date.now()}${Math.random().toString(36).slice(2, 10)}`; }
 }
 
-export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void }) {
+export default function BusinessAuditCard({ mode = 'account', onSelect, onPending, hideNoProfile = false }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void; onPending?: (name: string) => Promise<void> | void; hideNoProfile?: boolean }) {
   // 'public' = the signed-out /audit page: no login, no saved businesses, a lead form instead of
   // "connect this business to my account". Same card, same score (the server wraps the same code).
   const isPublic = mode === 'public';
@@ -132,7 +133,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
 
   // The recommendations list is on screen as soon as the audit is (public funnel step).
   useEffect(() => {
-    if (isPublic && audit) trackPublic('recs_viewed', { place_id: audit.placeId });
+    if (isPublic && audit) trackPublic('recs_viewed', { place_id: audit.placeId, top: buildRecommendations(audit)[0]?.key });
   }, [isPublic, audit?.placeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (s: Suggestion) => runAudit(s.placeId, s.name);
@@ -210,7 +211,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
       )}
 
       {noProfile ? (
-        <NoProfileGuide onBack={() => setNoProfile(false)} />
+        <NoProfileGuide onBack={() => setNoProfile(false)} onPending={isPublic ? undefined : onPending} />
       ) : (
         <>
           <div className="relative">
@@ -253,13 +254,15 @@ export default function BusinessAuditCard({ mode = 'account', onSelect }: { mode
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={() => { setNoProfile(true); setSuggestions([]); setAudit(null); setError(null); }}
-            className="self-start text-sm font-medium text-[#2E63F6] hover:underline"
-          >
-            אין לי פרופיל בגוגל מפות
-          </button>
+          {!hideNoProfile && (
+            <button
+              type="button"
+              onClick={() => { setNoProfile(true); setSuggestions([]); setAudit(null); setError(null); }}
+              className="self-start text-sm font-medium text-[#2E63F6] hover:underline"
+            >
+              אין לי פרופיל בגוגל מפות
+            </button>
+          )}
         </>
       )}
 

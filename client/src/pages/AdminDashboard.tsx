@@ -1,10 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import BetaAccessPanel from '../components/admin/BetaAccessPanel';
-import FeedbackAdminPanel from '../components/admin/FeedbackAdminPanel';
+import SeoOverviewTab from '../components/admin/SeoOverviewTab';
+import SeoFunnelTab from '../components/admin/SeoFunnelTab';
+import SeoUsersTab from '../components/admin/SeoUsersTab';
+import SeoRevenueTab from '../components/admin/SeoRevenueTab';
+import SystemHealthTab from '../components/admin/SystemHealthTab';
+import SeoFeedbackTab from '../components/admin/SeoFeedbackTab';
 import DigestAdminPanel from '../components/admin/DigestAdminPanel';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authFetch } from '../lib/api';
+
+const TABS = [
+  { id: 'overview', label: 'סקירה' }, { id: 'funnel', label: 'משפך' }, { id: 'users', label: 'משתמשים' },
+  { id: 'revenue', label: 'הכנסות' }, { id: 'system', label: 'בריאות מערכת' }, { id: 'feedback', label: 'פידבק' },
+  { id: 'pages', label: 'דפי נחיתה (Pagey)' },
+] as const;
+type TabId = (typeof TABS)[number]['id'];
+const TAB_KEY = 'pagey_admin_tab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -304,6 +317,14 @@ export default function AdminDashboard() {
   const [ownerFilter, setOwnerFilter] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<PageRow | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [tab, setTab] = useState<TabId>(() => {
+    try { const v = sessionStorage.getItem(TAB_KEY); return TABS.some((t) => t.id === v) ? (v as TabId) : 'overview'; } catch { return 'overview'; }
+  });
+  const selectTab = (id: string) => {
+    if (!TABS.some((t) => t.id === id)) return;
+    setTab(id as TabId);
+    try { sessionStorage.setItem(TAB_KEY, id); } catch { /* optional */ }
+  };
 
   // ── Admin-panel password ──────────────────────────────────────────────────
   // A second, deliberately crude layer on top of the real login: the server
@@ -733,6 +754,24 @@ export default function AdminDashboard() {
 
         <main className="max-w-6xl mx-auto px-6 py-8 flex flex-col gap-8">
 
+          {/* ── Tabs ─────────────────────────────────────────────────────────── */}
+          <nav className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="לשוניות ניהול">
+            {TABS.map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => selectTab(t.id)}
+                className={`whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${tab === t.id ? 'border-[#2E63F6] text-[#2E63F6]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+
+          {tab === 'overview' && <SeoOverviewTab adminFetch={adminFetch} goTab={selectTab} />}
+          {tab === 'funnel' && <SeoFunnelTab adminFetch={adminFetch} />}
+          {tab === 'revenue' && <SeoRevenueTab adminFetch={adminFetch} />}
+          {tab === 'system' && <SystemHealthTab adminFetch={adminFetch} />}
+          {tab === 'feedback' && <SeoFeedbackTab adminFetch={adminFetch} />}
+
+          {tab === 'pages' && (
+            <>
           {/* ── Page title ─────────────────────────────────────────────────── */}
           <div>
             <h1 className="text-2xl font-bold text-slate-800">דפי נחיתה</h1>
@@ -925,87 +964,20 @@ export default function AdminDashboard() {
             )}
           </div>
 
+            </>
+          )}
+
+          {tab === 'users' && (
+            <>
           <BetaAccessPanel adminFetch={adminFetch} />
-          <FeedbackAdminPanel adminFetch={adminFetch} />
-          <DigestAdminPanel adminFetch={adminFetch} />
 
-          {/* ── Leads from the public Audit page ──────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-slate-700 text-sm">פניות מה-Audit הציבורי</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {auditLeadsNote ?? `${auditLeads.length} פניות. כולן אישרו קבלת הודעה בוואטסאפ. שליחה ידנית עד שלב 7.`}
-              </p>
-            </div>
-            {auditLeads.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
-                      <th className="px-4 py-2.5 font-medium">שם</th>
-                      <th className="px-4 py-2.5 font-medium">נייד</th>
-                      <th className="px-4 py-2.5 font-medium">עסק</th>
-                      <th className="px-4 py-2.5 font-medium">ציון</th>
-                      <th className="px-4 py-2.5 font-medium">מקור</th>
-                      <th className="px-4 py-2.5 font-medium">הסכמה</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auditLeads.map((l) => (
-                      <tr key={l.id} className="border-b border-slate-50 last:border-0">
-                        <td className="px-4 py-3 text-slate-700">{l.name}</td>
-                        <td className="px-4 py-3" dir="ltr">
-                          <a href={`https://wa.me/972${l.phone.replace(/^0/, '')}`} target="_blank" rel="noopener noreferrer" className="text-[#2E63F6] hover:underline">{l.phone}</a>
-                        </td>
-                        <td className="px-4 py-3 text-slate-700">{l.business_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-slate-700">{l.score ?? '—'}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{[l.utm_source, l.utm_campaign].filter(Boolean).join(' / ') || '—'}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{new Date(l.consent_at).toLocaleString('he-IL')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* ── Google Business Profile settings check ───────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
-              <div>
-                <h2 className="font-semibold text-slate-700 text-sm">חיבור Google Business Profile: בדיקת הגדרות</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {gbpNote ?? (gbpReady ? 'כל ההגדרות תקינות.' : 'חסר או שגוי. הערכים עצמם לא מוצגים.')}
-                </p>
-              </div>
-              <button onClick={loadGbpConfig} className="text-xs text-blue-600 hover:underline">בדוק שוב</button>
-            </div>
-            <ul className="divide-y divide-slate-100">
-              {gbpChecks.map((c) => (
-                <li key={c.key} className="px-5 py-3 flex items-start gap-3 text-sm">
-                  <span className={c.level === 'ok' ? 'text-emerald-600' : c.level === 'warn' ? 'text-amber-500' : 'text-red-600'} aria-hidden>
-                    {c.level === 'ok' ? '✓' : c.level === 'warn' ? '⚠' : '✗'}
-                  </span>
-                  <div className="min-w-0">
-                    <div dir="ltr" className="font-mono text-xs text-slate-600 text-right">{c.key}</div>
-                    <div className="text-slate-600">{c.message}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {gbpRedirect && (
-              <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
-                <div className="text-xs text-slate-400 mb-1">כתובת החזרה (Redirect URI) שהשרת ישתמש בה:</div>
-                <code dir="ltr" className="block text-xs text-slate-700 break-all text-left select-all">{gbpRedirect}</code>
-              </div>
-            )}
-          </div>
+          <SeoUsersTab adminFetch={adminFetch} />
 
           {/* ── Customers (registered users) ─────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
               <div>
-                <h2 className="font-semibold text-slate-700 text-sm">לקוחות</h2>
+                <h2 className="font-semibold text-slate-700 text-sm">כל המשתמשים הרשומים (Pagey)</h2>
                 <p className="text-xs text-slate-400 mt-0.5">{usersLoading ? '—' : `${users.length} משתמשים רשומים`}</p>
               </div>
               <div className="relative max-w-xs w-full">
@@ -1072,6 +1044,95 @@ export default function AdminDashboard() {
             )}
           </div>
 
+            </>
+          )}
+
+          {tab === 'funnel' && (
+            <>
+          {/* ── Leads from the public Audit page ──────────────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-700 text-sm">פניות מה-Audit הציבורי</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {auditLeadsNote ?? `${auditLeads.length} פניות. כולן אישרו קבלת הודעה בוואטסאפ. שליחה ידנית עד שלב 7.`}
+              </p>
+            </div>
+            {auditLeads.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-right text-xs text-slate-400 border-b border-slate-100">
+                      <th className="px-4 py-2.5 font-medium">שם</th>
+                      <th className="px-4 py-2.5 font-medium">נייד</th>
+                      <th className="px-4 py-2.5 font-medium">עסק</th>
+                      <th className="px-4 py-2.5 font-medium">ציון</th>
+                      <th className="px-4 py-2.5 font-medium">מקור</th>
+                      <th className="px-4 py-2.5 font-medium">הסכמה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLeads.map((l) => (
+                      <tr key={l.id} className="border-b border-slate-50 last:border-0">
+                        <td className="px-4 py-3 text-slate-700">{l.name}</td>
+                        <td className="px-4 py-3" dir="ltr">
+                          <a href={`https://wa.me/972${l.phone.replace(/^0/, '')}`} target="_blank" rel="noopener noreferrer" className="text-[#2E63F6] hover:underline">{l.phone}</a>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{l.business_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-slate-700">{l.score ?? '—'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{[l.utm_source, l.utm_campaign].filter(Boolean).join(' / ') || '—'}</td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{new Date(l.consent_at).toLocaleString('he-IL')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+            </>
+          )}
+
+          {tab === 'system' && (
+            <>
+          <DigestAdminPanel adminFetch={adminFetch} />
+
+          {/* ── Google Business Profile settings check ───────────────────── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-700 text-sm">חיבור Google Business Profile: בדיקת הגדרות</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {gbpNote ?? (gbpReady ? 'כל ההגדרות תקינות.' : 'חסר או שגוי. הערכים עצמם לא מוצגים.')}
+                </p>
+              </div>
+              <button onClick={loadGbpConfig} className="text-xs text-blue-600 hover:underline">בדוק שוב</button>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {gbpChecks.map((c) => (
+                <li key={c.key} className="px-5 py-3 flex items-start gap-3 text-sm">
+                  <span className={c.level === 'ok' ? 'text-emerald-600' : c.level === 'warn' ? 'text-amber-500' : 'text-red-600'} aria-hidden>
+                    {c.level === 'ok' ? '✓' : c.level === 'warn' ? '⚠' : '✗'}
+                  </span>
+                  <div className="min-w-0">
+                    <div dir="ltr" className="font-mono text-xs text-slate-600 text-right">{c.key}</div>
+                    <div className="text-slate-600">{c.message}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {gbpRedirect && (
+              <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
+                <div className="text-xs text-slate-400 mb-1">כתובת החזרה (Redirect URI) שהשרת ישתמש בה:</div>
+                <code dir="ltr" className="block text-xs text-slate-700 break-all text-left select-all">{gbpRedirect}</code>
+              </div>
+            )}
+          </div>
+
+            </>
+          )}
+
+          {tab === 'pages' && (
+            <>
           {/* ── Stat cards ─────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StatCard label="סה״כ דפים" value={loading ? '—' : pages.length} />
@@ -1080,6 +1141,11 @@ export default function AdminDashboard() {
             <StatCard label="עם טופס לידים" value={loading ? '—' : pages.filter(p => p.enable_form).length} />
           </div>
 
+            </>
+          )}
+
+          {tab === 'revenue' && (
+            <>
           {/* ── Payments needing review ────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
@@ -1319,6 +1385,11 @@ export default function AdminDashboard() {
             )}
           </div>
 
+            </>
+          )}
+
+          {tab === 'pages' && (
+            <>
           {/* ── Search + table ──────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
 
@@ -1484,6 +1555,8 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+            </>
+          )}
         </main>
       </div>
     </>

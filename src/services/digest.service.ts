@@ -6,6 +6,7 @@
 // The (email, month) row in seo_digest_log is claimed BEFORE sending, so a restart or a second
 // instance can never send the same month twice; a failed send releases the claim for a retry.
 
+import { withHeartbeat } from './opsMetrics.service';
 import crypto from 'crypto';
 import { Resend } from 'resend';
 import { supabase } from '../config/supabase';
@@ -217,7 +218,7 @@ export async function sweepDigests(now = new Date(), deps: SweepDeps = realDeps)
 
 export function startDigestSweep(): void {
   if (!digestEnabled()) return;
-  const run = () => { sweepDigests().catch((e) => console.error('[DIGEST] sweep crashed:', e)); };
+  const run = () => { withHeartbeat('digest', sweepDigests).catch((e) => console.error('[DIGEST] sweep crashed:', e)); };
   setTimeout(run, 2 * 60 * 1000);
   setInterval(run, SWEEP_EVERY_MS).unref?.();
 }

@@ -745,9 +745,34 @@ quota cap there.
 - **Funnel log (`journey_events`):** events `audit_started, audit_completed, recs_viewed, lead_captured, signup, setup_step_completed (step_id), setup_completed, activation_viewed, activated_beta, payment_started, payment_succeeded, day7_active, day30_active`, with an anonymous random id (so an /audit visit links to the account created from it), first-touch source/UTM, and a small props allow-list (the server drops anything else). Milestones are recorded once per account (unique index). **Server-side operational collection to our own database, no third party; GTM stays behind the consent bar.** Needs legal review (anonymous id in localStorage + funnel log) before launch; deploy early so data accumulates.
 - **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`; `npx tsx scripts/test-recommendations.ts`. Browser check at 375px with a mocked API.
 
+## Part 63 — Task #10: admin dashboard in tabs, manual premium tracking, system health (migration 040)
+
+- **Tabs (`/admin`):** סקירה, משפך, משתמשים, הכנסות, בריאות מערכת, פידבק, דפי נחיתה (Pagey). The old Pagey sections moved under their tab (landing-page revenue/traffic/pages stay in "דפי נחיתה"; payments to review and coupons in "הכנסות"; the free-access grant and all registered users in "משתמשים"; audit leads in "משפך"; digest preview and the Google config check in "בריאות מערכת"). The chosen tab is remembered per browser tab (sessionStorage).
+- **Endpoints (admin only, behind the admin password):** `GET /api/admin/seo/{overview,funnel,users,revenue,health,feedback}`, `PUT /api/admin/seo/manual-premium`. All numbers are computed in `src/services/adminOps.ts` (pure, tested); the controller only loads rows.
+- **Overview:** signups in the last 7 days vs the 7 before, finished setups, active customers (beta/paying), stuck accounts (registered or in setup, no progress for 48 hours), MRR toward the ₪2,500 goal, active alerts.
+- **Funnel:** Audit visitors (distinct anonymous ids) → registered → setup started → setup finished → activated, with conversion from the previous stage (shown as "—" when registered exceeds Audit visitors), median time between stages, split by source/UTM, 8 weekly cohorts (week starts Sunday).
+- **MRR** = active/past-due SUMIT subscriptions + manual premium rows that are **active and have a price written down**. There is **no default price** anywhere (₪500 is only a number the owner may type). Manual premium is **tracking only** (status active/paused/ended, last date the Google card was updated by hand, free monthly price, note); nothing is sent to Google or SUMIT, and there is no queue.
+- **System health:** DB check, Places calls this month per SKU against the free caps (Autocomplete 10,000 / Details 1,000 / Nearby 1,000, alert at 80%), last run of each background sweep (digest, review alerts, subscriptions), SUMIT webhook result, charge failures (7 days), GBP connections needing reconnect and quota state ("pending" after Google answers 429), 5xx rate over 24 hours (in memory: resets on redeploy). The renewal/draft sweeps are Kobi's and have no heartbeat yet.
+- **Owner alert by email/webhook:** `startHealthAlertSweep` (hourly, only with `ALERTS_ENABLED=true`) sends one alert per problem for Places ≥80%, a failing job, a failing SUMIT webhook, a DB failure, or 5xx ≥5% (at least 20 requests). It uses the existing `notifyOwner` limits (same alert at most once per 15 minutes).
+- **Feedback tab:** the feedback inbox, Concierge WhatsApp clicks (new event `concierge_clicked`), and the biggest gap found per Audit (new prop `top` on `recs_viewed`: the key of the first recommendation).
+- **Beta is single-use (follow-up to Part 62):** with `BETA_SELF_ACTIVATION=true` the account gets `BETA_ACTIVATION_DAYS` (default 90). After it ends the access simply expires; a new "activate" click now returns `409 beta_ended` instead of granting another round. No pre-expiry notice or continuation path exists yet (planned in #11).
+- **Migration 040 (run once, re-runnable):** `seo_manual_premium`, `places_usage` + function `bump_places_usage` (execute revoked from public roles), `job_heartbeats`; RLS enabled+forced, no policies. Until it runs, the tabs still load and say so (Places and job panels show "not tracked", manual premium save returns an error).
+- **Tests:** `npx ts-node --transpile-only scripts/test-admin-ops.ts`, `scripts/test-journey.ts`. Browser check with a mocked API: every tab loads, filters work, saving manual premium sends the right body, no horizontal scroll at 375px.
+
+## Part 64 — Task #12: a business with no Google profile yet (migration 041)
+
+- **Where:** `/start` step 1. The existing "אין לי פרופיל בגוגל מפות" guide (`NoProfileGuide`, also on the public `/audit`) now has, **only when signed in**, a short form: business name + "ממשיכים בלי פרופיל". The public Audit is unchanged.
+- **State:** `seo_journey.profile_state = 'pending_verification'` (+ `pending_name`, `profile_pending_at`). The stage machine is unchanged: the account goes `registered -> setup`, finishes the setup (`completeSetup` accepts a pending profile in place of a `place_id`) and can be activated normally (free beta, or payment if the gate is on). Pending verification **never blocks** the rest of the setup.
+- **While waiting:** a "מתכוננים בזמן שהפרופיל ממתין" screen: category, short description, hours and phone, 5-10 photos. "נכין לכם טקסטים" is marked **בקרוב** (honest: not built yet). Nothing is promised about writing to Google.
+- **Connecting later:** picking the business in the search box (on that screen, or on the "החשבון פעיל" screen) calls the normal `PUT /journey/business`, which clears the marker and keeps the stage. New route: `PUT /api/seo/journey/profile-pending { name }` (2-80 characters, control characters and `<>` removed; `bad_name` / `has_business` errors).
+- **Admin:** the users tab shows a "ממתין לאימות פרופיל" badge (the typed name is the tooltip).
+- **Migration 041** (run once, re-runnable): only `ADD COLUMN IF NOT EXISTS` on `seo_journey`. Until it runs everything keeps working: reads fall back to the old columns and only the new path is unavailable (saving it returns an error).
+- **Events:** `setup_step_completed` with `step_id=profile_pending` (once). No name in the event.
+- **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`, `scripts/test-admin-ops.ts`. Browser check at 375px with a mocked API: guide → form → waiting screen → finish → activate → connect later.
+
 ---
 
-## חלק 63 – שדרוג "וואו" לדף הלקוח (עיצוב v2, מאחורי `?design=2`)
+## חלק 65 – שדרוג "וואו" לדף הלקוח (עיצוב v2, מאחורי `?design=2`)
 
 - **מה השתנה:** `client/src/pages/LandingViewer.tsx` בלבד (כ-260 שורות). השינוי פעיל **רק** כשכתובת הדף מסתיימת ב-`?design=2`; בלי הפרמטר הדף נראה בדיוק כמו קודם. כך אפשר להשוות על דפים אמיתיים ולהחליט מתי להפוך את v2 לברירת מחדל.
 - **כרטיסיות במקום מספרים:** שירותים ותהליך מוצגים כרטיסים עם אייקון (בלי מספרי 1,2,3), הרמה והצללה בריחוף, פס צבע עליון. בתהליך יש מספר "מים" חלש ברקע וחיצי חיבור בין הכרטיסים (עד 4 שלבים). נתיבי העריכה (`services.i.title` וכו') נשמרו.
@@ -759,7 +784,7 @@ quota cap there.
 
 ---
 
-## חלק 64 – "וואו" סבב 2: מספרים שרצים ופרלקסה ב-hero (עדיין מאחורי `?design=2`)
+## חלק 66 – "וואו" סבב 2: מספרים שרצים ופרלקסה ב-hero (עדיין מאחורי `?design=2`)
 
 - **מספרים שרצים:** בכרטיסי היתרונות, כשהכותרת מכילה מספר (למשל "ניסיון של 12 שנה"), המספר מוגדל וסופר מ-0 כשהוא נכנס למסך (`CountUp`, `parseStat` ב-`LandingViewer.tsx`). המספר נלקח רק מהטקסט שה-AI כתב. מספרים ארוכים (7 ספרות ומעלה, כמו טלפון) לא נספרים. עד כניסה למסך מוצג המספר הסופי, כך שאם הזיהוי נכשל לא רואים "0".
 - **פרלקסה ב-hero:** תמונת הרקע נעה לאט מהגלילה, והטקסט דוהה ועולה כשהקטע הבא עולה מעליו (`useScroll` + `useTransform`).
@@ -768,7 +793,7 @@ quota cap there.
 
 ---
 
-## חלק 65 – עיצוב v2 הופך לברירת מחדל לדפים חדשים
+## חלק 67 – עיצוב v2 הופך לברירת מחדל לדפים חדשים
 
 - **כלל:** דף שנוצר ב-3.11.2026 (UTC) ואילך מוצג ב-v2 אוטומטית (`DESIGN_V2_FROM` ב-`LandingViewer.tsx`, לפי `created_at` שהשרת כבר מחזיר). דפים קיימים נשארים בעיצוב הקודם.
 - **דריסה ידנית:** `?design=2` מכריח v2 על כל דף; `?design=1` מכריח את העיצוב הקודם (למשל להשוואה או אם לקוח מעדיף).
@@ -778,7 +803,7 @@ quota cap there.
 
 ---
 
-## חלק 66 – עיצוב v2 על כל הדפים הקיימים
+## חלק 68 – עיצוב v2 על כל הדפים הקיימים
 
 - **החלטה (3.11.2026):** אין עדיין לקוחות משלמים, ולכן v2 הוא ברירת המחדל לכל הדפים, גם ישנים. `DESIGN_V2_FROM` הוגדר ל-1970, ודף בלי `created_at` נחשב גם הוא v2.
 - **ללא שינוי:** דפי ילד (SEO/autopilot, `parent_id`) נשארים בעיצוב הקודם; `?design=1` מחזיר את העיצוב הקודם לכל דף, `?design=2` מכריח v2.
