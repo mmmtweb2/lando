@@ -11,15 +11,14 @@ process.env.PUBLIC_APP_URL = 'https://app.test';
 import assert from 'node:assert/strict';
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { supabase } = require('../src/config/supabase') as typeof import('../src/config/supabase');
-const credits = require('../src/services/credits.service') as typeof import('../src/services/credits.service');
 const { paymentReturn, reverifyPayment } = require('../src/controllers/payment.controller') as typeof import('../src/controllers/payment.controller');
 const { evaluateBinding, extractExternalIdentifiers } = require('../src/services/paymentBinding') as typeof import('../src/services/paymentBinding');
 
 type Row = Record<string, any>;
-const db: Record<string, Row[]> = { payments: [], seo_subscription_events: [] };
+const db: Record<string, Row[]> = { payments: [], seo_subscription_events: [], user_profiles: [{ email: 'o@x.co', credits: 0, is_admin: false }] };
 const claims = new Map<string, string>();      // emulated sumit_payment_claims: id -> "table:rowid"
-let granted = 0;
-(credits as any).addCredits = async () => { granted++; return 10; };
+// grants counted = balance / 10 (pack 'small' = 10 credits); real addCredits runs against the fake table
+const grantedCount = () => db.user_profiles[0].credits / 10;
 
 (supabase as any).from = (table: string) => {
   const f: Array<(r: Row) => boolean> = []; let op = 'select'; let patch: Row = {};
@@ -65,6 +64,7 @@ const res = () => { const r: any = { code: 200, body: null, redirected: '' }; r.
 let n = 0;
 const newPay = (amount = 49): Row => { const row = { id: `pay-${++n}`, user_email: 'o@x.co', purpose: 'credits', reference: 'small', amount, status: 'pending', sumit_payment_id: null }; db.payments.push(row); return row; };
 const ret = async (ref: string, sumitId?: string) => { const r = res(); await paymentReturn({ query: { ref, ...(sumitId ? { 'OG-PaymentID': sumitId } : {}) } } as any, r); return r.redirected.split('payment=')[1]; };
+const orig = { e: console.error, l: console.log, w: console.warn };
 const quiet = () => { const e = console.error, l = console.log, w = console.warn; console.error = console.log = console.warn = () => undefined; return () => { console.error = e; console.log = l; console.warn = w; }; };
 
 (async () => {
@@ -82,50 +82,50 @@ const quiet = () => { const e = console.error, l = console.log, w = console.warn
   // ── A. happy path, bound ──
   let p1 = newPay(); sumit['1001'] = { valid: true, amount: 49, data: { ExternalIdentifier: p1.id } };
   let done = quiet(); assert.equal(await ret(p1.id, '1001'), 'success'); done();
-  assert.equal(p1.status, 'paid'); assert.equal(granted, 1);
+  assert.equal(p1.status, 'paid'); assert.equal(grantedCount(), 1);
 
   // ── B. replay of a consumed PaymentID against another pending row ──
   let p2 = newPay(); done = quiet(); assert.equal(await ret(p2.id, '1001'), 'review'); done();
-  assert.notEqual(p2.status, 'paid'); assert.equal(granted, 1, 'nothing granted for the replay');
+  assert.notEqual(p2.status, 'paid'); assert.equal(grantedCount(), 1, 'nothing grantedCount() for the replay');
 
   // ── C. a valid payment that belongs to ANOTHER checkout (the audited gap) ──
   let p3 = newPay(); sumit['2002'] = { valid: true, amount: 500, data: { ExternalIdentifier: 'someone-elses-checkout' } };
   done = quiet(); assert.equal(await ret(p3.id, '2002'), 'review'); done();
-  assert.equal(p3.status, 'needs_review'); assert.equal(granted, 1);
+  assert.equal(p3.status, 'needs_review'); assert.equal(grantedCount(), 1);
   // same payment, but the identifier sits on the SUMIT customer (nested) and is ours -> accepted
   let p3b = newPay(); sumit['2003'] = { valid: true, amount: 49, data: { Customer: { ExternalIdentifier: p3b.id.toUpperCase() } } };
-  done = quiet(); assert.equal(await ret(p3b.id, '2003'), 'success'); done(); assert.equal(granted, 2);
+  done = quiet(); assert.equal(await ret(p3b.id, '2003'), 'success'); done(); assert.equal(grantedCount(), 2);
 
   // ── D. SUMIT returns no identifier: default accepts (warned), strict refuses ──
   let p4 = newPay(); sumit['3003'] = { valid: true, amount: 49 };
   process.env.SUMIT_REQUIRE_BINDING = 'true';
-  done = quiet(); assert.equal(await ret(p4.id, '3003'), 'review'); done(); assert.equal(p4.status, 'needs_review'); assert.equal(granted, 2);
+  done = quiet(); assert.equal(await ret(p4.id, '3003'), 'review'); done(); assert.equal(p4.status, 'needs_review'); assert.equal(grantedCount(), 2);
   delete process.env.SUMIT_REQUIRE_BINDING;
   let p5 = newPay(); sumit['3004'] = { valid: true, amount: 49 };
-  done = quiet(); assert.equal(await ret(p5.id, '3004'), 'success'); done(); assert.equal(granted, 3);
+  done = quiet(); assert.equal(await ret(p5.id, '3004'), 'success'); done(); assert.equal(grantedCount(), 3);
 
   // ── E. cross-product: an id that already activated a SUBSCRIPTION cannot settle a one-time payment ──
   db.seo_subscription_events.push({ id: 'ev1', subscription_id: 's1', kind: 'charge_ok', sumit_payment_id: '4004' });
   let p6 = newPay(); sumit['4004'] = { valid: true, amount: 49, data: { ExternalIdentifier: p6.id } };
-  done = quiet(); assert.equal(await ret(p6.id, '4004'), 'review'); done(); assert.equal(granted, 3);
+  done = quiet(); assert.equal(await ret(p6.id, '4004'), 'review'); done(); assert.equal(grantedCount(), 3);
 
   // ── F. DB-level claim (migration 044) catches what the app-level checks cannot see (a race) ──
   claims.set('5005', 'seo_subscription_events:evX');
   let p7 = newPay(); sumit['5005'] = { valid: true, amount: 49, data: { ExternalIdentifier: p7.id } };
   done = quiet(); assert.equal(await ret(p7.id, '5005'), 'review'); done();
-  assert.notEqual(p7.status, 'paid'); assert.equal(granted, 3, 'unique violation -> not granted, clean redirect');
+  assert.notEqual(p7.status, 'paid'); assert.equal(grantedCount(), 3, 'unique violation -> not grantedCount(), clean redirect');
 
   // ── G. admin re-verify is bound too; force-activate remains the manual escape hatch ──
   let p8 = newPay(); p8.status = 'needs_review'; p8.sumit_payment_id = '6006'; sumit['6006'] = { valid: true, amount: 49, data: { ExternalIdentifier: 'other' } };
   let rr = res(); done = quiet(); await reverifyPayment({ params: { id: p8.id } } as any, rr); done();
-  assert.equal(rr.code, 409); assert.match(rr.body.error, /not bound/); assert.equal(p8.status, 'needs_review'); assert.equal(granted, 3);
+  assert.equal(rr.code, 409); assert.match(rr.body.error, /not bound/); assert.equal(p8.status, 'needs_review'); assert.equal(grantedCount(), 3);
   sumit['6006'].data = { ExternalIdentifier: p8.id };
   rr = res(); done = quiet(); await reverifyPayment({ params: { id: p8.id } } as any, rr); done();
-  assert.equal(rr.body.status, 'paid'); assert.equal(granted, 4);
+  assert.equal(rr.body.status, 'paid'); assert.equal(grantedCount(), 4);
 
   // ── H. amount rules unchanged ──
   let p9 = newPay(); sumit['7007'] = { valid: true, amount: 10, data: { ExternalIdentifier: p9.id } };
-  done = quiet(); assert.equal(await ret(p9.id, '7007'), 'review'); done(); assert.equal(granted, 4);
+  done = quiet(); assert.equal(await ret(p9.id, '7007'), 'review'); done(); assert.equal(grantedCount(), 4);
   let p10 = newPay(); sumit['8008'] = { valid: false, amount: 49, data: { ExternalIdentifier: p10.id } };
   done = quiet(); assert.equal(await ret(p10.id, '8008'), 'review'); done();
   done = quiet(); assert.equal(await ret(p10.id), 'review'); done();
@@ -148,4 +148,4 @@ const quiet = () => { const e = console.error, l = console.log, w = console.warn
 
   console.log('payment binding checks passed');
   process.exit(0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { console.error = orig.e; console.log = orig.l; console.warn = orig.w; console.error(e); process.exit(1); });
