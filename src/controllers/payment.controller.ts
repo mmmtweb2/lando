@@ -10,6 +10,7 @@ import { checkRenewEligibility, grantRenewal } from '../services/renewal.service
 import {
   CouponRow, checkCoupon, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption,
 } from '../services/coupon.service';
+import { serverError } from '../utils/httpErrors';
 
 // Where SUMIT sends the browser back (the backend return handler).
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -227,7 +228,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     .single();
   if (error || !pay) {
     await releaseCoupon(null);
-    res.status(500).json({ error: error?.message ?? 'DB error' });
+    serverError(res, error ?? new Error('payments insert returned no row'), '[PAYMENT]');
     return;
   }
 
@@ -471,10 +472,10 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  // Always log the full raw query on every return — this is the only way to
-  // see exactly what SUMIT sent back when verification fails, since we have
-  // no direct log access outside this server.
-  console.log('[PAYMENT RETURN] query params:', JSON.stringify(req.query));
+  // Log only the SHAPE of what came back (parameter NAMES, never values): when verification fails
+  // we still need to see which key SUMIT used for the PaymentID, but the values can hold
+  // customer details, card fragments or tokens and must not sit in the logs.
+  console.log('[PAYMENT RETURN] query keys:', Object.keys(req.query).slice(0, 30).join(','));
   const sumitPaymentId = extractSumitPaymentId(req.query as Record<string, unknown>);
 
   let verified = false;
@@ -495,7 +496,7 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
   }
 
   if (!verified) {
-    console.error('[PAYMENT RETURN] verification failed', { ref, sumitPaymentId: sumitPaymentId ?? 'MISSING', reason: verifyDetail, rawQuery: req.query });
+    console.error('[PAYMENT RETURN] verification failed', { ref, sumitPaymentId: sumitPaymentId ?? 'MISSING', reason: verifyDetail, queryKeys: Object.keys(req.query).slice(0, 30) });
     // Never grant on an unconfirmed payment — flag for review instead. An
     // admin can inspect this (GET /api/admin/payments?status=needs_review)
     // and re-verify or force-activate it once the cause is understood —
@@ -581,7 +582,7 @@ export async function listReviewPayments(req: Request, res: Response): Promise<v
     .in('status', statuses)
     .order('created_at', { ascending: false })
     .limit(100);
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[PAYMENT]'); return; }
   res.json(data);
 }
 

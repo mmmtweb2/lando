@@ -11,6 +11,8 @@
 // value is HTML-escaped (business content is user/AI-authored: XSS).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { parseHttpUrl } from '../utils/safeUrl';
+
 export function esc(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -144,7 +146,8 @@ export function buildJsonLdScripts(page: SeoPage, canonical: string, image: stri
   if (address) business.address = { '@type': 'PostalAddress', streetAddress: address, addressCountry: 'IL' };
   if (image) business.image = image;
   if (page.logo_url) business.logo = page.logo_url;
-  const sameAs = [page.facebook_url, page.instagram_url].filter((u): u is string => !!u);
+  // Re-validated at render time: rows written before server-side URL validation may hold anything.
+  const sameAs = [page.facebook_url, page.instagram_url].map((u) => parseHttpUrl(u)).filter((u): u is string => !!u);
   if (sameAs.length) business.sameAs = sameAs;
   tags.push(scriptTag(business));
 

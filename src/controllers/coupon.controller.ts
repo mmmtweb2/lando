@@ -19,6 +19,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { COUPON_PURPOSES, isCouponPurpose, normalizeCode } from '../services/coupon.service';
+import { serverError } from '../utils/httpErrors';
 
 /** Conservative on purpose: a coupon code is typed by hand, read off a poster,
  *  and pasted into a URL, so anything that survives a copy/paste badly (spaces,
@@ -62,7 +63,7 @@ export async function listCoupons(_req: Request, res: Response): Promise<void> {
     .select('*')
     .order('created_at', { ascending: false })
     .limit(500);
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[COUPON]'); return; }
   res.json(data);
 }
 
@@ -142,7 +143,7 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
     // 23505 = unique violation on `code`. A duplicate is an ordinary admin
     // mistake, not a server error, so it gets a 409 and a readable message.
     if (error.code === '23505') { res.status(409).json({ error: 'קוד קופון זה כבר קיים.' }); return; }
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[COUPON]');
     return;
   }
   res.status(201).json(data);
@@ -221,7 +222,7 @@ export async function updateCoupon(req: Request, res: Response): Promise<void> {
     .eq('id', id)
     .select('*')
     .maybeSingle();
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[COUPON]'); return; }
   if (!data) { res.status(404).json({ error: 'הקופון לא נמצא.' }); return; }
   res.json(data);
 }

@@ -37,7 +37,14 @@ const conns: Row[] = []; let businesses: Row[] = []; let missing = false;
   };
   return q;
 };
-const res = () => { const r: any = { code: 200, body: null, redirected: null }; r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.redirect = (u: string) => { r.redirected = u; return r; }; return r; };
+const res = () => {
+  const r: any = { code: 200, body: null, redirected: null, cookies: {} as Row, cleared: [] as string[] };
+  r.status = (c: number) => { r.code = c; return r; }; r.json = (b: any) => { r.body = b; return r; }; r.redirect = (u: string) => { r.redirected = u; return r; };
+  r.cookie = (n: string, v: string, o: Row) => { r.cookies[n] = { v, ...o }; return r; };
+  r.clearCookie = (n: string) => { r.cleared.push(n); return r; };
+  return r;
+};
+const withCookie = (v: string, extra: Row = {}) => ({ cookies: { gbp_oauth_nonce: v }, ...extra });
 const req = (email: string | undefined, extra: Row = {}): any => ({ authEmail: email, query: {}, body: {}, ...extra });
 
 let google: (url: string, init?: any) => Response = () => new Response('{}', { status: 404 });
@@ -60,7 +67,7 @@ const cfg = gbpOAuthConfig()!;
   r = res(); await gbp.stats(req('a@x.co'), r); assert.equal(r.code, 503);
   r = res(); await gbp.status(req('owner@x.co'), r); assert.equal(r.body.enabled, true, 'listed (case-insensitive)');
   r = res(); await gbp.start(req('owner@x.co'), r); assert.equal(r.code, 200);
-  r = res(); await gbp.callback(req(undefined, { query: { code: 'C', state: signState('a@x.co', gbpOAuthConfig()!.key) } }), r); assert.match(r.redirected, /gbp=error$/, 'state of an unlisted account is refused');
+  { const n = 'c'.repeat(48); r = res(); await gbp.callback(req(undefined, withCookie(n, { query: { code: 'C', state: signState('a@x.co', gbpOAuthConfig()!.key, Date.now(), 600000, n) } })), r); assert.match(r.redirected, /gbp=error$/, 'state of an unlisted account is refused'); }
   delete process.env.GBP_CONNECT_ALLOWED_EMAILS;
 
   // auth required
@@ -71,22 +78,41 @@ const cfg = gbpOAuthConfig()!;
   r = res(); await gbp.start(req('a@x.co'), r);
   const u = new URL(r.body.url); assert.equal(u.hostname, 'accounts.google.com');
   const state = u.searchParams.get('state')!;
+  // login-CSRF binding: start sets a short-lived httpOnly SameSite=Lax cookie scoped to the callback path
+  const ck = r.cookies['gbp_oauth_nonce'];
+  assert.ok(ck && /^[0-9a-f]{48}$/.test(ck.v), 'nonce cookie set at start');
+  assert.equal(ck.httpOnly, true); assert.equal(ck.sameSite, 'lax'); assert.equal(ck.path, '/api/seo/gbp/oauth/callback'); assert.ok(ck.maxAge <= 10 * 60 * 1000);
+  assert.ok(!state.includes(ck.v) && !Buffer.from(state.split('.')[0], 'base64url').toString().includes(ck.v), 'the cookie value itself is not in the URL');
 
   // callback: bad state / denied / missing code
-  r = res(); await gbp.callback(req(undefined, { query: { code: 'C', state: 'bad' } }), r); assert.match(r.redirected, /gbp=error$/);
-  r = res(); await gbp.callback(req(undefined, { query: { error: 'access_denied' } }), r); assert.match(r.redirected, /gbp=denied$/);
-  r = res(); await gbp.callback(req(undefined, { query: { state } }), r); assert.match(r.redirected, /gbp=error$/);
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { code: 'C', state: 'bad' } })), r); assert.match(r.redirected, /gbp=error$/);
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { error: 'access_denied' } })), r); assert.match(r.redirected, /gbp=denied$/);
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { state } })), r); assert.match(r.redirected, /gbp=error$/);
   assert.equal(conns.length, 0);
 
-  // callback ok: refresh token stored encrypted
   google = (url) => url.includes('oauth2.googleapis.com/token') ? J(200, { refresh_token: 'RT-SECRET', scope: 'https://www.googleapis.com/auth/business.manage' }) : J(404, {});
+
+  // CSRF: a valid state arriving in a browser WITHOUT the cookie / with a foreign cookie / with an unbound state is refused
   r = res(); await gbp.callback(req(undefined, { query: { code: 'C', state } }), r);
-  assert.match(r.redirected, /gbp=ok$/);
+  assert.match(r.redirected, /gbp=error$/, 'no cookie'); assert.deepEqual(r.cleared, ['gbp_oauth_nonce']);
+  r = res(); await gbp.callback(req(undefined, withCookie('f'.repeat(48), { query: { code: 'C', state } })), r);
+  assert.match(r.redirected, /gbp=error$/, 'another browser\'s nonce');
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { code: 'C', state: signState('a@x.co', cfg.key) } })), r);
+  assert.match(r.redirected, /gbp=error$/, 'state minted without a browser binding');
+  assert.equal(conns.length, 0, 'none of the refused callbacks wrote anything');
+
+  // callback ok: refresh token stored encrypted
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { code: 'C', state } })), r);
+  assert.match(r.redirected, /gbp=ok$/); assert.deepEqual(r.cleared, ['gbp_oauth_nonce'], 'cookie cleared after use');
+  // single use: replaying the very same callback (cookie + state) is refused
+  r = res(); await gbp.callback(req(undefined, withCookie(ck.v, { query: { code: 'C', state } })), r);
+  assert.match(r.redirected, /gbp=error$/, 'state redeemable once only');
   assert.equal(conns.length, 1); assert.equal(conns[0].email, 'a@x.co');
   assert.ok(!JSON.stringify(conns).includes('RT-SECRET'), 'token is not stored in clear');
   // another account's state cannot write for someone else
-  const other = signState('b@x.co', cfg.key);
-  r = res(); await gbp.callback(req(undefined, { query: { code: 'C', state: other } }), r); assert.equal(conns.length, 2); assert.equal(conns[1].email, 'b@x.co');
+  const otherNonce = 'b'.repeat(48);
+  const other = signState('b@x.co', cfg.key, Date.now(), 600000, otherNonce);
+  r = res(); await gbp.callback(req(undefined, withCookie(otherNonce, { query: { code: 'C', state: other } })), r); assert.equal(conns.length, 2); assert.equal(conns[1].email, 'b@x.co');
   conns.splice(1, 1);
 
   r = res(); await gbp.status(req('a@x.co'), r); assert.deepEqual(r.body, { enabled: true, connected: true, needsReconnect: false });
@@ -134,6 +160,16 @@ const cfg = gbpOAuthConfig()!;
   // disconnect deletes (and revokes best effort)
   let revoked = false; google = (url) => { if (url.includes('/revoke')) revoked = true; return J(200, {}); };
   r = res(); await gbp.disconnect(req('a@x.co'), r); assert.equal(r.code, 200); assert.equal(conns.length, 0); assert.equal(revoked, true);
+
+  // account deletion helper: revokes at Google, deletes the row; no connection / no table is fine
+  { const { revokeAndDeleteGbpConnection } = await import('../src/services/gbpAccount');
+    const { encryptToken } = await import('../src/services/gbpCrypto');
+    conns.push({ email: 'del@x.co', refresh_token_enc: encryptToken('RT-DEL', cfg.key), location_name: null, status: 'active' });
+    let revokedBody = ''; google = (url, init) => { if (url.includes('/revoke')) revokedBody = String(init?.body); return J(200, {}); };
+    await revokeAndDeleteGbpConnection('del@x.co');
+    assert.equal(conns.length, 0); assert.match(revokedBody, /token=RT-DEL/, 'Google token revoked');
+    await revokeAndDeleteGbpConnection('nobody@x.co');
+    missing = true; await revokeAndDeleteGbpConnection('del@x.co'); missing = false; }
 
   // table missing
   missing = true;
