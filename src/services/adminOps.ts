@@ -8,7 +8,7 @@ export const MRR_GOAL_ILS = 2500;
 export const STUCK_AFTER_HOURS = 48;
 const DAY = 86400000;
 
-export interface JourneyR { email: string; stage: 'registered' | 'setup' | 'ready_to_activate'; source: string | null; utm_source: string | null; registered_at: string; setup_at: string | null; ready_at: string | null; activation_requested_at: string | null; beta_activated_at: string | null; updated_at: string | null }
+export interface JourneyR { email: string; stage: 'registered' | 'setup' | 'ready_to_activate'; source: string | null; utm_source: string | null; registered_at: string; setup_at: string | null; ready_at: string | null; activation_requested_at: string | null; beta_activated_at: string | null; updated_at: string | null; profile_state?: 'pending_verification' | null; pending_name?: string | null }
 export interface ProductR { email: string; status: string; current_period_end: string | null; source: string }
 export interface SubR { email: string; status: string; amount: number | string; created_at: string; cancel_at_period_end: boolean; needs_manual_cancel: boolean }
 export interface SubEventR { kind: string; created_at: string }
@@ -130,6 +130,8 @@ export function funnel(journeys: JourneyR[], events: EventR[], products: Product
 export interface UserRow {
   email: string; state: AccountState; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string;
   premium: { status: string; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null } | null;
+  /** No verified Google profile yet (task #12): the owner is creating or verifying it. */
+  profilePending: boolean; pendingName: string | null;
 }
 export function users(journeys: JourneyR[], products: ProductR[], premium: PremiumR[], now: Date): UserRow[] {
   const ents = entitlementMap(products, now);
@@ -140,6 +142,7 @@ export function users(journeys: JourneyR[], products: ProductR[], premium: Premi
     return {
       email: j.email, state, stage: j.stage, registeredAt: j.registered_at, lastProgressAt: new Date(lastProgressAt(j)).toISOString(),
       stuck: isStuck(j, state, now), source: sourceOf(j),
+      profilePending: j.profile_state === 'pending_verification', pendingName: j.profile_state === 'pending_verification' ? j.pending_name ?? null : null,
       premium: p ? { status: p.status, lastCardUpdate: p.last_card_update, monthlyPrice: p.monthly_price === null ? null : num(p.monthly_price), note: p.note } : null,
     };
   }).sort((a, b) => (a.registeredAt < b.registeredAt ? 1 : -1));

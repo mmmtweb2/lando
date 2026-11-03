@@ -758,3 +758,14 @@ quota cap there.
 - **Beta is single-use (follow-up to Part 62):** with `BETA_SELF_ACTIVATION=true` the account gets `BETA_ACTIVATION_DAYS` (default 90). After it ends the access simply expires; a new "activate" click now returns `409 beta_ended` instead of granting another round. No pre-expiry notice or continuation path exists yet (planned in #11).
 - **Migration 040 (run once, re-runnable):** `seo_manual_premium`, `places_usage` + function `bump_places_usage` (execute revoked from public roles), `job_heartbeats`; RLS enabled+forced, no policies. Until it runs, the tabs still load and say so (Places and job panels show "not tracked", manual premium save returns an error).
 - **Tests:** `npx ts-node --transpile-only scripts/test-admin-ops.ts`, `scripts/test-journey.ts`. Browser check with a mocked API: every tab loads, filters work, saving manual premium sends the right body, no horizontal scroll at 375px.
+
+## Part 64 — Task #12: a business with no Google profile yet (migration 041)
+
+- **Where:** `/start` step 1. The existing "אין לי פרופיל בגוגל מפות" guide (`NoProfileGuide`, also on the public `/audit`) now has, **only when signed in**, a short form: business name + "ממשיכים בלי פרופיל". The public Audit is unchanged.
+- **State:** `seo_journey.profile_state = 'pending_verification'` (+ `pending_name`, `profile_pending_at`). The stage machine is unchanged: the account goes `registered -> setup`, finishes the setup (`completeSetup` accepts a pending profile in place of a `place_id`) and can be activated normally (free beta, or payment if the gate is on). Pending verification **never blocks** the rest of the setup.
+- **While waiting:** a "מתכוננים בזמן שהפרופיל ממתין" screen: category, short description, hours and phone, 5-10 photos. "נכין לכם טקסטים" is marked **בקרוב** (honest: not built yet). Nothing is promised about writing to Google.
+- **Connecting later:** picking the business in the search box (on that screen, or on the "החשבון פעיל" screen) calls the normal `PUT /journey/business`, which clears the marker and keeps the stage. New route: `PUT /api/seo/journey/profile-pending { name }` (2-80 characters, control characters and `<>` removed; `bad_name` / `has_business` errors).
+- **Admin:** the users tab shows a "ממתין לאימות פרופיל" badge (the typed name is the tooltip).
+- **Migration 041** (run once, re-runnable): only `ADD COLUMN IF NOT EXISTS` on `seo_journey`. Until it runs everything keeps working: reads fall back to the old columns and only the new path is unavailable (saving it returns an error).
+- **Events:** `setup_step_completed` with `step_id=profile_pending` (once). No name in the event.
+- **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`, `scripts/test-admin-ops.ts`. Browser check at 375px with a mocked API: guide → form → waiting screen → finish → activate → connect later.

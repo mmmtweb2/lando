@@ -3,7 +3,7 @@ import { Card, State } from './adminUi';
 import { PREMIUM_LABEL, STATE_LABEL, day, ils, useAdminData, type Fetcher } from './adminData';
 
 interface Premium { status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null }
-interface Row { email: string; state: string; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string; premium: Premium | null }
+interface Row { email: string; state: string; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string; premium: Premium | null; profilePending?: boolean; pendingName?: string | null }
 interface Data { users: Row[]; premiumWithoutJourney: { email: string; status: Premium['status']; last_card_update: string | null; monthly_price: number | string | null; note: string | null }[] }
 
 function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email: string; current: Premium | null; adminFetch: Fetcher; onDone: () => void; onCancel: () => void }) {
@@ -95,7 +95,7 @@ export default function SeoUsersTab({ adminFetch }: { adminFetch: Fetcher }) {
                 {rows.flatMap((u) => [
                   <tr key={u.email}>
                     <td className="px-5 py-2 text-slate-700" dir="ltr">{u.email}</td>
-                    <td className="px-3 py-2">{STATE_LABEL[u.state] ?? u.state}{u.stuck && <span className="mr-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">תקוע</span>}</td>
+                    <td className="px-3 py-2">{STATE_LABEL[u.state] ?? u.state}{u.stuck && <span className="mr-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">תקוע</span>}{u.profilePending && <span className="mr-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700" title={u.pendingName ?? undefined}>ממתין לאימות פרופיל</span>}</td>
                     <td className="px-3 py-2 text-slate-500">{day(u.registeredAt)}</td>
                     <td className="px-3 py-2 text-slate-500">{day(u.lastProgressAt)}</td>
                     <td className="px-3 py-2 text-slate-500" dir="auto">{u.source}</td>

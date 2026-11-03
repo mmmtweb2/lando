@@ -1,4 +1,5 @@
-import { ExternalLink, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, ArrowRight, Loader2 } from 'lucide-react';
 import { RoleTag } from './RoleTag';
 
 // "I don't have a Google Maps profile" — a business without one is a target customer of
@@ -27,7 +28,7 @@ const STEPS: { who: 'we' | 'you'; soon?: boolean; title: string; body: string; h
   {
     who: 'you',
     title: 'אמתו את הפרופיל',
-    body: 'גוגל תבקש אימות בסרטון קצר, בטלפון או בדואר. זה השלב שבו רוב העסקים נתקעים, ואפשר לפנות אלינו.',
+    body: 'גוגל תבקש אימות בסרטון קצר, בטלפון או בדואר. האימות יכול לקחת כמה ימים, ואפשר להמשיך בהקמה בינתיים. זה השלב שבו רוב העסקים נתקעים, ואפשר לפנות אלינו.',
   },
   {
     who: 'we',
@@ -36,7 +37,34 @@ const STEPS: { who: 'we' | 'you'; soon?: boolean; title: string; body: string; h
   },
 ];
 
-export default function NoProfileGuide({ onBack }: { onBack: () => void }) {
+/** Signed-in setup only: continue without a verified profile (it is being created or waits for Google). */
+function PendingForm({ onPending }: { onPending: (name: string) => Promise<void> | void }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ok = name.trim().length >= 2;
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-lg border border-blue-100 bg-blue-50/60 p-3"
+      onSubmit={async (e) => { e.preventDefault(); if (!ok || busy) return; setBusy(true); try { await onPending(name.trim()); } finally { setBusy(false); } }}
+    >
+      <p className="text-sm font-medium text-slate-900">הפרופיל עוד לא מוכן או ממתין לאימות? ממשיכים בהקמה בינתיים</p>
+      <p className="text-xs leading-relaxed text-slate-600">לא צריך לחכות לגוגל. נכין אתכם מראש, וכשהפרופיל יאושר תחזרו לכאן ותחברו אותו בחיפוש.</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-[12rem] flex-1 text-xs text-slate-600">שם העסק
+          <input
+            type="text" maxLength={80} value={name} onChange={(e) => setName(e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+          />
+        </label>
+        <button type="submit" disabled={!ok || busy} className="inline-flex items-center gap-2 rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2552d0] disabled:opacity-50">
+          {busy && <Loader2 size={14} className="animate-spin" />} ממשיכים בלי פרופיל
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function NoProfileGuide({ onBack, onPending }: { onBack: () => void; onPending?: (name: string) => Promise<void> | void }) {
   return (
     <div className="flex flex-col gap-4 border-t border-slate-100 pt-5">
       <div>
@@ -71,6 +99,7 @@ export default function NoProfileGuide({ onBack }: { onBack: () => void }) {
           </li>
         ))}
       </ol>
+      {onPending && <PendingForm onPending={onPending} />}
       <button
         type="button"
         onClick={onBack}

@@ -9,7 +9,8 @@ import {
 import { healthSnapshot } from '../services/adminHealth.service';
 
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
-const JCOLS = 'email, stage, source, utm_source, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, updated_at';
+const JCOLS_BASE = 'email, stage, source, utm_source, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, updated_at';
+const JCOLS = `${JCOLS_BASE}, profile_state, pending_name`;
 const EVENT_WINDOW_DAYS = 120;
 
 class LoadError extends Error { constructor(public readonly table: string, m: string) { super(m); } }
@@ -18,7 +19,12 @@ async function rows<T>(table: string, q: PromiseLike<{ data: unknown; error: { m
   if (error) { if (optional && missing(error.message)) return []; throw new LoadError(table, error.message); }
   return (data ?? []) as T[];
 }
-const journeys = () => rows<JourneyR>('seo_journey', supabase.from('seo_journey').select(JCOLS).limit(5000));
+// Before migration 041 the two profile columns do not exist: fall back so the admin tabs keep loading.
+async function journeys(): Promise<JourneyR[]> {
+  const first = await supabase.from('seo_journey').select(JCOLS).limit(5000);
+  if (first.error && /profile_state|pending_name/.test(first.error.message)) return rows<JourneyR>('seo_journey', supabase.from('seo_journey').select(JCOLS_BASE).limit(5000));
+  return rows<JourneyR>('seo_journey', Promise.resolve(first));
+}
 const products = () => rows<ProductR>('user_products', supabase.from('user_products').select('email, status, current_period_end, source').eq('product', 'seo_autopilot').limit(5000));
 const subs = () => rows<SubR>('seo_subscriptions', supabase.from('seo_subscriptions').select('email, status, amount, created_at, cancel_at_period_end, needs_manual_cancel').limit(5000), true);
 const premiumRows = () => rows<PremiumR>('seo_manual_premium', supabase.from('seo_manual_premium').select('email, status, last_card_update, monthly_price, note').limit(5000), true);
