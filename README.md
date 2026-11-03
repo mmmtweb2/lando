@@ -769,3 +769,13 @@ quota cap there.
 - **Migration 041** (run once, re-runnable): only `ADD COLUMN IF NOT EXISTS` on `seo_journey`. Until it runs everything keeps working: reads fall back to the old columns and only the new path is unavailable (saving it returns an error).
 - **Events:** `setup_step_completed` with `step_id=profile_pending` (once). No name in the event.
 - **Tests:** `npx ts-node --transpile-only scripts/test-journey.ts`, `scripts/test-admin-ops.ts`. Browser check at 375px with a mocked API: guide → form → waiting screen → finish → activate → connect later.
+
+---
+
+## חלק 70 – עמוד שיווק `/seo` (משימה #15, קובי)
+
+- **מה נבנה:** `client/src/pages/SeoLanding.tsx` (קובץ חדש) לפי האפיון של דוד (marketing #14) ותיקוני אבי: פתיחה עם כפתור "בדוק את העסק שלך בחינם" ודוגמת כרטיס מסומנת "דוגמה להמחשה בלבד", מה הבדיקה נותנת, איך זה עובד (מי עושה מה), קידום הוגן, שני מסלולים בלי מחיר, מוכנות לתשובות AI, 8 שאלות נפוצות וסיום. כותרת ותיאור ב-Helmet ו-`FAQPage` בסכמה (JSON-LD). טקסט גלוי, מובייל קודם, RTL.
+- **כללי תוכן שנשמרו:** בלי מחיר, עדויות, הבטחת דירוג, אחריות או "עדכון אוטומטי בגוגל"; בלי "SEO"/"פרופיל"/GBP בטקסט ללקוח; בלי לוגו גוגל; "המידע שלך נשאר שלך" בלבד (בלי הבטחת ייצוא עד שיאומת); "אנחנו מעדכנים" בפרימיום מסומן לבדיקה משפטית של משה לפני עלייה. "כמה פרמטרים בודקים" לא נכלל עד שהמספר יאומת.
+- **אירועים (`dataLayer` דרך `lib/track`):** `seo_page_view` (עם UTM), `seo_scroll_50/90`, `seo_cta_audit_click {location}`, `seo_plans_view`, `seo_plan_click {plan}`, `seo_faq_open {question_id}`, ו-`Concierge_Clicked {location:'seo'}`. הכפתורים מובילים ל-`/audit?utm_source=seo_page`. כפתור הוואטסאפ של הפרימיום נעלם כשאין `CONCIERGE_WHATSAPP`.
+- **עדיין לא מחובר (קבצי gate, ממתין לאישור אבי):** (1) נתיב `/seo` ב-`client/src/App.tsx`; (2) `/seo` ב-`marketingPath` ב-`client/src/lib/gtm.ts` כדי ש-GTM ייטען אחרי הסכמה. עד אז העמוד לא נגיש.
+- **הערה:** האקורדיון בשאלות הנפוצות הוא `<details>` מקורי, כך שהתוכן קיים ב-DOM גם בלי JavaScript. העמוד נטען בצד הלקוח; אם רוצים HTML מוכן מהשרת (כמו בדפי הנחיתה) זה שינוי נפרד.
