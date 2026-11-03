@@ -353,7 +353,7 @@ function getMockContent(input: GenerateInput): AiContent {
     },
     benefits: [
       { title: 'שירות מהיר', description: 'מגיבים תוך שעות, לא ימים.' },
-      { title: 'ניסיון מוכח', description: 'שנות שטח שהביאו עשרות לקוחות מרוצים.' },
+      { title: 'ניסיון בתחום', description: 'עבודה מקצועית שנשענת על ניסיון בשטח.' },
       { title: 'תמחור שקוף', description: 'מחיר ברור מראש. אפס הפתעות.' },
     ],
     benefits_heading: 'למה לבחור בנו',
@@ -361,7 +361,7 @@ function getMockContent(input: GenerateInput): AiContent {
     faq: [
       { question: 'כיצד ניצור קשר לתיאום?', answer: 'בוואטסאפ, טלפון, או טופס הפנייה — נחזור תוך 24 שעות.' },
       { question: 'כמה זמן לוקח התהליך?', answer: 'בונים לוח זמנים מותאם אישית כבר בשיחה הראשונה.' },
-      { question: 'האם יש אחריות?', answer: 'כן. עומדים מאחורי כל עבודה עד לשביעות רצונכם המלאה.' },
+      { question: 'איך מתחילים?', answer: 'משאירים פרטים בטופס או כותבים לנו בוואטסאפ, ואנחנו חוזרים אליכם.' },
     ],
     faq_heading: 'שאלות נפוצות',
     faq_kicker: 'עזרה ותשובות',
@@ -389,8 +389,8 @@ function getMockContent(input: GenerateInput): AiContent {
     seo_title: `${input.business_name} | שירות מקצועי`,
     seo_description: `גלו את ${input.business_name} — פתרונות מותאמים אישית במחיר שקוף. צרו קשר עוד היום.`,
     trust_badges: [
-      { label: '100% אחריות' },
-      { label: 'תגובה תוך 24 שעות' },
+      { label: 'שירות אישי' },
+      { label: 'מענה מהיר' },
       { label: 'ללא התחייבות' },
     ],
     typography_pairing: 'modern_clean',
@@ -676,9 +676,10 @@ SECTION RULES:
 TRUST BADGES RULE:
 - Generate EXACTLY 3 trust badges relevant to the specific niche
 - Each label: 2-3 Hebrew words maximum — short, punchy, credibility signals
-- Examples (style only): "אחריות מלאה", "תגובה מהירה", "תשלום אחרי תוצאה", "ליווי אישי"
+- Examples (style only): "שירות אישי", "תגובה מהירה", "מחיר שקוף", "ליווי אישי"
 - Match the badge claims to the business niche — do NOT use generic empty promises
 - Do NOT invent numeric claims (years, counts, ratings) unless they were provided in the input
+- NEVER claim a warranty, guarantee, money-back, "pay after results" or any promised outcome/ranking unless the input states it explicitly
 
 TESTIMONIALS RULE:
 - include_testimonials = ${input.include_testimonials ? 'TRUE' : 'FALSE'}
