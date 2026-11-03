@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { shareUrl } from '../lib/pageUrl';
 import { Helmet } from 'react-helmet-async';
-import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
 import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
@@ -235,6 +235,36 @@ const NEUTRAL_ICONS = [Sparkles, Star, Zap, Gem, Award, Target, Layers, Compass]
 function neutralIcon(i: number, size = 26) {
   const Icon = NEUTRAL_ICONS[i % NEUTRAL_ICONS.length];
   return <Icon size={size} strokeWidth={1.8} />;
+}
+
+// Animated counter: shows the final number until it scrolls into view, then
+// counts up from 0. The number is always taken from the page's own text.
+function CountUp({ to, reduce }: { to: number; reduce: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-60px' });
+  const [v, setV] = useState(to);
+  useEffect(() => {
+    if (!inView || reduce) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const pr = Math.min(1, (t - t0) / 1600);
+      setV(Math.round(to * (1 - Math.pow(1 - pr, 3))));
+      if (pr < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, to, reduce]);
+  return <span ref={ref} className="tabular-nums">{v.toLocaleString('en-US')}</span>;
+}
+
+// Splits "ניסיון של 12 שנה" → before / 12 / after. Skips phone-like or huge numbers.
+function parseStat(text: string): { before: string; n: number; after: string } | null {
+  const m = /(\d{1,3}(?:,\d{3})+|\d+)/.exec(text);
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(n) || m[1].replace(/,/g, '').length > 6) return null;
+  return { before: text.slice(0, m.index), n, after: text.slice(m.index + m[1].length) };
 }
 
 // Thin reading-progress bar glued under the fixed header.
@@ -1020,6 +1050,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     && new URLSearchParams(window.location.search).get('design') === '2';
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
+  const { scrollY } = useScroll();
+  const heroImgY = useTransform(scrollY, [0, 800], [0, 140]);
+  const heroTxtY = useTransform(scrollY, [0, 600], [0, -70]);
+  const heroTxtOpacity = useTransform(scrollY, [0, 520], [1, 0]);
   useEffect(() => {
     if (!designV2) return;
     const on = () => setScrolled(window.scrollY > 24);
@@ -2482,8 +2516,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         style={{ background: heroBg, color: heroOnGradient }}>
         {heroImageUrl && (
           <motion.img src={heroImageUrl} alt="" aria-hidden
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-            style={{ opacity: 0.32, mixBlendMode: 'luminosity' }}
+            className="absolute inset-x-0 -top-36 w-full h-[calc(100%+9rem)] object-cover pointer-events-none"
+            style={{ opacity: 0.32, mixBlendMode: 'luminosity', y: rm ? 0 : heroImgY }}
             initial={rm ? false : { scale: 1.14 }} animate={{ scale: 1 }}
             transition={{ duration: 2.6, ease: EASE_SMOOTH }} />
         )}
@@ -2496,7 +2530,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         <div className="absolute inset-0 opacity-[0.10] pointer-events-none"
           style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
 
-        <div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl mx-auto py-16">
+        <motion.div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl mx-auto py-16"
+          style={rm ? undefined : { y: heroTxtY, opacity: heroTxtOpacity }}>
           {logo_url && (
             <motion.img src={logo_url} alt={business_name} {...up(0.05)}
               className="h-20 w-20 object-contain shadow-xl"
@@ -2527,7 +2562,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             }}>
             {ctaIcon}{ctaText}
           </motion.a>
-        </div>
+        </motion.div>
         <ChevronDown aria-hidden size={30} className="absolute bottom-8 inset-x-0 mx-auto animate-bounce opacity-70" />
       </section>
     );
@@ -3102,10 +3137,23 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})` }}>
                   <Check size={18} color="#fff" />
                 </div>
-                <EditableText as="h3" className="font-bold text-slate-800 leading-tight"
-                  value={getEdit(`benefits.${i}.title`, b.title)}
-                  onCommit={(v) => setEdit(`benefits.${i}.title`, v)}
-                  isEditing={isEditingMode} />
+                {(() => {
+                  const st = designV2 && !isEditingMode ? parseStat(getEdit(`benefits.${i}.title`, b.title)) : null;
+                  return st ? (
+                    <h3 className="font-extrabold text-2xl text-slate-800 leading-tight">
+                      {st.before}
+                      <span className="text-4xl font-black" style={{ color: primary }}>
+                        <CountUp to={st.n} reduce={!!reduceMotion} />
+                      </span>
+                      {st.after}
+                    </h3>
+                  ) : (
+                    <EditableText as="h3" className="font-bold text-slate-800 leading-tight"
+                      value={getEdit(`benefits.${i}.title`, b.title)}
+                      onCommit={(v) => setEdit(`benefits.${i}.title`, v)}
+                      isEditing={isEditingMode} />
+                  );
+                })()}
                 <EditableText as="p" className="text-sm leading-relaxed" style={{ color: clrMuted }}
                   value={getEdit(`benefits.${i}.description`, b.description)}
                   onCommit={(v) => setEdit(`benefits.${i}.description`, v)}
