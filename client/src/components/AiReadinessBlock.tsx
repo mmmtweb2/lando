@@ -46,7 +46,7 @@ export default function AiReadinessBlock({ data }: { data: AiReadiness }) {
     <div className="flex flex-col gap-2">
       <div>
         <p className="text-sm font-semibold text-slate-900">מוכנות ל-AI: {passed} מתוך {data.checks.length}</p>
-        <p className="text-xs text-slate-500">האם ChatGPT, Perplexity, גוגל ו-Bing יכולים לקרוא את האתר {data.host && <span dir="ltr">{data.host}</span>} ולהמליץ עליו. הבדיקה לא משפיעה על הציון.</p>
+        <p className="text-xs text-slate-500">האם ChatGPT, Perplexity, גוגל ו-Bing יכולים לקרוא את האתר {data.host && <span dir="ltr">{data.host}</span>}. זה לא מבטיח שהוא יופיע בתשובות, והבדיקה לא משפיעה על הציון.</p>
       </div>
       <ul className="flex flex-col gap-2">{data.checks.map(c => <Row key={c.key} c={c} />)}</ul>
     </div>
