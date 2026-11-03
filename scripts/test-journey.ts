@@ -10,7 +10,7 @@ import {
 import { postPublicEvent, postAccountEvent, postActivate } from '../src/controllers/journey.controller';
 
 type Row = Record<string, any>;
-const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }] };
+const tables: Record<string, Row[]> = { seo_journey: [], journey_events: [], user_products: [], user_profiles: [{ email: 'a@x.co' }, { email: 'b@x.co' }, { email: 'c@x.co' }, { email: 'old@x.co' }, { email: 'd@x.co' }] };
 let missing = false;
 const MILESTONES = ['signup', 'setup_completed', 'activation_requested', 'activated_beta', 'payment_succeeded', 'day7_active', 'day30_active'];
 (supabase as any).from = (table: string) => {
@@ -118,6 +118,12 @@ const code = async (p: Promise<unknown>) => { try { await p; return null; } catc
   await activate('a@x.co', now);
   assert.equal(events('a@x.co').filter((e) => e === 'activated_beta').length, 1, 'idempotent');
 
+  // Day 91: access ends, and a new click does not buy another free round.
+  assert.equal(await code(activate('a@x.co', new Date(now.getTime() + 31 * 86400000))), 'beta_ended', 'beta is single-use');
+  tables.user_products.find((x) => x.email === 'a@x.co')!.current_period_end = '2026-01-01T00:00:00Z';
+  r = res(); await postActivate({ authEmail: 'a@x.co' } as any, r); assert.equal(r.code, 409); assert.equal(r.body.code, 'beta_ended');
+  tables.user_products.find((x) => x.email === 'a@x.co')!.current_period_end = new Date(now.getTime() + 30 * 86400000).toISOString();
+
   // Same stored data, a paying subscriber: derived state is "active". No data change needed.
   tables.user_products.find((r) => r.email === 'a@x.co')!.source = 'sumit';
   assert.equal((await peek('a@x.co', now)).state, 'active');
@@ -125,6 +131,16 @@ const code = async (p: Promise<unknown>) => { try { await p; return null; } catc
   Object.assign(tables.user_products.find((r) => r.email === 'a@x.co')!, { source: 'manual', current_period_end: '2026-01-01T00:00:00Z' });
   assert.equal((await peek('a@x.co', now)).state, 'ready_to_activate');
   delete process.env.BETA_SELF_ACTIVATION; delete process.env.BETA_ACTIVATION_DAYS;
+
+  // Default length is 90 days: open on day 89, closed on day 91.
+  await start('d@x.co', null, null, now); await setBusiness('d@x.co', 'ChIJabcdefghij', now); await completeSetup('d@x.co', now);
+  process.env.BETA_SELF_ACTIVATION = 'true';
+  assert.equal((await activate('d@x.co', now)).state, 'active_beta');
+  assert.equal(tables.user_products.find((x) => x.email === 'd@x.co')!.current_period_end, new Date(now.getTime() + 90 * 86400000).toISOString());
+  assert.equal((await peek('d@x.co', new Date(now.getTime() + 89 * 86400000))).state, 'active_beta');
+  assert.equal((await peek('d@x.co', new Date(now.getTime() + 91 * 86400000))).state, 'ready_to_activate');
+  assert.equal(events('d@x.co').filter((e) => e === 'activated_beta').length, 1);
+  delete process.env.BETA_SELF_ACTIVATION;
 
   // ── day 7 / day 30 ──
   await start('b@x.co', null, null, new Date('2026-10-01T10:00:00Z'));

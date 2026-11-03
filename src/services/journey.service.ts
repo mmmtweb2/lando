@@ -99,7 +99,7 @@ export interface JourneyRow {
 const COLS = 'email, stage, place_id, anon_id, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at';
 
 export class JourneyError extends Error {
-  constructor(public readonly code: 'not_migrated' | 'bad_place' | 'no_business' | 'not_ready' | 'payment_required' | 'db', message?: string) { super(message ?? code); }
+  constructor(public readonly code: 'not_migrated' | 'bad_place' | 'no_business' | 'not_ready' | 'payment_required' | 'beta_ended' | 'db', message?: string) { super(message ?? code); }
 }
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
 const dbErr = (e: { message: string }) => (missing(e.message) ? new JourneyError('not_migrated') : new JourneyError('db', e.message));
@@ -204,6 +204,8 @@ export async function activate(email: string, now = new Date()): Promise<Activat
     return { ...(await view(email, await getRow(email), now)), requested: true };
   }
 
+  // The free beta is single-use: once it has run out, a new click must not grant another round.
+  if (row.beta_activated_at) throw new JourneyError('beta_ended');
   await grantAccess(email, betaDays(), now);
   const { error } = await supabase.from('seo_journey').update(touch({ beta_activated_at: now.toISOString() })).eq('email', email);
   if (error) throw dbErr(error);
