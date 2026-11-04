@@ -7,6 +7,7 @@ import {
   type AuditContactR, type BusinessNameR, type EventR, type JourneyR, type PremiumR, type ProductR, type SubEventR, type SubR,
 } from '../services/adminOps';
 import { healthSnapshot } from '../services/adminHealth.service';
+import { allowRun, runDiagnosis } from '../services/gbpDiagnose.service';
 
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
 const JCOLS_BASE = 'email, place_id, stage, source, utm_source, registered_at, setup_at, ready_at, activation_requested_at, beta_activated_at, updated_at';
@@ -103,4 +104,13 @@ export async function adminSetManualPremium(req: Request, res: Response): Promis
   }, { onConflict: 'email' });
   if (error) { fail(res, new LoadError('seo_manual_premium', error.message)); return; }
   res.json({ ok: true });
+}
+
+/** Read-only diagnosis of a Google Business Profile connection (default: the admin's own). Spends a few API calls. */
+export async function adminGbpDiagnose(req: Request, res: Response): Promise<void> {
+  const raw = (req.body as { email?: unknown } | undefined)?.email;
+  const email = (typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : req.authEmail ?? '').slice(0, 254);
+  if (!/^[^\s@]{1,64}@[^\s@]{1,255}$/.test(email)) { res.status(400).json({ error: 'מייל לא תקין.' }); return; }
+  if (!allowRun()) { res.status(429).json({ error: 'אבחון רץ לפני רגע. חכו 10 שניות.' }); return; }
+  try { res.json(await runDiagnosis(email)); } catch (e) { fail(res, e); }
 }
