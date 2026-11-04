@@ -10,10 +10,12 @@ import { startDigestSweep } from './services/digest.service';
 import { startSetupReminderSweep } from './services/setupReminder.service';
 import { startReviewAlertSweep } from './services/reviewAlerts.service';
 import { startHealthAlertSweep } from './services/adminHealth.service';
+import { warnIfAuditSaltMissing } from './services/auditLeads.service';
 
 const PORT = process.env.PORT ?? 3000;
 
 async function start() {
+  warnIfAuditSaltMissing();
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });

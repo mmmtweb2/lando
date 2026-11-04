@@ -149,7 +149,7 @@ export async function startSubscription(email: string): Promise<{ redirectUrl: s
 
 // ─── A SUMIT payment was reported (return redirect, trigger, or sweep) ──────
 
-export type PaymentOutcome = 'activated' | 'failed' | 'duplicate' | 'underpaid' | 'ignored' | 'unknown';
+export type PaymentOutcome = 'activated' | 'failed' | 'duplicate' | 'conflict' | 'underpaid' | 'ignored' | 'unknown';
 
 export async function applyVerifiedPayment(
   subscriptionId: string,
@@ -163,12 +163,25 @@ export async function applyVerifiedPayment(
   const sufficient = payment.valid && payment.amount + 0.01 >= Number(row.amount);
   const kind = sufficient ? 'charge_ok' : 'charge_failed';
 
+  // One SUMIT payment id is consumed by ONE thing across the whole system (migration 044): if a
+  // one-time payment row already settled with it, it cannot also activate a subscription.
+  const { data: usedByPayment, error: payErr } = await supabase
+    .from('payments').select('id').eq('sumit_payment_id', payment.sumitPaymentId).in('status', ['paid', 'processing']).limit(1);
+  if (payErr && payErr.code !== '42P01') throw dbError(payErr);   // 42P01: no payments table at all -> nothing to collide with
+  if ((usedByPayment ?? []).length > 0) return 'conflict';
+
   // Replay guard FIRST: one SUMIT payment id can move a subscription once, ever.
   const { error: evErr } = await supabase.from('seo_subscription_events').insert({
     subscription_id: row.id, kind, sumit_payment_id: payment.sumitPaymentId, amount: payment.amount,
   });
   if (evErr) {
-    if (evErr.code === '23505') return 'duplicate';
+    if (evErr.code === '23505') {
+      // Same subscription replaying its own payment = harmless duplicate; any other owner of the id
+      // (another subscription, or a one-time payment caught by the database claim) = conflict.
+      const { data: own } = await supabase.from('seo_subscription_events').select('id')
+        .eq('sumit_payment_id', payment.sumitPaymentId).eq('subscription_id', row.id).limit(1);
+      return (own ?? []).length > 0 ? 'duplicate' : 'conflict';
+    }
     throw dbError(evErr);
   }
 

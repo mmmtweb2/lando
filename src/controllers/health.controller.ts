@@ -7,7 +7,8 @@ export async function healthCheck(_req: Request, res: Response): Promise<void> {
     .select('*', { count: 'exact', head: true });
 
   if (error && error.code !== 'PGRST116') {
-    res.status(503).json({ status: 'error', db: 'unreachable', message: error.message });
+    console.error('[HEALTH] database check failed:', error.message);
+    res.status(503).json({ status: 'error', db: 'unreachable' });
     return;
   }
 

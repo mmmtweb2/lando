@@ -26,6 +26,14 @@ router.post('/validate-coupon', requireAuth, rateLimit({
 
 // SUMIT redirects the browser back here (public — identity comes from the
 // stored payment row + server-side verification, not from the request).
-router.get('/return', paymentReturn);
+// Rate-limited per IP: every hit costs a DB read and, with a PaymentID, a server-to-server call to
+// SUMIT, and an attacker could otherwise probe PaymentIDs/refs at will. A real customer returns from
+// SUMIT once or twice, so 30 per 10 minutes leaves ample room for retries and double-clicks.
+const returnLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: 'יותר מדי בקשות. נסו שוב בעוד כמה דקות.',
+});
+router.get('/return', returnLimiter, paymentReturn);
 
 export default router;

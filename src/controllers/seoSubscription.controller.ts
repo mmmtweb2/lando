@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
 import { getPayment } from '../services/summit.service';
+import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import {
   SubError, applyVerifiedPayment, cancelSubscription, getSubscription, startSubscription,
@@ -72,6 +73,14 @@ async function verifyAndApply(subscriptionId: string, bag: Record<string, unknow
   if (!sumitPaymentId) return 'no_payment_id';
   const verified = await getPayment(sumitPaymentId);
   if (!verified) return 'unverified';   // fail closed: SUMIT could not confirm it
+  // Bind to THIS subscription: the checkout was opened with ExternalIdentifier = seo_subscriptions.id
+  // (on the payment and on the SUMIT customer). Any other valid payment of enough money is not ours.
+  const bound = evaluateBinding(verified.externalIdentifiers, subscriptionId);
+  if (!bound.ok) {
+    console.error('[SUBSCRIPTION] payment not bound to this subscription — refusing', { subscriptionId, payment: sumitPaymentId, state: bound.state });
+    return 'binding_mismatch';
+  }
+  if (bound.state === 'unverifiable') noteUnverifiable('subscription', subscriptionId);
   return applyVerifiedPayment(
     subscriptionId,
     { sumitPaymentId, valid: verified.valid, amount: verified.amount },

@@ -3,6 +3,8 @@ import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMy
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
+import { rejectOversizeBody } from '../middleware/bodyLimit';
+import { LEAD_MAX_BODY_BYTES } from '../utils/leadInput';
 import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -18,6 +20,15 @@ const leadLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 15,
   message: 'יותר מדי שליחות בזמן קצר. נסו שוב מאוחר יותר.',
+});
+
+// Second, tighter per-IP bucket keyed by IP + PAGE: one visitor/bot cannot mail-bomb a single
+// business's inbox even while staying under the per-IP bucket above.
+const leadPageLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 5,
+  key: (req) => `${req.ip || req.socket.remoteAddress || 'unknown'}|${req.params.id}`,
+  message: 'שלחתם כבר כמה פניות לדף הזה. נסו שוב מאוחר יותר.',
 });
 
 // Optional wizard intake step — one cheap Haiku call, its own (looser) budget so
@@ -82,6 +93,6 @@ router.patch('/:id', requireAuth, requireOwnPage, updateLandingPage);
 router.delete('/:id', requireAuth, requireOwnPage, deleteLandingPage);
 
 // Public, unauthenticated (visitor submitting the contact form) — rate-limited.
-router.post('/:id/lead', leadLimiter, submitLead);
+router.post('/:id/lead', leadLimiter, rejectOversizeBody(LEAD_MAX_BODY_BYTES), leadPageLimiter, submitLead);
 
 export default router;

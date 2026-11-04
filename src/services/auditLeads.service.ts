@@ -68,8 +68,42 @@ export function validateLead(body: Record<string, unknown>, isValidPlaceId: (x: 
   };
 }
 
+/**
+ * The salt for hashIp. AUDIT_IP_SALT when set. Otherwise NEVER a constant that sits in the public
+ * source (anyone could pre-compute a rainbow table of IPv4 space): it is derived with HMAC from a
+ * secret the server already has, so the hashes stay unguessable without any new configuration.
+ * Order: AUDIT_IP_SALT -> HMAC(SUPABASE_SERVICE_ROLE_KEY) -> HMAC(Supabase publishable key) ->
+ * a random per-process salt (hashes then differ between restarts — still safe, only less useful
+ * for cross-restart abuse review). Never throws.
+ */
+let cachedSalt: { value: string; source: 'env' | 'derived' | 'random' } | null = null;
+function resolveAuditSalt(): { value: string; source: 'env' | 'derived' | 'random' } {
+  if (cachedSalt) return cachedSalt;
+  const env = process.env.AUDIT_IP_SALT;
+  if (env && env.trim()) { cachedSalt = { value: env, source: 'env' }; return cachedSalt; }
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (secret) {
+    cachedSalt = { value: crypto.createHmac('sha256', secret).update('pagey-audit-ip-salt-v1').digest('hex'), source: 'derived' };
+  } else {
+    cachedSalt = { value: crypto.randomBytes(32).toString('hex'), source: 'random' };
+  }
+  return cachedSalt;
+}
+
+/** Test hook: forget the cached salt so a changed environment is picked up. */
+export function _resetAuditSaltForTests(): void { cachedSalt = null; }
+
+/** Call once at startup: one warning when AUDIT_IP_SALT is missing. Does not crash the app. */
+export function warnIfAuditSaltMissing(): void {
+  const { source } = resolveAuditSalt();
+  if (source === 'env') return;
+  console.warn(source === 'derived'
+    ? '[AUDIT] AUDIT_IP_SALT is not set — deriving the IP-hash salt from SUPABASE_SERVICE_ROLE_KEY. Set AUDIT_IP_SALT to a random value to make it explicit and stable.'
+    : '[AUDIT] AUDIT_IP_SALT is not set and no server secret is available — using a random per-process salt (IP hashes change on every restart). Set AUDIT_IP_SALT.');
+}
+
 export function hashIp(ip: string): string {
-  const salt = process.env.AUDIT_IP_SALT || 'pagey-audit';
+  const salt = resolveAuditSalt().value;
   return crypto.createHash('sha256').update(`${salt}:${ip}`).digest('hex').slice(0, 32);
 }
 

@@ -1,5 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { supabaseSession } from './utils/supabase/middleware';
@@ -12,6 +13,7 @@ import { serveTrackScript } from './controllers/seoTrack.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
 import { describeRequest, notifyOwner } from './services/alerts';
 import { recordHttp } from './services/opsMetrics.service';
+import { applyCloudflareIp } from './utils/clientIp';
 
 const app = express();
 
@@ -20,6 +22,35 @@ const app = express();
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
+
+// Baseline security headers (helmet) — deliberately CONSERVATIVE, because the same server serves the
+// SPA (GTM + inline scripts), server-rendered OG/SEO pages with inline JSON-LD, the public
+// embeddable reviews widget (/w/reviews, which sets its own CSP + drops X-Frame-Options) and the
+// tracking snippet /w/track.js that customers load from their own sites. So:
+//   ON : X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin,
+//        X-Frame-Options: SAMEORIGIN (no third party may frame the app; the widget opts out itself),
+//        HSTS (production only, 180 days, NOT includeSubDomains/preload), X-Powered-By removed,
+//        and a minimal CSP of non-script directives only: base-uri 'self', object-src 'none',
+//        frame-ancestors 'self'.
+//   OFF: any script-src/default-src CSP (it would block GTM, inline scripts, third-party embeds),
+//        Cross-Origin-Resource-Policy / -Opener-Policy / -Embedder-Policy (they would break
+//        /w/track.js and uploaded images loaded cross-origin, and popup-based sign-in/payment flows).
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      // intentional: no default-src, only the three non-script directives
+      defaultSrc: helmet.contentSecurityPolicy.dangerouslyDisableDefaultSrc,
+      baseUri: ["'self'"], objectSrc: ["'none'"], frameAncestors: ["'self'"],
+    },
+  },
+  crossOriginResourcePolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  frameguard: { action: 'sameorigin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  hsts: process.env.NODE_ENV === 'production' ? { maxAge: 15552000, includeSubDomains: false, preload: false } : false,
+}));
 
 // In production, CORS_ORIGIN MUST be set to the real front-end origin. Falling
 // back to "allow all" is only acceptable for local development — in
@@ -56,18 +87,17 @@ const ogPageLimiter = rateLimit({
   message: 'יותר מדי בקשות בזמן קצר. נסו שוב בעוד רגע.',
 });
 // Customer subdomains (cafe-dani.pagey.co.il). Cloudflare proxies the wildcard
-// record, so the TCP peer is Cloudflare — restore the real visitor IP from
-// CF-Connecting-IP (scoped to subdomain hosts only, so the apex's IP handling is
-// untouched). Only GET / is intercepted: assets, /api/* and every other path
+// record, so the TCP peer is Cloudflare (or our reverse proxy relaying it) — restore the
+// real visitor IP from CF-Connecting-IP, but only for requests that provably came from
+// Cloudflare (scoped to subdomain hosts only, so the apex's IP handling is untouched). Only GET / is intercepted: assets, /api/* and every other path
 // fall through to the normal static/API/SPA handlers on the same host.
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const sub = subdomainFromHost(req.hostname);
   if (!sub) { next(); return; }
 
-  const cfIp = req.headers['cf-connecting-ip'];
-  if (typeof cfIp === 'string' && cfIp) {
-    Object.defineProperty(req, 'ip', { value: cfIp, configurable: true });
-  }
+  // CF-Connecting-IP is honoured ONLY when the request provably came from Cloudflare
+  // (utils/clientIp.ts); otherwise a client hitting the origin directly could pick its own IP.
+  applyCloudflareIp(req);
 
   if (req.method !== 'GET' || req.path !== '/') { next(); return; }
 

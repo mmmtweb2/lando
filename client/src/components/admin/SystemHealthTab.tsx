@@ -1,4 +1,5 @@
 import { Card, Stat, State } from './adminUi';
+import GbpDiagnosis from './GbpDiagnosis';
 import { day, useAdminData, type Fetcher } from './adminData';
 
 interface Health {
@@ -59,6 +60,8 @@ export default function SystemHealthTab({ adminFetch }: { adminFetch: Fetcher })
           </ul>
         )}
       </Card>
+
+      <GbpDiagnosis adminFetch={adminFetch} />
 
       <Card title="Google Business Profile ו-SUMIT">
         <dl className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">

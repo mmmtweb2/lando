@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
+import { serverError } from '../utils/httpErrors';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin dashboard: customer list + revenue overview.
@@ -35,7 +36,7 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
     .select('email, created_at, plan, plan_expires_at, credits, page_credits, page_credits_total, white_label, is_admin')
     .order('created_at', { ascending: false });
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[ADMINSTATS]'); return; }
 
   // One extra query for page counts per owner rather than N+1 lookups.
   const { data: pages, error: pagesError } = await supabase
@@ -43,7 +44,7 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
     .select('owner_email, status')
     .is('parent_id', null);
 
-  if (pagesError) { res.status(500).json({ error: pagesError.message }); return; }
+  if (pagesError) { serverError(res, pagesError, '[ADMINSTATS]'); return; }
 
   const counts = new Map<string, { total: number; published: number }>();
   for (const row of (pages ?? []) as { owner_email: string | null; status: string }[]) {
@@ -83,7 +84,7 @@ export async function getRevenueStats(_req: Request, res: Response): Promise<voi
     .eq('status', 'paid')
     .order('created_at', { ascending: false });
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[ADMINSTATS]'); return; }
 
   const rows = (data ?? []) as PaymentRevenueRow[];
 
@@ -170,7 +171,7 @@ export async function getSiteTraffic(_req: Request, res: Response): Promise<void
     .gte('created_at', ninetyDaysAgo)
     .order('created_at', { ascending: false });
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[ADMINSTATS]'); return; }
 
   const rows = (data ?? []) as SiteVisitRow[];
 
@@ -281,7 +282,7 @@ export async function getFunnelStats(_req: Request, res: Response): Promise<void
     .gte('created_at', thirtyDaysAgo)
     .order('created_at', { ascending: false });
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[ADMINSTATS]'); return; }
 
   const rows = (data ?? []) as FunnelEventRow[];
 

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
-import { gbpAllowedFor, gbpConnectEnabled, gbpOAuthConfig } from '../config/gbp';
-import { decryptToken, encryptToken, signState, verifyState } from '../services/gbpCrypto';
+import { GBP_CALLBACK_PATH, gbpAllowedFor, gbpConnectEnabled, gbpOAuthConfig } from '../config/gbp';
+import { decryptToken, encryptToken, newBrowserNonce, signState, stateMatchesBrowser, verifyState } from '../services/gbpCrypto';
 import {
   GbpError, accessTokenFrom, authUrl, exchangeCode, fetchTotals, listLocations, pickLocation, revokeToken,
 } from '../services/gbpGoogle';
@@ -35,24 +35,62 @@ export async function status(req: Request, res: Response): Promise<void> {
   } catch { res.json({ enabled: true, connected: false, needsReconnect: false }); }
 }
 
+// OAuth login-CSRF defence. The signed `state` alone only proves WHICH ACCOUNT started the flow, not
+// that the browser finishing it is the same one: an attacker could start a flow on their own
+// account, then lure a logged-in victim to the resulting callback URL. So start also sets a
+// short-lived httpOnly SameSite=Lax cookie holding a random nonce; the state carries its hash and
+// the callback requires both to match. The cookie is scoped to the callback path, cleared on every
+// callback (single use), and each state may complete only once.
+export const GBP_NONCE_COOKIE = 'gbp_oauth_nonce';
+const NONCE_TTL_MS = 10 * 60 * 1000;
+const nonceCookieOpts = () => ({
+  httpOnly: true,
+  sameSite: 'lax' as const,           // Lax: the cookie must accompany Google's top-level GET redirect back to us
+  secure: process.env.NODE_ENV === 'production',
+  path: GBP_CALLBACK_PATH,
+  ...(process.env.GBP_COOKIE_DOMAIN ? { domain: process.env.GBP_COOKIE_DOMAIN } : {}),
+});
+
+/** state `n` values already redeemed (in memory, like the rate limiter; entries expire with the state). */
+const usedStates = new Map<string, number>();
+function markStateUsed(n: string, now = Date.now()): boolean {
+  for (const [k, exp] of usedStates) if (exp < now) usedStates.delete(k);
+  if (usedStates.has(n)) return false;
+  usedStates.set(n, now + NONCE_TTL_MS + 60_000);
+  return true;
+}
+
 /** GET /api/seo/gbp/oauth/start — returns the Google consent URL (the page then navigates to it). */
 export async function start(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { needAuth(res); return; }
   const cfg = gbpOAuthConfig();
   if (!cfg || !gbpAllowedFor(email)) { disabled(res); return; }
-  res.json({ url: authUrl(cfg, signState(email, cfg.key)) });
+  const nonce = newBrowserNonce();
+  res.cookie(GBP_NONCE_COOKIE, nonce, { ...nonceCookieOpts(), maxAge: NONCE_TTL_MS });
+  res.json({ url: authUrl(cfg, signState(email, cfg.key, Date.now(), NONCE_TTL_MS, nonce)) });
 }
 
-/** GET /api/seo/gbp/oauth/callback — the browser comes back from Google. Public by nature; trusts only the signed state. */
+/** GET /api/seo/gbp/oauth/callback — the browser comes back from Google. Public by nature; trusts only the signed state bound to this browser's cookie. */
 export async function callback(req: Request, res: Response): Promise<void> {
   const to = (s: string) => res.redirect(`${APP_URL}/dashboard?gbp=${s}`);
+  const cookies = (req as Request & { cookies?: Record<string, unknown> }).cookies;
+  const cookieNonce = cookies?.[GBP_NONCE_COOKIE];
+  // Single use: whatever happens next, this browser's nonce is spent.
+  res.clearCookie(GBP_NONCE_COOKIE, nonceCookieOpts());
   const cfg = gbpOAuthConfig();
   if (!cfg) { to('error'); return; }
   if (typeof req.query.error === 'string') { to('denied'); return; }
   const st = verifyState(req.query.state, cfg.key);
   const code = typeof req.query.code === 'string' ? req.query.code : '';
   if (!st || !code || code.length > 2000 || !gbpAllowedFor(st.email)) { to('error'); return; }
+  // Browser binding: a missing cookie, a wrong cookie, or a state minted without a binding all fail.
+  if (!stateMatchesBrowser(st, cookieNonce)) {
+    console.warn('[GBP] callback refused: state is not bound to this browser (missing/mismatched nonce cookie)');
+    to('error');
+    return;
+  }
+  if (!markStateUsed(st.n)) { console.warn('[GBP] callback refused: state already used'); to('error'); return; }
   try {
     const { refreshToken, scope } = await exchangeCode(code, cfg);
     await saveConnection(st.email, encryptToken(refreshToken, cfg.key), scope);
@@ -107,10 +145,10 @@ export async function stats(req: Request, res: Response): Promise<void> {
     if (e instanceof GbpError && /:http_429:/.test(e.message)) {
       // Google gives new Business Profile API projects a 0 requests/minute quota until the access request is approved.
       console.error('[GBP] quota:', e.message.slice(0, 200));
-      res.status(503).json({ error: 'ממשק Business Profile של גוגל עדיין לא אושר לפרויקט. החיבור תקין, והנתונים יופיעו אחרי אישור גוגל.', code: 'quota_pending', detail: e.message.slice(0, 300) });
+      res.status(503).json({ error: 'ממשק Business Profile של גוגל עדיין לא אושר לפרויקט. החיבור תקין, והנתונים יופיעו אחרי אישור גוגל.', code: 'quota_pending' });
       return;
     }
-    if (e instanceof GbpError) { console.error('[GBP] google error:', e.message); res.status(502).json({ error: 'לא הצלחנו לקרוא את הנתונים מגוגל. נסו שוב בעוד כמה דקות.', code: 'google_error', detail: e.message.slice(0, 300) }); return; }
+    if (e instanceof GbpError) { console.error('[GBP] google error:', e.message); res.status(502).json({ error: 'לא הצלחנו לקרוא את הנתונים מגוגל. נסו שוב בעוד כמה דקות.', code: 'google_error' }); return; }
     fail(res, e);
   }
 }
