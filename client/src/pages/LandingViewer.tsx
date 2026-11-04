@@ -400,6 +400,7 @@ function EditableImage({
   canEdit,
   onEditClick,
   darken = false,
+  collapseEmpty = false,
 }: {
   src?: string | null;
   primaryColor: string;
@@ -411,9 +412,27 @@ function EditableImage({
   canEdit: boolean;
   onEditClick: () => void;
   darken?: boolean;
+  /** Optional slots (service/portfolio photos): with no image, take NO space on the public page,
+      and show only a slim "add image" strip in edit mode. Reserving a big placeholder for a photo
+      that does not exist reads as a broken gap (reported: one uploaded photo left empty areas). */
+  collapseEmpty?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const editable = isEditingMode && canEdit;
+
+  if (!src && collapseEmpty) {
+    if (!editable) return null;
+    return (
+      <button
+        type="button"
+        onClick={onEditClick}
+        className="w-full h-14 flex items-center justify-center gap-2 border-2 border-dashed rounded-xl text-xs font-bold transition hover:bg-black/5"
+        style={{ borderColor: `${primaryColor}66`, color: primaryColor }}
+      >
+        <Camera size={14} /> הוסף תמונה
+      </button>
+    );
+  }
 
   return (
     <div
@@ -1638,7 +1657,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       <motion.div key={s.id} variants={V.classic.item}
         className={`group ${theme.cardRadius} ${cardGlass} flex flex-col overflow-hidden transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl`}
         style={techCard}>
-        <EditableImage src={svcImages[i]} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+        <EditableImage collapseEmpty src={svcImages[i]} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
           className="w-full h-56 md:h-64" style={imgTreatmentStyle} isEditingMode={isEditingMode} canEdit={!!canEdit}
           onEditClick={() => openImageModal(`service_${i}`)} />
         <div className="flex flex-col gap-3 p-6 pt-4">
@@ -1726,7 +1745,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           <motion.div variants={V.bento.cell} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {services.map((s, i) => (
               <div key={s.id} className={`${theme.cardRadius} bg-white/80 md:backdrop-blur-sm border border-white/60 shadow-md flex flex-col overflow-hidden transition-[translate,box-shadow] duration-300 hover:-translate-y-1.5 hover:shadow-xl`} style={techCard}>
-                <EditableImage src={isAiFormat ? iconUrls[i] : legacyImages[i + 2]}
+                <EditableImage collapseEmpty src={isAiFormat ? iconUrls[i] : legacyImages[i + 2]}
                   primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                   className="w-full h-48" isEditingMode={isEditingMode} canEdit={!!canEdit}
                   onEditClick={() => openImageModal(`service_${i}`)} />
@@ -1831,7 +1850,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                       viewport={{ once: true, margin: '-80px' }}
                       transition={{ duration: 0.6, delay: i * 0.14, ease: EASE_SMOOTH }}
                       className={`h-full flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 md:backdrop-blur-sm border border-white/60 shadow-md transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl`}>
-                      <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                      <EditableImage collapseEmpty src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                         className="w-full h-56 md:h-64"
                         isEditingMode={isEditingMode} canEdit={!!canEdit}
                         onEditClick={() => openImageModal(`service_${i}`)} />
@@ -2662,6 +2681,19 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     const bg = isAlt ? sectionBgAlt : sectionBg;
     const n = services.length;
     const cols = n === 4 ? 'lg:grid-cols-4' : n === 2 ? '' : 'lg:grid-cols-3';
+    // Photos go on the cards only when EVERY service has one. With just some (e.g. one uploaded
+    // photo), the cards without a photo stretch to the tall one's height and look like a broken
+    // gap. In that case the cards stay compact and the photos that exist are shown in their own
+    // band under the cards (so an uploaded image is never silently dropped).
+    const imgFor = (i: number) => serviceImageSource[i] || null;
+    const allHaveImages = services.every((_, i) => !!imgFor(i));
+    const loose = services.map((_, i) => ({ i, src: imgFor(i) })).filter((x) => !!x.src);
+    const canAdd = isEditingMode && !!canEdit;
+    const firstEmpty = services.findIndex((_, i) => !imgFor(i));
+    const bandItems = [
+      ...loose.map((x) => ({ i: x.i, src: x.src as string | null })),
+      ...(canAdd && firstEmpty >= 0 ? [{ i: firstEmpty, src: null as string | null }] : []),
+    ];
     return (
       <motion.section className="px-6 py-24" style={bg ?? { backgroundColor: '#fafafa' }}
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
@@ -2673,15 +2705,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           </motion.div>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${cols} gap-6 ${n === 1 ? 'max-w-xl mx-auto' : ''}`}>
             {services.map((s, i) => {
-              const img = serviceImageSource[i];
+              const img = allHaveImages ? imgFor(i) : null;
               return (
                 <motion.div key={s.id ?? i} variants={V.classic.item}
                   className={`group relative overflow-hidden ${theme.cardRadius} bg-white flex flex-col gap-4 p-7 border shadow-sm transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl cursor-default`}
                   style={{ borderColor: `${primary}1f` }}>
                   <div className="absolute top-0 inset-x-0 h-1 origin-right scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
                     style={{ backgroundImage: `linear-gradient(to left, ${primary}, ${accent})` }} />
-                  {(img || (isEditingMode && !!canEdit)) && (
-                    <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                  {allHaveImages && (
+                    <EditableImage collapseEmpty src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                       className="w-[calc(100%+3.5rem)] -mx-7 -mt-7 h-44" style={imgTreatmentStyle}
                       isEditingMode={isEditingMode} canEdit={!!canEdit}
                       onEditClick={() => openImageModal(`service_${i}`)} />
@@ -2702,6 +2734,18 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               );
             })}
           </div>
+          {!allHaveImages && bandItems.length > 0 && (
+            <div className={`mt-8 grid gap-4 mx-auto ${bandItems.length === 1 ? 'grid-cols-1 max-w-xl' : bandItems.length === 2 ? 'grid-cols-1 sm:grid-cols-2 max-w-3xl' : 'grid-cols-1 sm:grid-cols-3'}`}>
+              {bandItems.map((x) => (
+                <motion.div key={x.i} variants={V.classic.item} className={`overflow-hidden ${theme.cardRadius} shadow-md`} style={imgTreatmentStyle}>
+                  <EditableImage collapseEmpty src={x.src} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                    className="w-full aspect-[4/3]" style={imgTreatmentStyle}
+                    isEditingMode={isEditingMode} canEdit={!!canEdit}
+                    onEditClick={() => openImageModal(`service_${x.i}`)} />
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </motion.section>
     );
@@ -3002,7 +3046,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   viewport={{ once: true, margin: '-80px' }}
                   transition={{ duration: 0.6, delay: i * 0.14, ease: EASE_SMOOTH }}
                   className={`flex flex-col gap-3 ${theme.cardRadius} overflow-hidden bg-white/80 md:backdrop-blur-sm border border-white/60 transition-[translate,box-shadow] duration-300 hover:-translate-y-2 hover:shadow-2xl ${i === 0 ? 'shadow-xl' : 'shadow-md'}`}>
-                  <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                  <EditableImage collapseEmpty src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
                     className={`w-full ${i === 0 ? 'h-72 md:h-80' : 'h-52 md:h-60'}`}
                     style={imgTreatmentStyle}
                     isEditingMode={isEditingMode} canEdit={!!canEdit}
@@ -3050,16 +3094,19 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             {services.map((s, i) => {
               const img = isAiFormat ? iconUrls[i] : legacyImages[i + 2];
               const reversed = i % 2 === 1;
+              const hasImg = !!img || (isEditingMode && !!canEdit);
               return (
                 <motion.div key={s.id} variants={V.classic.item}
-                  className="group grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                  <div className={`${theme.cardRadius} overflow-hidden min-h-56 lg:min-h-72 ${reversed ? 'lg:order-last' : ''}`}
+                  className={`group grid grid-cols-1 gap-8 items-center ${hasImg ? 'lg:grid-cols-2' : 'max-w-2xl mx-auto w-full'}`}>
+                  {hasImg && (
+                  <div className={`${theme.cardRadius} overflow-hidden ${img ? 'min-h-56 lg:min-h-72' : ''} ${reversed ? 'lg:order-last' : ''}`}
                     style={imgTreatmentStyle}>
-                    <EditableImage src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
-                      className="w-full h-full min-h-56 lg:min-h-72" style={imgTreatmentStyle}
+                    <EditableImage collapseEmpty src={img} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                      className={`w-full h-full ${img ? 'min-h-56 lg:min-h-72' : ''}`} style={imgTreatmentStyle}
                       isEditingMode={isEditingMode} canEdit={!!canEdit}
                       onEditClick={() => openImageModal(`service_${i}`)} />
                   </div>
+                  )}
                   <div className={`flex flex-col gap-3 ${reversed ? 'lg:order-first' : ''}`}>
                     <div className={`w-11 h-11 ${theme.badgeRadius} flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6`}
                       style={{ backgroundImage: `linear-gradient(135deg, ${primary}, ${accent})`, color: '#fff' }}>
