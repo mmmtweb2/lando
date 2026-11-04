@@ -62,11 +62,12 @@ export function useSeoOverview(): SeoOverview {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [biz, leads, sub, gbp, setup] = await Promise.all([
+      const [biz, leads, sub, gbp, premium, setup] = await Promise.all([
         json<{ businesses?: { id: string; name: string; google_place_id?: string | null }[] }>('/api/seo/businesses'),
         json<{ items?: LeadFeedItem[]; summary?: LeadsSummary }>('/api/landing/my-leads'),
         json<{ subscription?: { status: 'active' | 'past_due' | 'canceled' } | null }>('/api/seo/subscription'),
         json<{ enabled?: boolean }>('/api/seo/gbp/status'),
+        json<{ premium?: boolean; expectedBy?: string | null }>('/api/seo/premium'),
         authFetch('/api/seo/setup').then(async (r) => ({ status: r.status, body: r.ok ? ((await r.json()) as { steps?: string[] }) : null })).catch(() => ({ status: 0, body: null })),
       ]);
       const first = biz?.businesses?.[0] ?? null;
@@ -104,6 +105,7 @@ export function useSeoOverview(): SeoOverview {
           loaded: true,
           businessName: first?.name ?? null,
           hasBusiness: !!first,
+          premium: premium?.premium === true ? { expectedBy: premium.expectedBy ?? null } : null,
           placeId: first?.google_place_id ?? null,
           businessId: first?.id ?? null,
           contentCount,

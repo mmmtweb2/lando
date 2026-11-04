@@ -69,6 +69,7 @@ export interface JobSpec { job: string; label: string; everyHours: number }
 /** Sweeps and how often each is expected to run; `late` = no success for two periods. */
 export const JOBS: JobSpec[] = [
   { job: 'digest', label: 'סיכום חודשי במייל', everyHours: 6 },
+  { job: 'setup_reminder', label: 'תזכורת הקמה במייל', everyHours: 6 },
   { job: 'review_alerts', label: 'התראות ביקורות', everyHours: 6 },
   { job: 'subscriptions', label: 'מנויים (סליקה)', everyHours: 6 },
 ];

@@ -7,7 +7,7 @@ import NoProfileGuide from '../components/NoProfileGuide';
 import { Segments, Who } from './ui';
 import type { OverviewInput } from './journey';
 import {
-  GOOGLE_BUSINESS_URL, GUIDED_COPY, GUIDED_TOTAL, SUCCESS_MS, cardTexts, deriveGuided, minutesText, parseSkips, successLine, withSkip,
+  GOOGLE_BUSINESS_URL, GUIDED_COPY, inOurHandsText, GUIDED_TOTAL, SUCCESS_MS, cardTexts, deriveGuided, minutesText, parseSkips, successLine, withSkip,
   type GuidedId, type StepCopy, type SuccessLine,
 } from './guided';
 
@@ -222,6 +222,19 @@ function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
     case 'connect': return <ConnectBody onSaved={onSaved} />;
     case 'first_check': return <CheckBody placeId={input.placeId} onScore={onScore} onDone={onAutoDone} />;
     case 'profile_details':
+      if (input.premium) {
+        return (
+          <div className="flex flex-col gap-3">
+            <p className="inline-flex self-start rounded-full bg-[var(--tint)] px-3 py-1 text-sm font-bold text-[var(--accent-strong)]">{inOurHandsText(input.premium.expectedBy)}</p>
+            <p className="text-sm text-[var(--muted)]">אין מה לעשות בצעד הזה עד שנסיים. אחר כך אפשר לראות את הכרטיס בגוגל ולאשר כאן.</p>
+            {input.placeId && (
+              <a href={`https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(input.placeId)}`} target="_blank" rel="noopener noreferrer" className="dv2-btn-ghost self-start">
+                צפייה בכרטיס בגוגל מפות <ExternalLink size={16} aria-hidden /> <span className="sr-only">(נפתח בלשונית חדשה)</span>
+              </a>
+            )}
+          </div>
+        );
+      }
       return (
         <div className="flex flex-col gap-3">
           <GoogleLink>פתיחת הכרטיס שלך בגוגל</GoogleLink>
@@ -248,14 +261,14 @@ function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
 
 /* ---------- screens ---------- */
 
-export function Facts({ s, now }: { s: Pick<StepCopy, 'what' | 'why' | 'minutes' | 'who'>; now: boolean }) {
+export function Facts({ s, now, when }: { s: Pick<StepCopy, 'what' | 'why' | 'minutes' | 'who'>; now: boolean; when?: string }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[15px]">
       <dt className="font-bold text-[var(--ink)]">מה עושים</dt><dd className="text-[var(--ink)]">{s.what}</dd>
       <dt className="font-bold text-[var(--ink)]">למה</dt><dd className="text-[var(--muted)]">{s.why}</dd>
       <dt className="font-bold text-[var(--ink)]">כמה זמן</dt><dd className="text-[var(--muted)]">{minutesText(s.minutes)}</dd>
       <dt className="font-bold text-[var(--ink)]">מי עושה</dt><dd><Who who={s.who} /></dd>
-      <dt className="font-bold text-[var(--ink)]">מתי</dt><dd className="text-[var(--muted)]">{now ? 'עכשיו' : 'אחר כך'}</dd>
+      <dt className="font-bold text-[var(--ink)]">מתי</dt><dd className="text-[var(--muted)]">{when ?? (now ? 'עכשיו' : 'אחר כך')}</dd>
     </dl>
   );
 }
@@ -344,7 +357,7 @@ export default function GuidedSetup({ input, email, ticksOnServer, setTick, relo
       </section>
 
       <section className="dv2-card flex flex-col gap-4 p-4 sm:p-5">
-        <Facts s={cur} now />
+        <Facts s={cur} now when={input.premium && cur.id === 'profile_details' ? inOurHandsText(input.premium.expectedBy) : undefined} />
         <hr className="border-[var(--line)]" />
         <StepBody
           id={cur.id} input={input}
@@ -357,7 +370,7 @@ export default function GuidedSetup({ input, email, ticksOnServer, setTick, relo
         {!cur.auto && (
           confirming ? (
             <div className="flex flex-col gap-2 rounded-[10px] bg-[var(--tint)] p-3" role="group" aria-label="אישור">
-              <p className="text-[15px] font-bold text-[var(--ink)]">הכול מוכן? אחרי האישור עוברים לצעד הבא.</p>
+              <p className="text-[15px] font-bold text-[var(--ink)]">{cur.confirm ?? 'הכול מוכן? אחרי האישור עוברים לצעד הבא.'}</p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="dv2-btn" onClick={() => void setTick(cur.id, true)}>כן, סיימתי</button>
                 <button type="button" className="dv2-btn-ghost" onClick={() => setConfirmFor(null)}>עוד לא</button>

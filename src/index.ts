@@ -7,6 +7,7 @@ import { supabase } from './config/supabase';
 import { startRenewalSweep } from './services/renewal.service';
 import { startSubscriptionSweep } from './services/seoSubscription.service';
 import { startDigestSweep } from './services/digest.service';
+import { startSetupReminderSweep } from './services/setupReminder.service';
 import { startReviewAlertSweep } from './services/reviewAlerts.service';
 import { startHealthAlertSweep } from './services/adminHealth.service';
 import { warnIfAuditSaltMissing } from './services/auditLeads.service';
@@ -35,6 +36,8 @@ async function start() {
   startSubscriptionSweep();
   // Monthly summary email to customers. No-op unless MONTHLY_DIGEST_ENABLED=true (+ DIGEST_SECRET).
   startDigestSweep();
+  // One reminder email to a customer who stopped mid-setup. No-op unless SETUP_REMINDER_ENABLED=true (+ DIGEST_SECRET).
+  startSetupReminderSweep();
   startReviewAlertSweep();
   startHealthAlertSweep();
 }

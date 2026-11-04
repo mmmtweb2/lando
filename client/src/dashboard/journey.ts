@@ -25,6 +25,8 @@ export interface OverviewInput {
   /** the connected business: Google place id and our id (null when none) */
   placeId?: string | null;
   businessId?: string | null;
+  /** manual-premium customer: we fill in the card, the customer approves (null/absent = regular) */
+  premium?: { expectedBy: string | null } | null;
   subscriptionStatus: 'active' | 'past_due' | 'canceled' | null;
   /** keys the customer ticked (ManualKey plus 'phase2_ack') */
   ticks: string[];
