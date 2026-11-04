@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   SEEN_KEY, WHAT_PROMOTES_CLOSING, WHAT_PROMOTES_INTRO, WHAT_PROMOTES_POINTS, WHAT_PROMOTES_SOURCE, WHAT_PROMOTES_TITLE, initialOpen,
-} from '../client/src/dashboard/whatPromotes';
+} from '../client/src/dashboard/whatPromotesData';
 
 // 1. first visit opens, every later visit is collapsed
 assert.equal(initialOpen(null), true);
