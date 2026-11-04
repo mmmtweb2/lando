@@ -917,6 +917,14 @@ quota cap there.
 - **לפני הדלקה:** בדיקה משפטית של מייל תזכורת. בדיקות: `scripts/test-setup-reminder.ts` (כולל השוואה לצעדים בצד הלקוח), `test-premium-status.ts`, והרחבות ב-`test-guided.ts`, `test-admin-ops.ts`.
 - **נגיעות:** `index.ts` (הפעלת הסוויפ), `opsMetrics.service` (שורה ב-JOBS), `adminHealth.service` (מפת enabled), `adminOps`/`adminSeo.controller` (expected_by). בלי payment/auth/coupon/app.ts.
 
+## חלק 80 – דף נחיתה מנתוני העסק בגוגל (משימה #16, קובי)
+מה נוסף: כפתור שיוצר דף נחיתה כטיוטה ממה שכבר ידוע על העסק בגוגל. ללא מיגרציה וללא משתני סביבה חדשים.
+- **שרת:** `GET /api/landing/prefill-from-google/:businessId` (`landing.routes.ts`, אחרי `requireAuth`, מוגבל ל-10 בדקה). בודק שהעסק שייך למשתמש (`listBusinesses`), שולף פעם אחת דרך `fetchPlace` הקיים (בלי לשנות את `places.service`) ומחזיר רק: שם, טלפון, כתובת, שעות כטקסט, קטגוריה, אתר. בלי תמונות, בלי ביקורות ובלי שמירה בשרת. מגבלה: 3 שליפות ליום לחשבון (בזיכרון השרת, מתאפסת באתחול). קוד שגיאה `no_place` כשאין כרטיס מחובר, `daily_limit` בחריגה.
+- **לקוח:** באשף (`/create?from=google&business=ID`) הטופס מתמלא מראש, והמשתמש רואה ועורך הכול. באנר קבוע לפני ואחרי היצירה: "זו טיוטה שנוצרה מנתונים משוערים מגוגל. עבור עליה ותקן לפני פרסום." הדף נוצר כטיוטה כרגיל ולא מתפרסם אוטומטית. כרטיס `GoogleDraftCard` ב"הדפים שלי" מציג כפתור לכל עסק מחובר עם כרטיס בגוגל וללא דף מקושר.
+- **נגיעות:** `landingPrefill.service.ts`, `landingPrefill.controller.ts`, `landing.routes.ts`, `Wizard.tsx`, `Dashboard.tsx`, `GoogleDraftCard.tsx`, `scripts/test-landing-prefill.ts`.
+- **נבדק:** סקריפט המיפוי והמגבלה עובר; בדפדפן ב-375px (באנר, כרטיס, בלי גלילה אופקית). קישור מבית דשבורד הקידום (`client/src/dashboard` של איציק) לא נוסף, ממתין לאישור.
+- **לבדיקה משפטית:** שימוש בנתוני Places: המשתמש רואה ומאשר לפני יצירה והנתונים נשמרים רק כתוכן שהוא אישר.
+
 ## Part 81 — Task #18: "מה מקדם עסק בגוגל", a collapsible explainer on the dashboard home (no migration)
 
 - **מה זה:** בלוק קטן ובולט, מתקפל, עם הטקסט של דוד כפי שאושר (גוגל מחליטה לפי התאמה, מרחק והיכרות; מה אנחנו עושים בכל אחד; אי אפשר לשלם לגוגל על דירוג, לכן אין הבטחת מקום). מתחתיו שורת "מקור: מרכז העזרה של גוגל" עם קישור ל-https://support.google.com/business/answer/7091 בלשונית חדשה (`rel="noopener noreferrer"`). בלי לוגו של גוגל ובלי רמז לשיתוף פעולה.

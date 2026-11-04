@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useUser } from '../context/UserContext';
 import { LandoBot } from './Lando';
@@ -818,6 +818,7 @@ function LoadingPreview({ designStyle }: { designStyle: DesignStyle }) {
 export default function Wizard() {
   const { user, isAuthReady } = useUser();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     if (isAuthReady && !user) {
@@ -926,6 +927,53 @@ export default function Wizard() {
     }, 600);
     return () => clearTimeout(t);
   }, [form, step, intakeAnswers, user, result]);
+
+  // ── Prefill from the business's Google card (?from=google&business=ID) ──────
+  // Fetches the owner's own business details once, fills only the plain-text
+  // fields the user can see and edit, and keeps a persistent "this is a draft
+  // from approximate Google data" notice up before AND after creation. Nothing
+  // is imported silently: no photos, no reviews; the page is created as a draft.
+  const [prefillNotice, setPrefillNotice] = useState<string | null>(null);
+  const [prefillError, setPrefillError] = useState<string | null>(null);
+  const prefillStartedRef = useRef(false);
+  const fromGoogleBusinessId = searchParams.get('from') === 'google' ? (searchParams.get('business') ?? '') : '';
+  useEffect(() => {
+    if (!fromGoogleBusinessId || !isAuthReady || !user || prefillStartedRef.current) return;
+    if (!/^[0-9a-f-]{8,64}$/i.test(fromGoogleBusinessId)) return;
+    prefillStartedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch(`/api/landing/prefill-from-google/${encodeURIComponent(fromGoogleBusinessId)}`);
+        const body = (await res.json().catch(() => ({}))) as {
+          prefill?: { business_name?: string; phone_number?: string; address?: string; business_hours?: string; category?: string; website?: string };
+          notice?: string;
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok || !body.prefill) {
+          setPrefillError(body.error ?? 'לא הצלחנו למשוך את נתוני העסק מגוגל. אפשר למלא ידנית.');
+          return;
+        }
+        const pf = body.prefill;
+        // Google data wins over a stale saved draft for the fields it provides.
+        setForm((prev) => ({
+          ...prev,
+          business_name: pf.business_name || prev.business_name,
+          phone_number: pf.phone_number || prev.phone_number,
+          address: pf.address || prev.address,
+          business_hours: pf.business_hours || prev.business_hours,
+          external_link: pf.website || prev.external_link,
+          vibe: prev.vibe.trim() ? prev.vibe : (pf.category ?? ''),
+        }));
+        setPrefillNotice(body.notice ?? 'זו טיוטה שנוצרה מנתונים משוערים מגוגל. עבור עליה ותקן לפני פרסום.');
+        trackEvent('landing_prefill_google');
+      } catch {
+        if (!cancelled) setPrefillError('לא הצלחנו למשוך את נתוני העסק מגוגל. אפשר למלא ידנית.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fromGoogleBusinessId, isAuthReady, user]);
 
   // A successfully created page ends the draft.
   useEffect(() => {
@@ -1369,6 +1417,23 @@ export default function Wizard() {
           <h1 className="text-2xl font-extrabold mt-1" style={{ color: 'var(--navy)' }}>בואו נבנה את הדף שלכם</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>ספרו ל-Pagey על העסק — והוא בונה את השאר</p>
         </div>
+
+        {(prefillNotice || prefillError) && (
+          <div
+            role="status"
+            className={`mb-5 rounded-xl border px-4 py-3 text-sm leading-relaxed ${
+              prefillNotice ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-600'
+            }`}
+          >
+            {prefillNotice ?? prefillError}
+            {prefillNotice && !result && (
+              <span className="block mt-1 text-xs opacity-80">הפרטים מולאו מראש ואפשר לערוך כל שדה. הדף ייווצר כטיוטה ולא יתפרסם אוטומטית.</span>
+            )}
+            {prefillNotice && result && (
+              <span className="block mt-1 text-xs opacity-80">הדף נוצר כטיוטה ועדיין לא מפורסם. בדקו אותו ותקנו לפני פרסום.</span>
+            )}
+          </div>
+        )}
 
         {/* Two-column grid — RTL: first child = right (form), second child = left (preview) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">

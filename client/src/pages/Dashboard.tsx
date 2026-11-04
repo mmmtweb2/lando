@@ -9,6 +9,7 @@ import {
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
+import GoogleDraftCard from '../components/GoogleDraftCard';
 import { shareUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
@@ -1316,6 +1317,7 @@ export default function Dashboard() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.18 }}
                   >
+                    {activeTab === 'pages' && !dataLoading && !dataError && <GoogleDraftCard />}
                     {dataError ? (
                       <div className="rounded-xl border border-dashed border-red-200 bg-red-50/50 p-12 flex flex-col items-center gap-3 text-center">
                         <p className="text-sm font-semibold text-red-700">משהו השתבש בטעינת הנתונים</p>
