@@ -1,5 +1,6 @@
 import multer, { MulterError } from 'multer';
 import { Request, Response, NextFunction } from 'express';
+import { MAX_UPLOAD_IMAGES } from '../services/imageSlots';
 
 const multerInstance = multer({
   storage: multer.memoryStorage(),
@@ -12,7 +13,7 @@ const multerInstance = multer({
 
 const fields = multerInstance.fields([
   { name: 'logo', maxCount: 1 },
-  { name: 'user_images', maxCount: 3 },
+  { name: 'user_images', maxCount: MAX_UPLOAD_IMAGES },
 ]);
 
 // Wraps multer so MulterError (LIMIT_FILE_SIZE, etc.) returns a clean JSON 400

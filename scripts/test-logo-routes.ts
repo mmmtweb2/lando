@@ -8,6 +8,7 @@ const src = readFileSync(join(__dirname, '..', 'src/routes/landing.routes.ts'), 
 for (const [needle, label] of [
   ["router.post('/:id/update-logo'", 'update-logo'],
   ["router.delete('/:id/logo'", 'delete logo'],
+  ["router.delete('/:id/image/:slot'", 'delete image'],
 ]) {
   const line = src.split('\n').find((l) => l.includes(needle)) ?? '';
   ok(line, `${label} route exists`);

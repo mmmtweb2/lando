@@ -4,7 +4,7 @@ import { shareUrl } from '../lib/pageUrl';
 import { PRICING, perPage } from '../config/pricing';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft, X, Plus } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -114,7 +114,12 @@ interface AiContent {
 interface AiImageStore {
   hero_image_url: string | null;
   icon_urls: string[];
+  gallery_urls?: string[];
 }
+
+/** Array-store gallery photos start after hero, about and the 6 service slots (see src/services/imageSlots.ts). */
+const GALLERY_ARRAY_OFFSET = 8;
+const MAX_GALLERY_IMAGES = 6;
 
 interface LandingPage {
   canonical_url?: string; // server-computed indexed URL (/b/...)
@@ -1335,10 +1340,25 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
    *  Keyed by page id because CouponField quotes one price per reference. */
   const publishQuote = (page && publishCoupon) ? (publishCoupon.quotes[page.id] ?? null) : null;
 
+  async function removeGalleryImage(i: number) {
+    if (!page) return;
+    try {
+      const r = await authFetch(`/api/landing/${page.id}/image/gallery_${i}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('remove failed');
+      const d = (await r.json()) as { user_images: string };
+      setPage((prev) => prev ? { ...prev, user_images: d.user_images } : prev);
+    } catch {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2500);
+    }
+  }
+
   function openImageModal(slot: string) {
     let prompt = '';
     if (slot === 'hero') {
       prompt = ai_content.hero?.hero_image_prompt ?? `${business_name} - תמונה ראשית מקצועית`;
+    } else if (slot.startsWith('gallery_')) {
+      prompt = `${business_name} - תמונה מקצועית לגלריה`;
     } else {
       const idx = parseInt(slot.replace('service_', ''), 10);
       const svc = (ai_content.services_or_benefits ?? ai_content.services ?? [])[idx];
@@ -1483,6 +1503,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   }
 
   const isAiFormat = !Array.isArray(parsedImages) && parsedImages !== null;
+
+  // Extra photos the owner added; shown in their own gallery section (never in the service cards).
+  const galleryUrls: string[] = Array.isArray(parsedImages)
+    ? parsedImages.slice(GALLERY_ARRAY_OFFSET).map((x: unknown) => (typeof x === 'string' ? x : ''))
+    : (parsedImages && typeof parsedImages === 'object' && Array.isArray((parsedImages as AiImageStore).gallery_urls))
+      ? (parsedImages as AiImageStore).gallery_urls!.map((x) => x || '')
+      : [];
 
   // Whether there is at least one real service image to show — used to force
   // a no-imagery services layout (iconlist) instead of reserving large fixed-
@@ -3520,9 +3547,65 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     );
   }
 
+  /** A clean gallery for the extra photos (up to 6). Public: only when there is at least one photo. */
+  function renderGallerySection(isAlt: boolean) {
+    const bg = isAlt ? sectionBgAlt : sectionBg;
+    const canAdd = isEditingMode && !!canEdit;
+    const filled = galleryUrls.map((src, i) => ({ i, src })).filter((x) => !!x.src);
+    if (!filled.length && !canAdd) return null;
+    const nextFree = (() => {
+      for (let i = 0; i < MAX_GALLERY_IMAGES; i++) if (!galleryUrls[i]) return i;
+      return -1;
+    })();
+    const tiles: { i: number; src: string | null }[] = [
+      ...filled,
+      ...(canAdd && nextFree >= 0 ? [{ i: nextFree, src: null }] : []),
+    ];
+    return (
+      <motion.section className="px-6 py-20" style={bg ?? { backgroundColor: '#ffffff' }}
+        variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
+        <div className="max-w-5xl mx-auto">
+          <motion.div variants={V.classic.item} className="text-center mb-12">
+            <EditableText as="h2" className="text-3xl sm:text-4xl font-black tracking-tight" style={{ color: clrHead }}
+              value={getEdit('gallery.heading', 'גלריה')}
+              onCommit={(v) => setEdit('gallery.heading', v)}
+              isEditing={isEditingMode} />
+            {divider}
+          </motion.div>
+          <div className={`grid gap-3 sm:gap-4 mx-auto ${tiles.length === 1 ? 'grid-cols-1 max-w-xl' : 'grid-cols-2 sm:grid-cols-3'}`}>
+            {tiles.map((x) => (
+              <motion.div key={x.i} variants={V.classic.item}
+                className={`relative overflow-hidden ${theme.cardRadius} ${x.src ? 'shadow-md' : ''}`}
+                style={x.src ? imgTreatmentStyle : undefined}>
+                {x.src ? (
+                  <EditableImage src={x.src} primaryColor={primary} secondaryColor={secondary} logoUrl={logo_url}
+                    className="w-full aspect-[4/3]" style={imgTreatmentStyle}
+                    isEditingMode={isEditingMode} canEdit={!!canEdit}
+                    onEditClick={() => openImageModal(`gallery_${x.i}`)} />
+                ) : (
+                  <button type="button" onClick={() => openImageModal(`gallery_${x.i}`)}
+                    className="w-full aspect-[4/3] flex flex-col items-center justify-center gap-2 border-2 border-dashed text-sm font-bold transition hover:bg-black/5"
+                    style={{ borderColor: `${primary}66`, color: primary, borderRadius: 'inherit' }}>
+                    <Plus size={22} /> הוסף תמונה לגלריה
+                  </button>
+                )}
+                {x.src && canAdd && (
+                  <button type="button" aria-label="הסר תמונה" onClick={() => { void removeGalleryImage(x.i); }}
+                    className="absolute top-2 left-2 z-10 w-8 h-8 rounded-full bg-white/95 text-slate-700 shadow flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition">
+                    <X size={16} />
+                  </button>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+    );
+  }
+
   function renderPortfolioGridBlock(isAlt: boolean) {
     const bg = isAlt ? sectionBgAlt : sectionBg;
-    const allImages = [...(heroImageUrl ? [] : []), ...iconUrls, ...legacyImages].filter(Boolean);
+    const allImages = [...iconUrls, ...legacyImages.slice(0, GALLERY_ARRAY_OFFSET)].filter(Boolean);
     const gridImages = allImages.slice(0, 6);
     const displayCount = Math.max(gridImages.length, isEditingMode ? 4 : 0);
     if (!displayCount && !isEditingMode) return null;
@@ -3606,7 +3689,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     'process_timeline': 'תהליך', 'process_horizontal': 'תהליך',
     'testimonials_grid': 'המלצות', 'faq_accordion': 'שאלות נפוצות',
     'cta_banner': 'קריאה לפעולה', 'about': 'קצת עלינו',
-    'comparison_table': 'השוואת מתחרים', 'portfolio_grid': 'תיק עבודות',
+    'comparison_table': 'השוואת מתחרים', 'portfolio_grid': 'תיק עבודות', 'gallery': 'גלריה',
   };
 
   function renderLayout() {
@@ -3658,6 +3741,25 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               onToggleHide={() => toggleSectionVisibility('about')}
             >
               {aboutNode}
+            </SectionEditorWrapper>
+          );
+        }
+      }
+
+      // The owner's extra photos get their own gallery section right after the services.
+      if (blockId === 'services_bento' || blockId === 'services_grid') {
+        sectionIdx++;
+        const galleryNode = renderGallerySection(sectionIdx % 2 !== 0);
+        if (galleryNode) {
+          nodes.push(
+            <SectionEditorWrapper
+              key={`gallery-${sectionIdx}`}
+              isEditing={isEditingMode}
+              isHidden={hiddenSections.includes('gallery')}
+              label={BLOCK_LABELS['gallery']}
+              onToggleHide={() => toggleSectionVisibility('gallery')}
+            >
+              {galleryNode}
             </SectionEditorWrapper>
           );
         }
@@ -4361,6 +4463,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             const i = parseInt(sl.slice(8), 10);
             return (isAiFormat ? iconUrls[i] : legacyImages[i + 2]) || null;
           }
+          if (sl.startsWith('gallery_')) return galleryUrls[parseInt(sl.slice(8), 10)] || null;
           return null;
         })()}
         credits={credits}

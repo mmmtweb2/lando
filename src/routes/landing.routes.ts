@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo, removeImage } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -94,6 +94,7 @@ router.post('/:id/use-ai-edit', requireAuth, requireOwnPage, aiLimiter, useAiEdi
 router.post('/:id/update-image-upload', requireAuth, requireOwnPage, handleSingleImageUpload, updateImageUpload);
 router.post('/:id/update-logo', requireAuth, requireOwnPage, handleSingleImageUpload, updateLogo);
 router.delete('/:id/logo', requireAuth, requireOwnPage, removeLogo);
+router.delete('/:id/image/:slot', requireAuth, requireOwnPage, removeImage);
 router.post('/:id/regenerate-image-ai', requireAuth, requireOwnPage, aiLimiter, regenerateImageAi);
 router.patch('/:id', requireAuth, requireOwnPage, updateLandingPage);
 router.delete('/:id', requireAuth, requireOwnPage, deleteLandingPage);

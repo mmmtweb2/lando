@@ -187,7 +187,7 @@ const DESIGN_STYLE_OPTIONS: { value: Exclude<DesignStyle, ''>; label: string; de
 ];
 
 const IMAGE_OPTIONS: { value: ImageSource; label: string; desc: string; icon: React.ReactNode }[] = [
-  { value: 'upload', label: 'העלאת תמונות שלי',           desc: 'העלו עד 3 תמונות מהמכשיר שלכם', icon: <Upload size={20} /> },
+  { value: 'upload', label: 'העלאת תמונות שלי',           desc: 'העלו עד 6 תמונות מהמכשיר שלכם (3 הראשונות בכרטיסי השירותים, השאר בגלריה)', icon: <Upload size={20} /> },
   { value: 'stock',  label: 'תמונות אווירה ממאגר חינמי', desc: 'תמונות מקצועיות מ-Unsplash',     icon: <Image size={20} /> },
   // AI image generation is the one option here that costs the user something:
   // the backend deducts CREDIT_COSTS.CREATE_IMAGE_SET for the creation image
@@ -590,7 +590,7 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
         return;
       }
     }
-    const combined = [...files, ...picked].slice(0, 3);
+    const combined = [...files, ...picked].slice(0, 6);
     onChange(combined);
     if (ref.current) ref.current.value = '';
   }
@@ -610,14 +610,14 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
           ))}
         </div>
       )}
-      {files.length < 3 && (
+      {files.length < 6 && (
         <div onClick={() => ref.current?.click()}
           className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-4 text-center cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition">
           <input ref={ref} type="file" accept="image/*" multiple className="hidden"
             onChange={(e) => handlePick(e.target.files)} />
           <Upload size={16} className="text-slate-400" />
           <p className="text-xs text-slate-500">
-            <span className="font-medium text-[#1E4FD6]">הוסיפו תמונות</span>{' '}({files.length}/3)
+            <span className="font-medium text-[#1E4FD6]">הוסיפו תמונות</span>{' '}({files.length}/6)
           </p>
         </div>
       )}
