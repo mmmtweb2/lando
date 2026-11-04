@@ -932,7 +932,7 @@ quota cap there.
 - **איפה מוצג:** בית הדשבורד בשלב השוטף (מעל משימת החודש), בסקירת ההקמה בתפריט המלא, ובמסך ההקמה המונחית מתחת לצעד הנוכחי (שם רואה אותו לקוח חדש בכניסה הראשונה).
 - **נגישות:** כותרת h2 עם כפתור `aria-expanded`/`aria-controls`, גובה מגע 48px, אנימציה רק בלי `prefers-reduced-motion`, קישור המקור 44px עם הערת "נפתח בלשונית חדשה" לקוראי מסך. נבדק ב-375px, בלי גלילה אופקית, ועם מקלדת (Enter ורווח).
 - **לבדיקה משפטית (משה):** המשפט על כך שאי אפשר לשלם לגוגל על דירוג הוא ציטוט של גוגל, ולכן שורת המקור צמודה אליו. שינוי נוסח רק מול דוד.
-- **קבצים:** `client/src/dashboard/whatPromotes.ts` (הנוסח וההיגיון, טהור), `WhatPromotes.tsx`, חיווט קטן ב-`Overview.tsx`, `GuidedSetup.tsx` ו-`SeoDashboardV2.tsx` (פרופ `email`). בדיקה: `scripts/test-what-promotes.ts` (כולל שהנוסח נשמר כלשונו ושאין בו הבטחות או ז'רגון).
+- **קבצים:** `client/src/dashboard/whatPromotesData.ts` (הנוסח וההיגיון, טהור), `WhatPromotes.tsx`, חיווט קטן ב-`Overview.tsx`, `GuidedSetup.tsx` ו-`SeoDashboardV2.tsx` (פרופ `email`). בדיקה: `scripts/test-what-promotes.ts` (כולל שהנוסח נשמר כלשונו ושאין בו הבטחות או ז'רגון).
 
 ## חלק 82 – תיקוני QA קטנים (fix/qa-small-fixes)
 
