@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
@@ -8,21 +8,54 @@ import MarketingTags from './components/MarketingTags';
 import { UserProvider, useUser } from './context/UserContext';
 import type { UserProfile } from './context/UserContext';
 
-import Wizard          from './components/Wizard';
 import MarketingLanding from './pages/MarketingLanding';
-import PublicAudit from './pages/PublicAudit';
-import StartJourney from './pages/StartJourney';
-import SeoPlan from './pages/SeoPlan';
-import LandingViewer   from './pages/LandingViewer';
-import AdminDashboard  from './pages/AdminDashboard';
-import Login           from './pages/Login';
-import ResetPassword   from './pages/ResetPassword';
-import Dashboard       from './pages/Dashboard';
-import Privacy         from './pages/legal/Privacy';
-import SeoLanding      from './pages/SeoLanding';
 import NotFound        from './pages/NotFound';
-import Terms           from './pages/legal/Terms';
-import Accessibility   from './pages/legal/Accessibility';
+
+// Route-level code splitting: only the home page and the 404 are in the main bundle. Every other
+// route loads its own chunk on first visit, so /seo and /audit (the pages visitors land on from
+// ads and shared links) no longer download the dashboard, the editor and the admin console.
+const Wizard         = lazy(() => import('./components/Wizard'));
+const PublicAudit    = lazy(() => import('./pages/PublicAudit'));
+const StartJourney   = lazy(() => import('./pages/StartJourney'));
+const SeoPlan        = lazy(() => import('./pages/SeoPlan'));
+const LandingViewer  = lazy(() => import('./pages/LandingViewer'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const Login          = lazy(() => import('./pages/Login'));
+const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
+const Dashboard      = lazy(() => import('./pages/Dashboard'));
+const Privacy        = lazy(() => import('./pages/legal/Privacy'));
+const SeoLanding     = lazy(() => import('./pages/SeoLanding'));
+const Terms          = lazy(() => import('./pages/legal/Terms'));
+const Accessibility  = lazy(() => import('./pages/legal/Accessibility'));
+
+/** Shown while a route chunk loads. Blank for the first 250ms (a cached or fast chunk never
+    flashes a spinner), then a small spinner. */
+function RouteFallback() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), 250);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white" aria-busy="true">
+      {show && <Loader2 size={28} className="animate-spin text-indigo-500" aria-label="טוען" />}
+    </div>
+  );
+}
+
+/** For a signed-in user the two heaviest app screens are fetched in the background once the
+    browser is idle, so opening the dashboard or the wizard does not wait on the network. */
+function PrefetchAppScreens() {
+  const { user } = useUser();
+  useEffect(() => {
+    if (!user) return;
+    const run = () => { void import('./pages/Dashboard'); void import('./components/Wizard'); };
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(run); else setTimeout(run, 2000);
+  }, [user]);
+  return null;
+}
+
 import { authFetch } from './lib/api';
 import { getOrCreateVisitorId } from './lib/analytics';
 import { subdomainPageSlug } from './lib/pageUrl';
@@ -194,6 +227,8 @@ export default function App() {
           <SyncAuth />
           <SiteTracker />
           <MarketingTags />
+          <PrefetchAppScreens />
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <MarketingLanding />} />
             <Route path="/create"    element={<Wizard />} />
@@ -226,6 +261,7 @@ export default function App() {
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </UserProvider>
     </AuthProvider>
