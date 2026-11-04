@@ -22,13 +22,16 @@ export interface OverviewInput {
   /** content kits + search pages the customer already created for the connected business */
   contentCount: number;
   monthLeads: number;
+  /** the connected business: Google place id and our id (null when none) */
+  placeId?: string | null;
+  businessId?: string | null;
   subscriptionStatus: 'active' | 'past_due' | 'canceled' | null;
   /** keys the customer ticked (ManualKey plus 'phase2_ack') */
   ticks: string[];
 }
 
 export interface SetupItem {
-  id: 'connect' | ManualKey | 'content';
+  id: 'connect' | ManualKey;
   title: string;
   /** what to do, in plain words */
   how: string;
@@ -44,23 +47,23 @@ export function inquiriesText(n: number): string {
   return n === 1 ? 'פנייה אחת' : `${n} פניות`;
 }
 
+/**
+ * The five setup steps (spec v4). "Search content" and "inquiry tracking" are no longer part of the
+ * one-time setup: they are monthly tasks in the ongoing phase. Their ticks and data still exist.
+ */
 export function deriveSetup(i: OverviewInput): SetupItem[] {
   const t = (k: ManualKey) => i.ticks.includes(k);
   return [
     { id: 'connect', title: 'חיבור העסק', who: 'you', manual: false, view: 'profile', cta: 'לחיבור העסק',
-      how: 'מחפשים את העסק בגוגל מפות ושומרים אותו כאן. אם עוד אין לו פרופיל, נראה לכם איך פותחים אחד.', done: i.hasBusiness },
-    { id: 'first_check', title: 'בדיקה ראשונה מול המובילים', who: 'we', manual: true, view: 'profile', cta: 'בדוק עכשיו',
-      how: 'אנחנו משווים את הפרופיל לשלושת העסקים המובילים באזור, ואתם רואים מה חסר.', done: t('first_check') },
-    { id: 'profile_details', title: 'השלמת פרטי הפרופיל בגוגל', who: 'you', manual: true, view: 'profile', cta: 'מה חסר לי',
+      how: 'מחפשים את העסק בגוגל מפות ושומרים אותו כאן. אם עוד אין לו כרטיס בגוגל, נראה לכם איך פותחים אחד.', done: i.hasBusiness },
+    { id: 'first_check', title: 'בדיקה ראשונה מול מתחרים', who: 'we', manual: true, view: 'profile', cta: 'בדוק עכשיו',
+      how: 'אנחנו משווים את הכרטיס שלך בגוגל לשלושת העסקים המובילים באזור, ואתם רואים מה חסר.', done: t('first_check') },
+    { id: 'profile_details', title: 'פרטי הכרטיס שלך בגוגל', who: 'you', manual: true, view: 'profile', cta: 'מה חסר לי',
       how: 'טלפון, שעות פתיחה ותמונות אמיתיות. את זה רק בעל העסק יכול לעדכן, בחשבון הגוגל שלו.', done: t('profile_details') },
-    { id: 'profile_verified', title: 'אימות הפרופיל', who: 'you', manual: true, view: 'profile', cta: 'איך מאמתים',
-      how: 'גוגל מבקשת לוודא שהעסק באמת שלכם. בלי אימות הפרופיל מוגבל.', done: t('profile_verified') },
-    { id: 'review_link_shared', title: 'שליחת קישור ביקורות ללקוח ראשון', who: 'you', manual: true, view: 'reviews', cta: 'לקישור הביקורות',
-      how: 'מקבלים קישור וקוד QR, ושולחים ללקוח מרוצה. ככה נבנות הביקורות הראשונות.', done: t('review_link_shared') },
-    { id: 'content', title: 'תוכן החיפוש הראשון', who: 'we', manual: false, view: 'content', cta: 'לתוכן',
-      how: 'בוחרים ביטויי חיפוש, ואנחנו מכינים ערכת תוכן או דף חיפוש.', done: i.contentCount > 0 },
-    { id: 'tracking_ready', title: 'מעקב אחרי פניות', who: 'you', manual: true, view: 'leads', cta: 'להטמעה',
-      how: 'דף Pagey, או שורת קוד אחת באתר שלכם, כדי שנספור שיחות, וואטסאפ ואימייל.', done: t('tracking_ready') || i.monthLeads > 0 },
+    { id: 'profile_verified', title: 'אימות הכרטיס', who: 'you', manual: true, view: 'profile', cta: 'איך מאמתים',
+      how: 'גוגל מבקשת לוודא שהעסק באמת שלך. בלי אימות הכרטיס מוגבל.', done: t('profile_verified') },
+    { id: 'review_link_shared', title: 'בקשת ביקורת ראשונה', who: 'you', manual: true, view: 'reviews', cta: 'לבקשות ביקורת',
+      how: 'שולחים ללקוח מרוצה בקשה לביקורת בלחיצה אחת מהוואטסאפ.', done: t('review_link_shared') },
   ];
 }
 

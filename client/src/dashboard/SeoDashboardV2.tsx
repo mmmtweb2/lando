@@ -10,6 +10,8 @@ import ExternalSiteCard from '../components/ExternalSiteCard';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
 import GbpCard from '../components/GbpCard';
 import FeedbackBox from './FeedbackBox';
+import GuidedSetup from './GuidedSetup';
+import { useAuth } from '../context/AuthContext';
 import LeadsTable from '../components/LeadsTable';
 import Overview, { SetupArchive } from './Overview';
 import { useSeoOverview } from './useSeoOverview';
@@ -26,6 +28,12 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
     // coming back from Google's consent page: show the place where the result is explained
     try { return new URLSearchParams(window.location.search).has('gbp') ? 'profile' : 'overview'; } catch { return 'overview'; }
   });
+  // Guided setup shows alone (no tabs) until the five steps are done. Coming back from Google's
+  // consent page (?gbp) or choosing the full menu shows the normal views instead.
+  const [fullMenu, setFullMenu] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).has('gbp'); } catch { return false; }
+  });
+  const { user } = useAuth();
   const reduce = useReducedMotion();
   const top = useRef<HTMLDivElement>(null);
   const data = useSeoOverview();
@@ -41,6 +49,18 @@ export default function SeoDashboardV2({ showPageUpsell = false }: { showPageUps
   const motionProps = reduce
     ? {}
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18 } };
+
+  if (phase === 'setup' && !fullMenu && data.input.loaded && !data.failed) {
+    return (
+      <div className="dv2 rounded-[18px] p-3 sm:p-5" dir="rtl">
+        <GuidedSetup
+          input={data.input} email={user?.email ?? 'anonymous'} ticksOnServer={data.ticksOnServer}
+          setTick={data.setTick} reload={data.reload} onFullMenu={() => setFullMenu(true)}
+        />
+        <FeedbackBox page="setup" />
+      </div>
+    );
+  }
 
   return (
     <div className="dv2 rounded-[18px] p-3 sm:p-5" dir="rtl">

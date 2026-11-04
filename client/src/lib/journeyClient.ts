@@ -51,7 +51,9 @@ export function trackPublic(event: 'audit_started' | 'audit_completed' | 'recs_v
 }
 
 /** Signed-in customer event. */
-export function trackAccount(event: 'recs_viewed' | 'activation_viewed' | 'setup_step_completed' | 'dashboard_viewed' | 'concierge_clicked', props: Record<string, unknown> = {}): void {
+export type AccountEvent = 'recs_viewed' | 'activation_viewed' | 'setup_step_completed' | 'dashboard_viewed' | 'concierge_clicked'
+  | 'step_viewed' | 'step_completed' | 'step_skipped' | 'auto_advanced';
+export function trackAccount(event: AccountEvent, props: Record<string, unknown> = {}): void {
   try {
     void authFetch('/api/seo/journey/event', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, props, anonId: anonId(), attribution: attribution() }),

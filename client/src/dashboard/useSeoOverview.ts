@@ -59,7 +59,7 @@ export function useSeoOverview(): SeoOverview {
     let cancelled = false;
     (async () => {
       const [biz, leads, sub, gbp, setup] = await Promise.all([
-        json<{ businesses?: { id: string; name: string }[] }>('/api/seo/businesses'),
+        json<{ businesses?: { id: string; name: string; google_place_id?: string | null }[] }>('/api/seo/businesses'),
         json<{ items?: LeadFeedItem[]; summary?: LeadsSummary }>('/api/landing/my-leads'),
         json<{ subscription?: { status: 'active' | 'past_due' | 'canceled' } | null }>('/api/seo/subscription'),
         json<{ enabled?: boolean }>('/api/seo/gbp/status'),
@@ -91,6 +91,8 @@ export function useSeoOverview(): SeoOverview {
           loaded: true,
           businessName: first?.name ?? null,
           hasBusiness: !!first,
+          placeId: first?.google_place_id ?? null,
+          businessId: first?.id ?? null,
           contentCount,
           monthLeads: summary.month_total,
           subscriptionStatus: sub?.subscription?.status ?? null,
