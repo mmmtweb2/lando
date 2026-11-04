@@ -19,6 +19,7 @@ import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 import { optionalHttpUrl } from '../utils/safeUrl';
 import { serverError } from '../utils/httpErrors';
+import { packUploads, applyImageSlot, clearImageSlot, parseSlot, galleryOf, type AiStore, type ImageStore } from '../services/imageSlots';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -807,7 +808,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       if (image_source === 'upload' && uploadedImageUrls.length > 0) {
         // Same slot convention as stock: [0]=hero, [1]=decorative reserved (empty);
         // uploaded images fill the service cards.
-        serializedImages = JSON.stringify(['', '', ...uploadedImageUrls]);
+        serializedImages = JSON.stringify(packUploads(uploadedImageUrls));
       }
 
       console.log('[LANDING] serializedImages length:', serializedImages?.length ?? 0);
@@ -1041,41 +1042,6 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
 
 // ─── Inline image editing helpers ────────────────────────────────────────────
 
-type AiStore = { hero_image_url: string | null; icon_urls: string[] };
-type ImageStore = AiStore | string[];
-
-function applyImageSlot(current: ImageStore | null, slot: string, url: string): ImageStore {
-  if (!current) {
-    const store: AiStore = { hero_image_url: null, icon_urls: [] };
-    if (slot === 'hero') {
-      store.hero_image_url = url;
-    } else if (slot.startsWith('service_')) {
-      const idx = parseInt(slot.slice(8), 10);
-      while (store.icon_urls.length <= idx) store.icon_urls.push('');
-      store.icon_urls[idx] = url;
-    }
-    return store;
-  }
-  if (Array.isArray(current)) {
-    const arr = [...current] as string[];
-    if (slot === 'hero') arr[0] = url;
-    else if (slot.startsWith('service_')) arr[parseInt(slot.slice(8), 10) + 2] = url;
-    return arr;
-  }
-  const store: AiStore = {
-    hero_image_url: (current as AiStore).hero_image_url ?? null,
-    icon_urls: [...((current as AiStore).icon_urls ?? [])],
-  };
-  if (slot === 'hero') {
-    store.hero_image_url = url;
-  } else if (slot.startsWith('service_')) {
-    const idx = parseInt(slot.slice(8), 10);
-    while (store.icon_urls.length <= idx) store.icon_urls.push('');
-    store.icon_urls[idx] = url;
-  }
-  return store;
-}
-
 export async function updateImageUpload(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const { slot } = req.body as { slot?: string };
@@ -1085,8 +1051,19 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
     res.status(400).json({ error: 'image file and slot are required' });
     return;
   }
+  const parsed = parseSlot(slot);
+  if (!parsed) {
+    res.status(400).json({ error: 'מיקום התמונה לא תקין.' });
+    return;
+  }
 
-  const url = await processAndSave(file.buffer, 1200, 'image');
+  let url: string;
+  try {
+    url = await processAndSave(file.buffer, 1200, 'image');
+  } catch {
+    res.status(400).json({ error: 'לא הצלחנו לקרוא את התמונה. נסו קובץ אחר (JPG, PNG או WebP).' });
+    return;
+  }
 
   const { data: page, error: fetchErr } = await supabase
     .from('landing_pages')
@@ -1104,7 +1081,7 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
     catch { return null; }
   })();
 
-  const updated = applyImageSlot(current, slot.trim(), url);
+  const updated = applyImageSlot(current, parsed, url);
   const serialized = JSON.stringify(updated);
 
   const { error } = await supabase
@@ -1116,6 +1093,38 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
 
   touchDraft(id);
   res.json({ url, user_images: serialized });
+}
+
+/**
+ * Remove one service or gallery photo (owner/admin only, see requireOwnPage on the route). The hero
+ * cannot be removed, only replaced. Free.
+ */
+export async function removeImage(req: Request, res: Response): Promise<void> {
+  const { id, slot } = req.params;
+  const parsed = parseSlot(slot);
+  if (!parsed || parsed.kind === 'hero') {
+    res.status(400).json({ error: 'מיקום התמונה לא תקין.' });
+    return;
+  }
+
+  const { data: page, error: fetchErr } = await supabase
+    .from('landing_pages')
+    .select('user_images')
+    .eq('id', id)
+    .single();
+  if (fetchErr || !page) { res.status(404).json({ error: 'Page not found' }); return; }
+
+  const current: ImageStore | null = (() => {
+    try { return JSON.parse(page.user_images ?? 'null') as ImageStore; }
+    catch { return null; }
+  })();
+
+  const serialized = JSON.stringify(clearImageSlot(current, parsed));
+  const { error } = await supabase.from('landing_pages').update({ user_images: serialized }).eq('id', id);
+  if (error) { serverError(res, error, '[LANDING]'); return; }
+
+  touchDraft(id);
+  res.json({ user_images: serialized });
 }
 
 /**
@@ -1167,6 +1176,12 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
 
   if (!fullSet && (!slot?.trim() || !prompt?.trim())) {
     res.status(400).json({ error: 'slot and prompt are required for single-image regeneration' });
+    return;
+  }
+  // An unknown slot used to be charged and then change nothing — reject it before any credit moves.
+  const parsedSlot = fullSet ? null : parseSlot(slot);
+  if (!fullSet && !parsedSlot) {
+    res.status(400).json({ error: 'מיקום התמונה לא תקין.' });
     return;
   }
 
@@ -1241,22 +1256,30 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
         return;
       }
 
-      serialized = JSON.stringify({ hero_image_url: firstUrl, icon_urls: iconUrls } satisfies AiStore);
+      // Photos the owner added to the gallery are theirs — a regenerated set must not drop them.
+      const keptGallery = galleryOf(current);
+      serialized = JSON.stringify({
+        hero_image_url: firstUrl,
+        icon_urls: iconUrls,
+        ...(keptGallery.length ? { gallery_urls: keptGallery } : {}),
+      } satisfies AiStore);
     } else {
       // Single slot regeneration. For SERVICE icons, lock the user's subject into
       // the SAME style template as the original set (3D glassmorphism icon, matching
       // palette color, no text) so swapping one image doesn't break set coherence.
       // The hero is a standalone photo — keep its prompt free.
-      const slotName = slot!.trim();
+      const slotKind = parsedSlot!.kind;
       const pageContent = (page as { ai_content?: AiContent }).ai_content;
       const primaryColorHex = pageContent?.design_system?.primary_color ?? '#4f46e5';
-      const finalPrompt = slotName.startsWith('service_')
+      const finalPrompt = slotKind === 'service'
         ? buildServiceImagePrompt(prompt!.trim(), pageContent?.design_tokens?.image_style, primaryColorHex)
         : prompt!.trim();
-      const singleMaxWidth = slotName.startsWith('service_') ? 800 : 1600;
-      const url = await generateAndOptimizeFalImage(finalPrompt, 'landscape_4_3', singleMaxWidth, slotName.startsWith('service_') ? 'ai-service' : 'ai-hero');
+      const singleMaxWidth = slotKind === 'service' ? 800 : slotKind === 'gallery' ? 1200 : 1600;
+      const url = await generateAndOptimizeFalImage(
+        finalPrompt, 'landscape_4_3', singleMaxWidth, slotKind === 'service' ? 'ai-service' : 'ai-hero',
+      );
       firstUrl = url;
-      const updatedStore = applyImageSlot(current, slotName, url);
+      const updatedStore = applyImageSlot(current, parsedSlot!, url);
       serialized = JSON.stringify(updatedStore);
     }
 
