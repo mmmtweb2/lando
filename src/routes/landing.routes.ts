@@ -6,6 +6,7 @@ import { rateLimit } from '../middleware/rateLimit';
 import { rejectOversizeBody } from '../middleware/bodyLimit';
 import { LEAD_MAX_BODY_BYTES } from '../utils/leadInput';
 import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.middleware';
+import { prefillFromGoogle } from '../controllers/landingPrefill.controller';
 
 const router = Router();
 
@@ -68,6 +69,9 @@ router.post('/', requireAuth, aiLimiter, handleUpload, createLandingPage);
 router.post('/suggest-questions', requireAuth, suggestLimiter, suggestQuestions); // must be before /:slug-style params
 router.get('/my-pages', requireAuth, getMyPages);   // must be before /:slug
 router.get('/my-leads', requireAuth, getMyLeads);   // must be before /:slug
+// Wizard prefill from a connected Google business (task #16). Burst limit here, per-account daily cap in the service.
+const prefillLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/prefill-from-google/:businessId', prefillLimiter, requireAuth, prefillFromGoogle); // before /:slug
 router.get('/:slug', pageViewLimiter, optionalAuth, getLandingPage);  // public read; optionalAuth lets it compute isOwner
 
 // Public, unauthenticated, fire-and-forget analytics (v1 — see
