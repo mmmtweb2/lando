@@ -1,3 +1,4 @@
+import { PRICING, fmt, perPage, savingPercent } from '../config/pricing';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -501,11 +502,11 @@ export default function MarketingLanding() {
           <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
             <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">249</span><span className="text-lg font-bold">₪</span>
+              <span className="text-4xl font-extrabold">{fmt(PRICING.singlePage.price)}</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-600 mr-1">/ דף, חד־פעמי</span>
             </div>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', '10 קרדיטי AI במתנה לעריכות', 'עד 2 יצירות דפים כלולות', 'טופס לידים ואזור אישי', 'חידוש שנתי — 99 ₪ בלבד'].map((f) => (
+              {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', `${PRICING.singlePage.aiCredits} קרדיטי AI במתנה לעריכות`, `עד ${PRICING.singlePage.createAllowance} יצירות דפים כלולות`, 'טופס לידים ואזור אישי', `חידוש שנתי — ${PRICING.renewal.base} ₪ בלבד`].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
@@ -518,12 +519,12 @@ export default function MarketingLanding() {
           <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
             <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">990</span><span className="text-lg font-bold">₪</span>
+              <span className="text-4xl font-extrabold">{fmt(PRICING.bundle5.price)}</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">₪198 לדף — חיסכון של 20%</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle5')} לדף — חיסכון של {savingPercent('bundle5')}%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['5 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '75 קרדיטי AI במתנה', 'עד 10 יצירות דפים כלולות', 'חידוש שנתי מוזל — 79 ₪ לדף', 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
+              {[`${PRICING.bundle5.pages} דפים לפרסום, מתי שתרצו`, 'היתרה לא פגה ולא מתחדשת חודשית', `${PRICING.bundle5.aiCredits} קרדיטי AI במתנה`, `עד ${PRICING.bundle5.createAllowance} יצירות דפים כלולות`, `חידוש שנתי מוזל — ${PRICING.renewal.atFivePages} ₪ לדף`, 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
@@ -537,12 +538,12 @@ export default function MarketingLanding() {
             <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>הכי משתלם</span>
             <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">1,490</span><span className="text-lg font-bold">₪</span>
+              <span className="text-4xl font-extrabold">{fmt(PRICING.bundle10.price)}</span><span className="text-lg font-bold">₪</span>
               <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
             </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">₪149 לדף — חיסכון של כ-40%</p>
+            <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle10')} לדף — חיסכון של כ-{savingPercent('bundle10')}%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['10 דפים לפרסום, מתי שתרצו', 'היתרה לא פגה ולא מתחדשת חודשית', '150 קרדיטי AI במתנה', 'עד 20 יצירות דפים כלולות', 'חידוש שנתי מוזל — 59 ₪ לדף', 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
+              {[`${PRICING.bundle10.pages} דפים לפרסום, מתי שתרצו`, 'היתרה לא פגה ולא מתחדשת חודשית', `${PRICING.bundle10.aiCredits} קרדיטי AI במתנה`, `עד ${PRICING.bundle10.createAllowance} יצירות דפים כלולות`, `חידוש שנתי מוזל — ${PRICING.renewal.atTenPages} ₪ לדף`, 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
                 <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
@@ -569,7 +570,7 @@ export default function MarketingLanding() {
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
           <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
-          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a="כן, ובלי מנוי. חבילת 5 דפים עולה ₪990 (₪198 לדף) וחבילת 10 דפים ₪1,490 (₪149 לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את מחיר החידוש השנתי (₪79 לדף בחבילת ₪5,59 בחבילת 10, במקום ₪99). רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-₪350, גם על דף בודד. רוכשים מהאזור האישי." />
+          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a={`כן, ובלי מנוי. חבילת ${PRICING.bundle5.pages} דפים עולה ₪${fmt(PRICING.bundle5.price)} (₪${perPage('bundle5')} לדף) וחבילת ${PRICING.bundle10.pages} דפים ₪${fmt(PRICING.bundle10.price)} (₪${perPage('bundle10')} לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את מחיר החידוש השנתי (${PRICING.renewal.atFivePages} ₪ לדף בחבילת ${PRICING.bundle5.pages} דפים, ${PRICING.renewal.atTenPages} ₪ בחבילת ${PRICING.bundle10.pages}, במקום ${PRICING.renewal.base} ₪). רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-₪${PRICING.whiteLabelAddon.price}, גם על דף בודד. רוכשים מהאזור האישי.`} />
           <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
         </div>
       </Section>

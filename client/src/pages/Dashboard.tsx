@@ -9,6 +9,7 @@ import {
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
+import { PRICING, perPage, renewalPriceFor } from '../config/pricing';
 import GoogleDraftCard from '../components/GoogleDraftCard';
 import { shareUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
@@ -48,17 +49,7 @@ interface PageRow {
   cta_click_count: number | null;
 }
 
-/** Annual renewal price. Mirrors RENEWAL_PRICE in src/config/billing.ts. */
-const RENEWAL_PRICE = 99;
-/** Mirrors renewalPriceFor() in src/config/billing.ts — the lifetime-pages
-    discount tiers (79 ₪ at 5+, 59 ₪ at 10+). Kept in sync manually; the real
-    charge is always computed server-side by the same function, so a drift
-    here is a display-only bug, never a billing one. */
-function renewalPriceFor(pageCreditsTotal: number): number {
-  if (pageCreditsTotal >= 10) return 59;
-  if (pageCreditsTotal >= 5) return 79;
-  return RENEWAL_PRICE;
-}
+// Display prices come from config/pricing.ts (the server charges from src/config/billing.ts).
 
 /** Show the renewal prompt on a live page once it is this close to expiring —
  *  the same T-30 threshold at which the first reminder email goes out, so the
@@ -199,7 +190,7 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
           <p className="mt-2 text-sm leading-relaxed text-slate-500 max-w-xl">
             {hasBalance
               ? 'כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.'
-              : 'פרסום דף בודד עולה ₪249, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־₪198 (5 דפים) או ₪149 (10 דפים).'}
+              : `פרסום דף בודד עולה ₪${PRICING.singlePage.price}, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־₪${perPage('bundle5')} (${PRICING.bundle5.pages} דפים) או ₪${perPage('bundle10')} (${PRICING.bundle10.pages} דפים).`}
           </p>
         </div>
         <button onClick={onBuyBundle} className={`${btnSecondary} flex-shrink-0`}>
@@ -512,7 +503,7 @@ export default function Dashboard() {
   const [isAdminAccount, setIsAdminAccount] = useState(false); // only decides whether dashboard v2 is on by default
   const [product, setProduct] = useState<'pages' | 'seo'>('pages'); // only matters with BOTH products
   const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
-  const [singlePagePrice, setSinglePagePrice] = useState(249);
+  const [singlePagePrice, setSinglePagePrice] = useState<number>(PRICING.singlePage.price);
   const [showPlans, setShowPlans] = useState(false);
 
   // Required pre-payment acknowledgment that a digital purchase is not
@@ -990,24 +981,24 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 gap-2.5">
                   <button disabled={buying || !creditsAck} onClick={() => handleBuyCredits('small')}
                     className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 text-right hover:border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50">
-                    <span className="text-sm font-medium text-slate-900">10 קרדיטים</span>
+                    <span className="text-sm font-medium text-slate-900">{PRICING.creditPacks.small.credits} קרדיטים</span>
                     <span className="text-sm font-semibold text-slate-900 tabular-nums">
                       {creditsCoupon?.quotes.small ? (
-                        <><span className="text-sm text-slate-400 line-through font-normal">₪49</span>{' '}
+                        <><span className="text-sm text-slate-400 line-through font-normal">₪{PRICING.creditPacks.small.price}</span>{' '}
                           <span className="text-emerald-600">₪{creditsCoupon.quotes.small.finalAmount}</span></>
-                      ) : '₪49'}
+                      ) : `₪${PRICING.creditPacks.small.price}`}
                     </span>
                   </button>
                   <button disabled={buying || !creditsAck} onClick={() => handleBuyCredits('large')}
                     className="flex items-center justify-between rounded-lg border border-[#2E63F6] bg-[#2E63F6]/[0.04] p-4 text-right hover:bg-[#2E63F6]/[0.08] transition-colors disabled:opacity-50">
                     <span className="text-sm font-medium text-slate-900">
-                      100 קרדיטים <span className="mr-1 rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">הכי משתלם</span>
+                      {PRICING.creditPacks.large.credits} קרדיטים <span className="mr-1 rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">הכי משתלם</span>
                     </span>
                     <span className="text-sm font-semibold text-slate-900 tabular-nums">
                       {creditsCoupon?.quotes.large ? (
-                        <><span className="text-sm text-slate-400 line-through font-normal">₪399</span>{' '}
+                        <><span className="text-sm text-slate-400 line-through font-normal">₪{PRICING.creditPacks.large.price}</span>{' '}
                           <span className="text-emerald-600">₪{creditsCoupon.quotes.large.finalAmount}</span></>
-                      ) : '₪399'}
+                      ) : `₪${PRICING.creditPacks.large.price}`}
                     </span>
                   </button>
                 </div>
@@ -1333,7 +1324,7 @@ export default function Dashboard() {
                           onDelete={handleDeletePage}
                           onRenew={handleRenewPage}
                           renewingId={renewingId}
-                          renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : RENEWAL_PRICE}
+                          renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : PRICING.renewal.base}
                         />
                       )
                     ) : (
