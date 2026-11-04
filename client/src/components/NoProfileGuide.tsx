@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink, ArrowRight, Loader2 } from 'lucide-react';
 import { RoleTag } from './RoleTag';
+import ConciergeButton from './ConciergeButton';
 
 // "I don't have a Google Maps business card" — a business without one is a target customer of
 // the product (Moshe, 2026-10-23). We cannot create the profile for them (Google requires
@@ -100,6 +101,7 @@ export default function NoProfileGuide({ onBack, onPending }: { onBack: () => vo
         ))}
       </ol>
       {onPending && <PendingForm onPending={onPending} />}
+      <ConciergeButton location="audit" />
       <button
         type="button"
         onClick={onBack}

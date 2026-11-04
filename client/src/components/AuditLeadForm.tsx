@@ -87,7 +87,7 @@ export default function AuditLeadForm({
           שם
           <input
             value={name} onChange={e => setName(e.target.value)} maxLength={60} autoComplete="name"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-900"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-600">
@@ -95,7 +95,7 @@ export default function AuditLeadForm({
           <input
             value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" dir="ltr" maxLength={20}
             autoComplete="tel" placeholder="0501234567"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 text-right"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-slate-900 text-right"
           />
         </label>
       </div>

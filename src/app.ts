@@ -143,7 +143,9 @@ app.use('/api', router);
 // /p/:slug and /api/* are registered above and won't reach here.
 app.get('*', (req: Request, res: Response, next: NextFunction) => {
   if (req.path.startsWith('/api')) { next(); return; }
-  res.sendFile(path.join(clientDist, 'index.html'));
+  // Unknown addresses get a real 404 (the client renders its NotFound page), not a blank 200.
+  const known = req.path === '/' || /^\/(create|login|reset-password|audit|seo|start|seo-plan|privacy|terms|accessibility|admin|dashboard)(\/|$)/.test(req.path) || /^\/(p|b)\/[^/]/.test(req.path);
+  res.status(known ? 200 : 404).sendFile(path.join(clientDist, 'index.html'));
 });
 
 // Global error handler — converts any unhandled throw into a JSON 500
