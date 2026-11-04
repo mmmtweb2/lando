@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
-import { ArrowLeft, BarChart3, Check as CheckIcon, FileText, Inbox, Mail, MessageCircle, Phone, Search, Star } from 'lucide-react';
+import { ArrowLeft, Check as CheckIcon, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
 import { LandoBot } from '../components/Lando';
 import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
+import MonthlyTask from './MonthlyTask';
+import type { Monthly } from './useMonthly';
 import {
-  deriveOngoingNext, deriveSetup, inquiriesText, readiness,
+  deriveSetup, inquiriesText, readiness,
   type OverviewInput, type Phase, type SetupItem, type View,
 } from './journey';
 
@@ -19,9 +21,11 @@ interface Props {
   go: (v: View) => void;
   setTick: (key: string, done: boolean) => Promise<void>;
   onRetry: () => void;
+  monthly: Monthly;
+  requestsSent: number;
 }
 
-function OverviewSkeleton() {
+export function OverviewSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-busy="true" aria-label="טוען">
       <Skeleton className="h-44" /><Skeleton className="h-28" /><Skeleton className="h-64" />
@@ -162,7 +166,7 @@ function Welcome({ setTick }: { setTick: Props['setTick'] }) {
         <p className="dv2-tag">שלב 1 הושלם</p>
         <h2 id="dv2-welcome" className="mt-3 text-2xl font-bold text-[var(--ink)]">העסק <span>מוקם</span>. עוברים לשלב השני.</h2>
         <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--muted)]">
-          כל צעדי ההקמה מאחוריכם, ואין צורך לחזור אליהם. מעכשיו הדשבורד הוא לניהול שוטף: מתחרים, ביקורות ופניות. רשימת ההקמה נשארת זמינה בתפריט, בלשונית ״ההקמה שלי״.
+          כל צעדי ההקמה מאחוריכם, ואין צורך לחזור אליהם. מעכשיו הדשבורד הוא לניהול שוטף: מתחרים, ביקורות ופניות. רשימת ההקמה נשארת זמינה תחת ״עוד״.
         </p>
       </div>
       <button type="button" className="dv2-btn" onClick={() => void setTick('phase2_ack', true)}>מעבר לשלב השני <ArrowLeft size={16} aria-hidden /></button>
@@ -172,24 +176,13 @@ function Welcome({ setTick }: { setTick: Props['setTick'] }) {
 
 /* ---------- Stage 2: ongoing monitoring ---------- */
 
-interface Action { icon: ReactNode; title: string; body: string; who: 'we' | 'you'; view: View; cta: string }
-const ACTIONS: Action[] = [
-  { icon: <Search size={20} />, title: 'בדיקה מחודשת מול המתחרים', who: 'we', view: 'profile', cta: 'בדקו עכשיו',
-    body: 'מומלץ פעם בחודש. רואים אם הפער מהמובילים באזור השתנה.' },
-  { icon: <Star size={20} />, title: 'עוד ביקורות מלקוחות', who: 'you', view: 'reviews', cta: 'לקישור הביקורות',
-    body: 'שולחים את הקישור או מציגים את קוד ה-QR ללקוחות.' },
-  { icon: <FileText size={20} />, title: 'תוכן חדש לחיפוש', who: 'we', view: 'content', cta: 'לתוכן',
-    body: 'עוד דף או ערכת תוכן לביטוי חיפוש שעדיין לא כיסיתם.' },
-  { icon: <Inbox size={20} />, title: 'מעבר על הפניות', who: 'you', view: 'leads', cta: 'לפניות',
-    body: 'שיחות, וואטסאפ וטפסים במקום אחד. כדאי לחזור לכל פנייה.' },
-];
 const SOON: { title: string; body: string }[] = [
   { title: 'סטטיסטיקות כרטיס העסק מגוגל', body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מכרטיס העסק.' },
   { title: 'ביקורות אוטומטיות', body: 'בקשת ביקורת נשלחת ללקוח אחרי שהשירות הסתיים.' },
   { title: 'סיכום חודשי', body: 'דוח קצר בסוף החודש: מה השתפר ומה עושים הלאה.' },
 ];
 
-function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+export function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
   return (
     <div className="dv2-card-flat p-3">
       <div className="text-[var(--muted)]" aria-hidden>{icon}</div>
@@ -199,14 +192,7 @@ function Tile({ icon, label, value }: { icon: ReactNode; label: string; value: n
   );
 }
 
-const GBP_ACTION: Action = {
-  icon: <BarChart3 size={20} />, title: 'הנתונים של כרטיס העסק בגוגל', who: 'we', view: 'profile', cta: 'לצפייה',
-  body: 'כמה התקשרו, ביקשו הגעה או נכנסו לאתר מכרטיס העסק ב-30 הימים האחרונים.',
-};
-
-function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go'>) {
-  const next = deriveOngoingNext(input);
-  const actions = gbpEnabled ? [GBP_ACTION, ...ACTIONS] : ACTIONS;
+function OngoingOverview({ input, summary, gbpEnabled, go, monthly, requestsSent, onRetry }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go' | 'monthly' | 'requestsSent' | 'onRetry'>) {
   const soon = gbpEnabled ? SOON.filter((s) => s.title !== 'סטטיסטיקות כרטיס העסק מגוגל') : SOON;
   return (
     <div className="flex flex-col gap-6">
@@ -228,14 +214,7 @@ function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input'
 
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
 
-      <section aria-labelledby="dv2-reco">
-        <SectionTitle id="dv2-reco" title="ההמלצה לחודש" />
-        <div className={`${next.urgent ? 'dv2-card-flat border-[#F3B7B0] bg-[#FFF4F2]' : 'dv2-card'} p-4 sm:p-5`}>
-          <h3 className="text-[17px] font-bold text-[var(--ink)]">{next.title}</h3>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">{next.body}</p>
-          <button type="button" className="dv2-btn mt-3" onClick={() => go(next.view)}>{next.cta} <ArrowLeft size={16} aria-hidden /></button>
-        </div>
-      </section>
+      <MonthlyTask monthly={monthly} requestsSent={requestsSent} reload={onRetry} />
 
       {summary.month_total > 0 && (
         <section aria-labelledby="dv2-channels">
@@ -248,23 +227,6 @@ function OngoingOverview({ input, summary, gbpEnabled, go }: Pick<Props, 'input'
           </div>
         </section>
       )}
-
-      <section aria-labelledby="dv2-actions">
-        <SectionTitle id="dv2-actions" title="מה אפשר לעשות" hint="פעולות קבועות שכדאי לעשות מדי חודש." />
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {actions.map((a) => (
-            <li key={a.title} className="dv2-card-flat flex flex-col p-4">
-              <div className="flex items-start justify-between gap-2">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--tint)] text-[var(--accent-strong)]" aria-hidden>{a.icon}</span>
-                <Who who={a.who} />
-              </div>
-              <h3 className="mt-3 text-[15px] font-bold text-[var(--ink)]">{a.title}</h3>
-              <p className="mt-1 flex-1 text-sm leading-relaxed text-[var(--muted)]">{a.body}</p>
-              <button type="button" className="dv2-btn-ghost mt-3 self-start" onClick={() => go(a.view)}>{a.cta} <ArrowLeft size={16} aria-hidden /></button>
-            </li>
-          ))}
-        </ul>
-      </section>
 
       <section aria-labelledby="dv2-soon">
         <SectionTitle id="dv2-soon" title="בדרך אליכם" />
@@ -300,7 +262,7 @@ export function SetupArchive({ input, go, setTick, ticksOnServer }: Pick<Props, 
   );
 }
 
-export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, gbpEnabled, go, setTick, onRetry }: Props) {
+export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, gbpEnabled, go, setTick, onRetry, monthly, requestsSent }: Props) {
   if (loading && !input.loaded) return <OverviewSkeleton />;
   if (failed) {
     return (
@@ -312,6 +274,6 @@ export default function Overview({ input, summary, phase, loading, failed, ticks
     );
   }
   if (phase === 'welcome') return <Welcome setTick={setTick} />;
-  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} gbpEnabled={gbpEnabled} go={go} />;
+  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} gbpEnabled={gbpEnabled} go={go} monthly={monthly} requestsSent={requestsSent} onRetry={onRetry} />;
   return <SetupOverview input={input} go={go} setTick={setTick} ticksOnServer={ticksOnServer} />;
 }

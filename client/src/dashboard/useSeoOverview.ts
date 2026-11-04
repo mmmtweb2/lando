@@ -3,6 +3,7 @@ import { authFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import type { LeadFeedItem, LeadsSummary } from '../components/LeadsTable';
 import type { OverviewInput } from './journey';
+import { inMonth, monthKey } from './monthly';
 
 // Everything the v2 overview shows comes from endpoints that already exist and none of them calls
 // Google Places, so opening the dashboard costs nothing per visit. Each source fails on its own:
@@ -23,6 +24,9 @@ export interface SeoOverview {
   items: LeadFeedItem[];
   /** false = ticks live only in this browser (server table missing) */
   ticksOnServer: boolean;
+  /** review requests sent this month, and replies still waiting (null = not available) */
+  requestsSent: number;
+  pendingReplies: number | null;
   /** the Google Business Profile connection is switched on for this deployment */
   gbpEnabled: boolean;
   /** Is the monthly plan open for sign-up right now (server switch)? */
@@ -51,7 +55,7 @@ export function useSeoOverview(): SeoOverview {
   const [tick, setTick] = useState(0);
   const onServer = useRef(true);
   const [state, setState] = useState<Omit<SeoOverview, 'reload' | 'setTick'>>({
-    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true, gbpEnabled: false, billingEnabled: false,
+    loading: true, failed: false, summary: EMPTY, items: [], ticksOnServer: true, requestsSent: 0, pendingReplies: null, gbpEnabled: false, billingEnabled: false,
     input: { loaded: false, businessName: null, hasBusiness: false, contentCount: 0, monthLeads: 0, subscriptionStatus: null, ticks: [] },
   });
 
@@ -59,7 +63,7 @@ export function useSeoOverview(): SeoOverview {
     let cancelled = false;
     (async () => {
       const [biz, leads, sub, gbp, setup] = await Promise.all([
-        json<{ businesses?: { id: string; name: string }[] }>('/api/seo/businesses'),
+        json<{ businesses?: { id: string; name: string; google_place_id?: string | null }[] }>('/api/seo/businesses'),
         json<{ items?: LeadFeedItem[]; summary?: LeadsSummary }>('/api/landing/my-leads'),
         json<{ subscription?: { status: 'active' | 'past_due' | 'canceled' } | null }>('/api/seo/subscription'),
         json<{ enabled?: boolean }>('/api/seo/gbp/status'),
@@ -67,11 +71,18 @@ export function useSeoOverview(): SeoOverview {
       ]);
       const first = biz?.businesses?.[0] ?? null;
       let contentCount = 0;
+      let requestsSent = 0;
+      let pendingReplies: number | null = null;
       if (first) {
-        const [plan, pages] = await Promise.all([
+        const key = monthKey(new Date());
+        const [plan, pages, requests, drafts] = await Promise.all([
           json<{ kits?: unknown[] }>(`/api/seo/businesses/${encodeURIComponent(first.id)}/plan`),
           json<{ pages?: unknown[] }>(`/api/seo/businesses/${encodeURIComponent(first.id)}/child-pages`),
+          json<{ items?: { sent_at?: string | null }[] }>(`/api/seo/review-requests?businessId=${encodeURIComponent(first.id)}`),
+          json<{ drafts?: unknown[] }>('/api/seo/review-drafts'),
         ]);
+        requestsSent = (requests?.items ?? []).filter((i) => inMonth(i.sent_at, key)).length;
+        pendingReplies = drafts ? (drafts.drafts?.length ?? 0) : null;
         contentCount = (plan?.kits?.length ?? 0) + (pages?.pages?.length ?? 0);
       }
       if (cancelled) return;
@@ -85,12 +96,16 @@ export function useSeoOverview(): SeoOverview {
         summary,
         items: leads?.items ?? [],
         ticksOnServer: server,
+        requestsSent,
+        pendingReplies,
         gbpEnabled: gbp?.enabled === true,
         billingEnabled: (sub as { enabled?: boolean } | null)?.enabled === true,
         input: {
           loaded: true,
           businessName: first?.name ?? null,
           hasBusiness: !!first,
+          placeId: first?.google_place_id ?? null,
+          businessId: first?.id ?? null,
           contentCount,
           monthLeads: summary.month_total,
           subscriptionStatus: sub?.subscription?.status ?? null,

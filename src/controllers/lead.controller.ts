@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { Resend } from 'resend';
 import { supabase } from '../config/supabase';
+import { validateLeadInput } from '../utils/leadInput';
+import { releasePageLead, takePageLead } from '../services/pageLeadGuard';
 
 function escapeHtml(s: string): string {
   return s
@@ -96,22 +98,14 @@ function buildEmailHtml(p: {
 
 export async function submitLead(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
-  const { name, phone, email, message } = req.body as {
-    name?: string;
-    phone?: string;
-    email?: string;
-    message?: string;
-  };
 
-  if (!name?.trim() || !phone?.trim()) {
-    res.status(400).json({ error: 'name and phone are required' });
+  // Public + unauthenticated: type-check and length-bound every field before touching the DB.
+  const v = validateLeadInput(req.body);
+  if (!v.ok) {
+    res.status(400).json({ error: v.error });
     return;
   }
-
-  const safeName    = name.trim();
-  const safePhone   = phone.trim();
-  const safeEmail   = email?.trim() || null;
-  const safeMessage = message?.trim() || null;
+  const { name: safeName, phone: safePhone, email: safeEmail, message: safeMessage } = v.value;
 
   // 1. Load the page FIRST and enforce that it is actually published.
   //
@@ -165,6 +159,18 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Daily caps (per page + global), taken only now that the lead is about to be stored — a
+  // request for a missing/draft page must not use up the budget. See services/pageLeadGuard.ts.
+  const taken = takePageLead(id);
+  if (taken !== 'ok') {
+    res.status(429).json({
+      error: taken === 'page_cap'
+        ? 'הדף קיבל היום מספר חריג של פניות. נסו שוב מחר או צרו קשר בוואטסאפ.'
+        : 'המערכת עמוסה כרגע בפניות. נסו שוב מאוחר יותר.',
+    });
+    return;
+  }
+
   // 2. Persist lead
   const { data: lead, error: insertErr } = await supabase
     .from('leads')
@@ -179,6 +185,7 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     .single();
 
   if (insertErr) {
+    releasePageLead(id);
     console.error('[LEAD] insert error:', insertErr.message);
     res.status(500).json({ error: 'שליחת הפנייה נכשלה. נסו שוב מאוחר יותר.' });
     return;
@@ -202,7 +209,7 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
             message: safeMessage,
           }),
         });
-        console.log('[LEAD] Email sent to', page.owner_email);
+        console.log('[LEAD] Email sent', { lead_id: (lead as { id: string }).id });
       } catch (emailErr) {
         console.error('[LEAD] Email send failed (lead still saved):', emailErr);
       }

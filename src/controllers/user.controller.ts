@@ -1,4 +1,5 @@
 import { cancelSubscription } from '../services/seoSubscription.service';
+import { revokeAndDeleteGbpConnection } from '../services/gbpAccount';
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
@@ -9,6 +10,7 @@ import { addCredits } from '../services/credits.service';
 import { BUNDLES, SINGLE_PAGE_PRICE } from '../config/billing';
 import { sendNewSignupAlert } from '../services/signup.mailer';
 import { logFunnelEvent } from '../services/funnel.service';
+import { serverError } from '../utils/httpErrors';
 
 const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_discount, referred_by_code';
 
@@ -174,7 +176,7 @@ export async function authUser(req: Request, res: Response): Promise<void> {
       await authUser(req, res);
       return;
     }
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[USER]');
     return;
   }
 
@@ -263,7 +265,7 @@ export async function purchaseCredits(req: Request, res: Response): Promise<void
     .update({ credits: newBalance })
     .eq('email', normalizedEmail);
   if (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[USER]');
     return;
   }
 
@@ -323,13 +325,24 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
   // "no subscription" and "feature not set up" both land in the catch and change nothing.
   try { await cancelSubscription(email); } catch { /* none */ }
 
+  // Google Business Profile connection: revoke the token at Google and delete our encrypted copy
+  // BEFORE the profile goes. If the row cannot be deleted we stop here (nothing else has been
+  // removed yet) so the customer can simply retry — a live refresh token must not outlive the account.
+  try {
+    await revokeAndDeleteGbpConnection(email);
+  } catch (e) {
+    console.error('[ACCOUNT] deleteAccount: could not remove the Google connection', e instanceof Error ? e.message : e);
+    res.status(500).json({ error: 'מחיקת החשבון נכשלה. נסו שוב, ואם זה נמשך צרו איתנו קשר.' });
+    return;
+  }
+
   const { data: ownedPages, error: pagesReadError } = await supabase
     .from('landing_pages')
     .select('id')
     .eq('owner_email', email);
 
   if (pagesReadError) {
-    res.status(500).json({ error: pagesReadError.message });
+    serverError(res, pagesReadError, '[USER]');
     return;
   }
 
@@ -341,7 +354,7 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
       .delete()
       .in('landing_page_id', pageIds);
     if (leadsError) {
-      res.status(500).json({ error: leadsError.message });
+      serverError(res, leadsError, '[USER]');
       return;
     }
 
@@ -350,7 +363,7 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
       .delete()
       .eq('owner_email', email);
     if (pagesError) {
-      res.status(500).json({ error: pagesError.message });
+      serverError(res, pagesError, '[USER]');
       return;
     }
   }
@@ -360,7 +373,7 @@ export async function deleteAccount(req: Request, res: Response): Promise<void> 
     .delete()
     .eq('email', email);
   if (profileError) {
-    res.status(500).json({ error: profileError.message });
+    serverError(res, profileError, '[USER]');
     return;
   }
 

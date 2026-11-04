@@ -13,6 +13,7 @@ import { LandoMark } from '../components/Lando';
 import PageLegalFooter from '../components/PageLegalFooter';
 import RefundAck from '../components/RefundAck';
 import CouponField, { type CouponQuote } from '../components/CouponField';
+import { safeHttpUrl } from '../lib/safeUrl';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1111,7 +1112,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     </div>
   );
 
-  const { ai_content, business_name, phone_number, logo_url, user_images, facebook_url, instagram_url, enable_form, design_style, whiteLabel } = page;
+  const { ai_content, business_name, phone_number, logo_url, user_images, enable_form, design_style, whiteLabel } = page;
+  // Owner-typed links become an <a href> on a public page: only absolute http(s) URLs may render
+  // (a stored `javascript:` href would run script in the visitor's browser).
+  const facebook_url = safeHttpUrl(page.facebook_url);
+  const instagram_url = safeHttpUrl(page.instagram_url);
+  const externalLink = safeHttpUrl(page.external_link);
 
   const canEdit =
     !!page.isOwner ||
@@ -1523,7 +1529,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // legacy behavior (external link for donation/direct_sale, else WhatsApp).
   const ctaMethod: 'whatsapp' | 'email' | 'phone' | 'link' =
     (ai_content.contact?.cta_type as 'whatsapp' | 'email' | 'phone' | 'link' | undefined)
-    ?? (page.external_link && (page.page_goal === 'donation' || page.page_goal === 'direct_sale') ? 'link' : 'whatsapp');
+    ?? (externalLink && (page.page_goal === 'donation' || page.page_goal === 'direct_sale') ? 'link' : 'whatsapp');
 
   // Cascades to whatever contact method the business actually provided,
   // instead of ever producing a dead wa.me/tel: link when the chosen
@@ -1533,9 +1539,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const primaryCtaHref =
     (ctaMethod === 'email' && ctaEmail ? `mailto:${ctaEmail}`
     : ctaMethod === 'phone' && phone ? `tel:${phone}`
-    : ctaMethod === 'link' && page.external_link ? page.external_link
+    : ctaMethod === 'link' && externalLink ? externalLink
     : waUrl)
-    ?? (ctaEmail ? `mailto:${ctaEmail}` : phone ? `tel:${phone}` : page.external_link ?? '#');
+    ?? (ctaEmail ? `mailto:${ctaEmail}` : phone ? `tel:${phone}` : externalLink ?? '#');
 
   // Non-WhatsApp methods use the brand-color styling; WhatsApp keeps its green.
   const useExternalLink = ctaMethod !== 'whatsapp';

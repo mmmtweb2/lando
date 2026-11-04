@@ -25,7 +25,8 @@ export function betaDays(): number {
 
 // ── Events ───────────────────────────────────────────────────────────────────
 export const PUBLIC_EVENTS = ['audit_started', 'audit_completed', 'recs_viewed', 'concierge_clicked'] as const;
-export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed', 'concierge_clicked'] as const;
+export const ACCOUNT_EVENTS = ['recs_viewed', 'activation_viewed', 'setup_step_completed', 'dashboard_viewed', 'concierge_clicked',
+  'step_viewed', 'step_completed', 'step_skipped', 'auto_advanced'] as const;
 export const SERVER_EVENTS = [
   'lead_captured', 'signup', 'setup_completed', 'activation_requested', 'activated_beta',
   'payment_started', 'payment_succeeded', 'day7_active', 'day30_active',
