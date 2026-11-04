@@ -248,7 +248,7 @@ function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
 
 /* ---------- screens ---------- */
 
-function Facts({ s, now }: { s: StepCopy; now: boolean }) {
+export function Facts({ s, now }: { s: Pick<StepCopy, 'what' | 'why' | 'minutes' | 'who'>; now: boolean }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[15px]">
       <dt className="font-bold text-[var(--ink)]">מה עושים</dt><dd className="text-[var(--ink)]">{s.what}</dd>
@@ -260,7 +260,7 @@ function Facts({ s, now }: { s: StepCopy; now: boolean }) {
   );
 }
 
-function Success({ line, onNext }: { line: SuccessLine; onNext: () => void }) {
+export function Success({ line, onNext }: { line: SuccessLine; onNext: () => void }) {
   return (
     <section className="dv2-card flex flex-col items-center gap-3 p-6 text-center" role="status" aria-live="polite">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#D8F6E9] text-[var(--ok-ink)]"><CheckIcon size={30} strokeWidth={3} aria-hidden /></span>
