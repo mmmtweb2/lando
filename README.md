@@ -945,3 +945,10 @@ quota cap there.
 - **יצירת קשר במסלול "אין לי כרטיס" (ממצא 11):** כפתור וואטסאפ (`ConciergeButton`) ב-`NoProfileGuide`.
 - **שאלה נפוצה (ממצא 12):** "ובקרוב נכין גם טיוטת תשובה לביקורות", בהתאם לטבלת החבילות; JSON-LD נוצר מאותו מקור.
 - **לא טופלו כאן:** תגיות meta לכל route (ממצא 3), code-splitting (ממצא 7), יעדי השוואה בקטגוריות (ממצא 5), פרטיות (ממצא 4, מושהה).
+
+## חלק 84 – תגיות meta לפי נתיב ל-/seo ו-/audit (משימה #20, קובי)
+בעיה: כל נתיב בצד לקוח חזר מהשרת עם ה-index.html של דף הבית, ולכן תצוגה מקדימה בוואטסאפ/פייסבוק (בלי JS) הציגה את דף הבית.
+- `src/services/spaMeta.ts`: טבלה קבועה של נתיבים (`/seo`, `/audit`), והחלפת `title`, `description`, `og:title`, `og:description`, `og:url`, `twitter:*` והוספת `canonical` בקובץ ה-HTML. כל ערך עובר escape, ושום קלט מהבקשה לא נכנס ל-HTML (רק נתיב מנורמל כמפתח חיפוש). נתיב לא מוכר או קובץ שלא נקרא: התנהגות כמו קודם (`sendFile`).
+- `src/app.ts`: בנתיב הנפילה ל-index.html שורה אחת קוראת ל-`serveSpaWithMeta` לנתיבים מוכרים.
+- הטקסטים זהים ל-Helmet ב-`SeoLanding.tsx` ול-`PublicAudit.tsx`; בשינוי טקסט שם צריך לעדכן גם את הטבלה.
+- נבדק: `scripts/test-spa-meta.ts` (נתיבים, escape, בלי כפילויות, בלי חיפוש ב-prototype) ובדיקת HTTP אמיתית של הפונקציה מול `client/dist/index.html` לנתיבים `/`, `/seo`, `/seo/`, `/audit`, `/dashboard`, `/seo?utm_source=x`. ללא מיגרציה וללא env.
