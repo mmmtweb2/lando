@@ -59,7 +59,7 @@ function Row({ d, canPublish, onDone }: { d: Draft; canPublish: boolean; onDone:
   );
 }
 
-export default function ReviewDraftsCard() {
+export default function ReviewDraftsCard({ onChange }: { onChange?: () => void } = {}) {
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [note, setNote] = useState('');
   const [canPublish, setCanPublish] = useState(false);
@@ -81,7 +81,7 @@ export default function ReviewDraftsCard() {
       </div>
       {note && <p role="status" className="text-sm text-emerald-700">{note}</p>}
       <ul className="flex flex-col gap-3">
-        {drafts.map((d) => <Row key={d.id} d={d} canPublish={canPublish} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); }} />)}
+        {drafts.map((d) => <Row key={d.id} d={d} canPublish={canPublish} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); onChange?.(); }} />)}
       </ul>
     </div>
   );

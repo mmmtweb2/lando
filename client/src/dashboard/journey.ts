@@ -8,7 +8,7 @@
 // read or stored: the profile score is deliberately never kept (Places terms), so nothing here
 // pretends to know it; the customer runs the check when they want a fresh one.
 
-export type View = 'overview' | 'profile' | 'reviews' | 'content' | 'leads' | 'plan' | 'setup';
+export type View = 'overview' | 'profile' | 'reviews' | 'content' | 'leads' | 'plan' | 'setup' | 'progress' | 'more';
 
 /** Steps the customer ticks themselves (they happen outside Pagey, so we cannot detect them). */
 export type ManualKey = 'first_check' | 'profile_details' | 'profile_verified' | 'review_link_shared' | 'tracking_ready';
@@ -133,5 +133,13 @@ export const VIEW_LABEL: Record<View, string> = {
   leads: 'פניות',
   plan: 'מנוי והגדרות',
   setup: 'ההקמה שלי',
+  progress: 'התקדמות',
+  more: 'עוד',
 };
+
+/** Navigation once setup is done: three things up front, everything else under "עוד". */
+export const NAV_AFTER_SETUP: View[] = ['overview', 'reviews', 'progress', 'more'];
+export const NAV_LABEL_AFTER_SETUP: Partial<Record<View, string>> = { overview: 'בית' };
+/** The views that live under "עוד". */
+export const MORE_VIEWS: View[] = ['profile', 'content', 'leads', 'plan', 'setup'];
 export const VIEW_ORDER: View[] = ['overview', 'profile', 'reviews', 'content', 'leads', 'plan'];
