@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import {
   SEEN_KEY, WHAT_PROMOTES_CLOSING, WHAT_PROMOTES_INTRO, WHAT_PROMOTES_POINTS, WHAT_PROMOTES_SOURCE, WHAT_PROMOTES_TITLE, initialOpen,
-} from './whatPromotes';
+} from './whatPromotesData';
 
 function readSeen(email: string): string | null {
   try { return window.localStorage.getItem(SEEN_KEY + email); } catch { return null; }

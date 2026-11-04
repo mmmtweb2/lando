@@ -13,6 +13,7 @@ import { serveTrackScript } from './controllers/seoTrack.controller';
 import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/subdomain.service';
 import { describeRequest, notifyOwner } from './services/alerts';
 import { recordHttp } from './services/opsMetrics.service';
+import { serveSpaWithMeta } from './services/spaMeta';
 import { applyCloudflareIp } from './utils/clientIp';
 
 const app = express();
@@ -145,6 +146,8 @@ app.get('*', (req: Request, res: Response, next: NextFunction) => {
   if (req.path.startsWith('/api')) { next(); return; }
   // Unknown addresses get a real 404 (the client renders its NotFound page), not a blank 200.
   const known = req.path === '/' || /^\/(create|login|reset-password|audit|seo|start|seo-plan|privacy|terms|accessibility|admin|dashboard)(\/|$)/.test(req.path) || /^\/(p|b)\/[^/]/.test(req.path);
+  // Marketing routes (/seo, /audit) get their own head tags in the raw HTML (see services/spaMeta).
+  if (known && serveSpaWithMeta(req, res, path.join(clientDist, 'index.html'))) return;
   res.status(known ? 200 : 404).sendFile(path.join(clientDist, 'index.html'));
 });
 
