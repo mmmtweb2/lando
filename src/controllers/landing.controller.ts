@@ -1118,6 +1118,39 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
   res.json({ url, user_images: serialized });
 }
 
+/**
+ * Replace the page's logo (owner/admin only, see requireOwnPage on the route). Same processing as
+ * the logo uploaded in the wizard (webp, max 300px wide, alpha kept). Free: no AI is involved.
+ */
+export async function updateLogo(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (!file) {
+    res.status(400).json({ error: 'לא נבחר קובץ.' });
+    return;
+  }
+  let url: string;
+  try {
+    url = await processAndSave(file.buffer, 300, 'logo');
+  } catch {
+    res.status(400).json({ error: 'לא הצלחנו לקרוא את הקובץ. נסו תמונה אחרת (JPG, PNG או WebP).' });
+    return;
+  }
+  const { error } = await supabase.from('landing_pages').update({ logo_url: url }).eq('id', id);
+  if (error) { serverError(res, error, '[LANDING]'); return; }
+  touchDraft(id);
+  res.json({ logo_url: url });
+}
+
+/** Remove the page's logo (the page then renders without one). Owner/admin only. */
+export async function removeLogo(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const { error } = await supabase.from('landing_pages').update({ logo_url: null }).eq('id', id);
+  if (error) { serverError(res, error, '[LANDING]'); return; }
+  touchDraft(id);
+  res.json({ logo_url: null });
+}
+
 export async function regenerateImageAi(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const { slot, prompt, isFullSet } = req.body as {
