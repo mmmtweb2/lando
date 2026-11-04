@@ -239,6 +239,12 @@ const code = async (p: Promise<unknown>) => { try { await p; return null; } catc
   r = res(); await postAccountEvent({ authEmail: 'c@x.co', body: { event: 'activated_beta' } } as any, r); assert.equal(r.code, 400, 'a customer cannot report a server-only milestone');
   r = res(); await postAccountEvent({ authEmail: 'c@x.co', body: { event: 'activation_viewed' } } as any, r); assert.equal(r.code, 204);
   assert.ok(events('c@x.co').includes('activation_viewed'));
+  for (const ev of ['step_viewed', 'step_completed', 'step_skipped', 'auto_advanced']) {
+    r = res(); await postAccountEvent({ authEmail: 'c@x.co', body: { event: ev, props: { step_id: 'profile_details', mode: 'auto', name: 'שם פרטי' } } } as any, r);
+    assert.equal(r.code, 204, `${ev} is accepted from a signed-in customer`);
+    assert.ok(events('c@x.co').includes(ev));
+  }
+  assert.ok(!JSON.stringify(tables.journey_events.filter((x: any) => x.event === 'step_completed')).includes('שם פרטי'), 'free text is dropped from step events');
 
   // ── logging never throws, even when the table is missing ──
   missing = true;

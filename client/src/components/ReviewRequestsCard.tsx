@@ -17,7 +17,7 @@ function statusText(i: Item): string {
   return 'נשלחו בקשה ותזכורת';
 }
 
-function Business({ b }: { b: Saved }) {
+function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -80,7 +80,7 @@ function Business({ b }: { b: Saved }) {
     // Open WhatsApp first (a popup must start from the click), then remember that it was sent.
     setChoosing(null);
     window.open(waLink(i.phone, requestText(i.next === 'followup' ? 'followup' : 'first', i.first_name, b.name, link, service)), '_blank', 'noopener,noreferrer');
-    if (await call(`/api/seo/review-requests/${i.id}/sent`, { method: 'POST' })) await load();
+    if (await call(`/api/seo/review-requests/${i.id}/sent`, { method: 'POST' })) { onSent?.(); await load(); }
   }
 
   return (
@@ -164,7 +164,7 @@ function Business({ b }: { b: Saved }) {
 }
 
 /** Stage 7: the owner's list of customers to ask for a Google review. The message leaves from the owner's own WhatsApp. */
-export default function ReviewRequestsCard() {
+export default function ReviewRequestsCard({ onSent }: { onSent?: () => void } = {}) {
   const [list, setList] = useState<Saved[] | null>(null);
   useEffect(() => {
     authFetch('/api/seo/businesses').then((r) => (r.ok ? r.json() : { businesses: [] }))
@@ -181,7 +181,7 @@ export default function ReviewRequestsCard() {
           כדי לא להציק: בקשה אחת ותזכורת אחת בלבד, בהפרש של שבוע. שלחו רק ללקוחות שהיו אצלכם בפועל.
         </p>
       </div>
-      {list.map((b) => <Business key={b.id} b={b} />)}
+      {list.map((b) => <Business key={b.id} b={b} onSent={onSent} />)}
     </div>
   );
 }

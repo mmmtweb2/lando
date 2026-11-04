@@ -850,10 +850,31 @@ quota cap there.
 - **לוח הניהול:** בלוק "מה לעשות היום" בסקירה (תקועים, בקשות הפעלה, פניות מהבדיקה החינמית שלא טופלו ב-30 ימים, פרימיום ידני שהכרטיס לא עודכן 30 יום או לא נרשם) עם קישור ללשונית. `ready_to_activate` נספר כמועמד ל"תקוע" (בקשת הפעלה טרייה נחשבת התקדמות). בלשונית המשתמשים נוספו שם העסק ופעולת יצירת קשר (מייל, ו-וואטסאפ כשהטלפון ידוע). **הטלפון מגיע רק מפנייה בבדיקה החינמית על אותו `place_id`**, ולכן ייתכן שהוא של אדם אחר מבעל החשבון. בלשונית "משפך" נוסף סימון "טופל" לפניות. MRR של פרימיום ידני לא נספר אחרי שתוקף הגישה של החשבון (`user_products`) פג או בוטל.
 - **בדיקות:** `scripts/test-journey.ts` ו-`scripts/test-admin-ops.ts` הורחבו (ריצה: `npx tsx`, עם `NEXT_PUBLIC_SUPABASE_URL` ו-`SUPABASE_SERVICE_ROLE_KEY` מזויפים בסביבה).
 
-## Part 72 — GBP diagnosis tool (admin, read-only)
+## Part 76 — GBP diagnosis tool (admin, read-only)
 
 - **Where:** `/admin` → "בריאות מערכת" → "אבחון חיבור גוגל (Business Profile)". Enter the email of a connected account (empty = the admin's own) and press "הרצת אבחון".
 - **What it does:** walks the product's own Google calls in order and shows, per step, the HTTP status and **Google's own error** (status, full message, reasons, quota metric/limit/value, consumer project number): server settings → saved connection → token refresh → accounts (Account Management API) → locations (Business Information API) → read one location → performance (Performance API) → reviews (My Business v4). A failed step does not hide the independent ones after it. A verdict line says which case it is: works / quota (0 or exhausted) / API not enabled in the project / permission / reconnect (revoked or expired token) / not connected / server settings.
 - **Safe by design:** only GET requests to Google (plus the token refresh), nothing is written to Google; tokens, client secret and the Authorization header never enter the report (tested). Admin only (password + login + is_admin), at most one run per 10 seconds (it spends a few API calls). A "copy for chat" block is included.
 - **Needed to run it:** `GBP_CONNECT_ENABLED=true` with valid settings (see "Google Business Profile: בדיקת הגדרות"), and the Google account that manages the business card connected from `/dashboard` (add its Pagey email to `GBP_CONNECT_ALLOWED_EMAILS` if that list is set). No migration, no new env var.
 - **Test:** `npx ts-node --transpile-only scripts/test-gbp-diagnose.ts` (all steps, the 429/quota case with Google's real error shape, API disabled, permission, revoked token, not connected, no config, network failure, no secrets in the report, run guard).
+
+## Part 73 — Task #11 (v4), PR A: guided setup, one screen at a time (no migration)
+
+- **מה השתנה:** בזמן ההקמה הדשבורד מציג מסך אחד בכל פעם, בלי לשוניות: "צעד X מתוך 5", פס התקדמות, כפתור ראשי אחד. כל צעד מראה מה עושים, למה (בלי הבטחת תוצאה), כמה דקות, מי עושה (אנחנו/אתם) ומתי. אחרי צעד: מסך הצלחה קצר (1.8 שניות, לפני/אחרי, והציון אם יש) ומעבר אוטומטי לבא.
+- **חמשת הצעדים:** חיבור העסק (מילוי מראש מה-`/start`), בדיקה ראשונה מול מתחרים (רצה לבד אחרי חיבור, בקשת Places אחת לעסק בכל טעינת עמוד), פרטי הכרטיס בגוגל (טקסטים להעתקה עם סוגריים להשלמה, וקישור ל-business.google.com), אימות הכרטיס, בקשת ביקורת ראשונה (הכרטיס הקיים של בקשות ביקורת, וצעד נסגר אחרי שליחה בוואטסאפ). "תוכן החיפוש" ו"מעקב פניות" כבר לא חלק מההקמה (יהיו משימות חודשיות ב-PR B).
+- **לוגיקה:** `client/src/dashboard/guided.ts` (טהור, נבדק ב-`scripts/test-guided.ts`). `journey.ts`/`deriveSetup` מחזיר 5 צעדים. הציון של הבדיקה מוצג ולא נשמר (תנאי Places).
+- **דילוג ושמירה:** "אעשה אחר כך" מדלג בלי לחסום, והצעד חוזר בסוף (דילוג חוזר שולח אותו לסוף התור). חיבור והבדיקה האוטומטית אי אפשר לדלג. סימוני "בוצע" נשמרים בטבלה הקיימת `seo_setup_steps` (032), לכן חזרה מכל מכשיר נוחתת באותו צעד. **רשימת הדילוגים נשמרת בדפדפן בלבד** (מפתח `pagey_setup_skips:<email>`), כי אילוץ ה-CHECK בטבלה 032 לא מאפשר מפתחות חדשים בלי מיגרציה. בלי דפדפן המקורי, הצעד שדולג פשוט חוזר לפי הסדר.
+- **אירועים (journey_events, חשבון מחובר):** `step_viewed`, `step_completed` (`mode`: auto/manual), `step_skipped`, `auto_advanced`, עם `step_id` בלבד.
+- **נגישות:** כותרת צעד מקבלת פוקוס בכל מעבר, אזור `aria-live` מכריז "צעד X מתוך 5", מסך ההצלחה `role=status`, יעדי לחיצה 44px, נבדק ב-375px בלי גלילה אופקית.
+- **קישור "מעבר לתפריט המלא":** קישור קטן בתחתית ההקמה, כדי שלקוח לא ייתקע בלי גישה למנוי/הגדרות. אפשר להסיר אם משה רוצה הקמה סגורה.
+- **בלי מיגרציה ובלי משתנה סביבה.** `ReviewRequestsCard` קיבל פרופ אופציונלי `onSent`.
+
+## Part 74 — Task #11 (v4), PR B: monthly task and the short navigation (no migration)
+
+- **מה השתנה:** אחרי ההקמה הדשבורד מציג "משימת החודש" אחת בכל פעם, באותו מבנה של צעדי ההקמה (מה/למה/דקות/מי/מתי), עם מסך הצלחה קצר, "סיימתי" באישור קצר ו"אעשה אחר כך". הניווט: **בית / ביקורות / התקדמות / עוד**. תחת "עוד": הפרופיל שלי, תוכן ודפים, פניות, מנוי והגדרות, ההקמה שלי (עם קישור "חזרה ל״עוד״"). לקוח שיצא מההקמה דרך "מעבר לתפריט המלא" רואה את ששת המסכים הישנים.
+- **ארבע המשימות (מאושרות):** שלוש בקשות ביקורת בחודש; מענה לביקורות שמחכות (רק כשיש טיוטות מחכות); ביטויי חיפוש חדשים; בדיקת מעקב אחרי פניות. "תוכן החיפוש" ו"מעקב פניות" עברו לכאן מההקמה.
+- **זיהוי אוטומטי:** בקשות ביקורת שנשלחו החודש (`sent_at` מ-`/api/seo/review-requests`, 3 סוגרות); ביקורות שנענו (אין עוד טיוטות ב-`/api/seo/review-drafts`); תוכן חדש מאז תחילת החודש (פריטי תוכן ודפי חיפוש גדלו מול מצב תחילת החודש); פנייה אחת החודש (`month_total`). אחרת "סיימתי".
+- **שמירה:** מה שסומן או נדחה החודש נשמר בדפדפן בלבד (`pagey_month_tasks:<email>`) ומתאפס בתחילת כל חודש קלנדרי. בלי טבלה ובלי מיגרציה (בהתאם להחלטה על דילוג ב-PR A).
+- **לוגיקה:** `client/src/dashboard/monthly.ts` (טהור, `scripts/test-monthly.ts`), `useMonthly.ts`, `MonthlyTask.tsx`, `AfterSetupViews.tsx` (עוד, התקדמות). `Overview.tsx` בשלב השוטף: סקירת פניות, משימת החודש, מקורות הפניות, "בדרך אליכם". "ההמלצה לחודש" ורשת הפעולות הוחלפו במשימה אחת.
+- **אירועים:** אותם ארבעה (`step_viewed/step_completed/step_skipped/auto_advanced`) עם `step_id` = `month_<משימה>`. בלי שינוי בשרת. `useSeoOverview` טוען עוד שתי קריאות קיימות (בלי Places).
+- **בלי מיגרציה ובלי משתנה סביבה.** `ReviewDraftsCard` קיבל פרופ אופציונלי `onChange`.
