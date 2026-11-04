@@ -908,7 +908,7 @@ quota cap there.
 - **אירועים:** אותם ארבעה (`step_viewed/step_completed/step_skipped/auto_advanced`) עם `step_id` = `month_<משימה>`. בלי שינוי בשרת. `useSeoOverview` טוען עוד שתי קריאות קיימות (בלי Places).
 - **בלי מיגרציה ובלי משתנה סביבה.** `ReviewDraftsCard` קיבל פרופ אופציונלי `onChange`.
 
-## Part 75 — Task #11 (v4), PR C: premium "בטיפול אצלנו" and the setup reminder (migration 045)
+## Part 79 — Task #11 (v4), PR C: premium "בטיפול אצלנו" and the setup reminder (migration 045)
 
 - **מיגרציה 045** (`045_premium_expected_by.sql`): עמודה `expected_by DATE` ב-`seo_manual_premium`. ניתנת להרצה חוזרת (נבדקה פעמיים ב-Postgres נקי). בלי טבלה חדשה, אז בלי שינוי RLS. לפני שהיא רצה הכול עובד בלי התאריך: האדמין והלקוח נופלים לקריאה בלי העמודה, ושמירת תאריך מחזירה 503 `not_migrated` ברור.
 - **פרימיום ידני בהקמה:** לקוח עם שורת פרימיום פעילה רואה בצעד "פרטי הכרטיס שלך בגוגל" את "בטיפול אצלנו, צפוי עד 12.11" (או "התאריך הצפוי יופיע כאן" כשאין תאריך). הצעד מסומן "אנחנו", בלי טקסטים להעתקה, והלקוח רק מאשר ("אישור" + שאלת אישור קצרה). שאר הצעדים והסדר ללא שינוי. `GET /api/seo/premium` (מחובר + מוצר) מחזיר `{premium, expectedBy}` רק על החשבון של הקורא, וכל שגיאה נחשבת "לא פרימיום".
