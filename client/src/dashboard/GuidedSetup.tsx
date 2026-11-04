@@ -5,6 +5,7 @@ import { takePlace, trackAccount } from '../lib/journeyClient';
 import ReviewRequestsCard from '../components/ReviewRequestsCard';
 import NoProfileGuide from '../components/NoProfileGuide';
 import { Segments, Who } from './ui';
+import WhatPromotes from './WhatPromotes';
 import type { OverviewInput } from './journey';
 import {
   GOOGLE_BUSINESS_URL, GUIDED_COPY, inOurHandsText, GUIDED_TOTAL, SUCCESS_MS, cardTexts, deriveGuided, minutesText, parseSkips, successLine, withSkip,
@@ -389,6 +390,8 @@ export default function GuidedSetup({ input, email, ticksOnServer, setTick, relo
           </button>
         )}
       </section>
+
+      <WhatPromotes email={email} />
 
       {view.upcoming.length > 0 && (
         <section aria-labelledby="gs-next" className="dv2-card-flat p-4">

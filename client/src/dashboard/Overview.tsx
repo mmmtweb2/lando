@@ -4,6 +4,7 @@ import { LandoBot } from '../components/Lando';
 import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
 import MonthlyTask from './MonthlyTask';
+import WhatPromotes from './WhatPromotes';
 import type { Monthly } from './useMonthly';
 import {
   deriveSetup, inquiriesText, readiness,
@@ -23,6 +24,7 @@ interface Props {
   onRetry: () => void;
   monthly: Monthly;
   requestsSent: number;
+  email: string;
 }
 
 export function OverviewSkeleton() {
@@ -115,7 +117,7 @@ const TIER_LINE: Record<string, string> = {
   ready: 'כל צעדי ההקמה הושלמו.',
 };
 
-function SetupOverview({ input, go, setTick, ticksOnServer }: Pick<Props, 'input' | 'go' | 'setTick' | 'ticksOnServer'>) {
+function SetupOverview({ input, go, setTick, ticksOnServer, email }: Pick<Props, 'input' | 'go' | 'setTick' | 'ticksOnServer' | 'email'>) {
   const items = deriveSetup(input);
   const r = readiness(items);
   return (
@@ -137,6 +139,8 @@ function SetupOverview({ input, go, setTick, ticksOnServer }: Pick<Props, 'input
       </section>
 
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
+
+      <WhatPromotes email={email} />
 
       <section aria-labelledby="dv2-checklist">
         <SectionTitle id="dv2-checklist" title="רשימת ההקמה" hint="מה עושים עכשיו, ומה כבר מוכן." />
@@ -192,7 +196,7 @@ export function Tile({ icon, label, value }: { icon: ReactNode; label: string; v
   );
 }
 
-function OngoingOverview({ input, summary, gbpEnabled, go, monthly, requestsSent, onRetry }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go' | 'monthly' | 'requestsSent' | 'onRetry'>) {
+function OngoingOverview({ input, summary, gbpEnabled, go, monthly, requestsSent, onRetry, email }: Pick<Props, 'input' | 'summary' | 'gbpEnabled' | 'go' | 'monthly' | 'requestsSent' | 'onRetry' | 'email'>) {
   const soon = gbpEnabled ? SOON.filter((s) => s.title !== 'סטטיסטיקות כרטיס העסק מגוגל') : SOON;
   return (
     <div className="flex flex-col gap-6">
@@ -213,6 +217,8 @@ function OngoingOverview({ input, summary, gbpEnabled, go, monthly, requestsSent
       </section>
 
       {input.subscriptionStatus === 'past_due' && <PastDue go={go} />}
+
+      <WhatPromotes email={email} />
 
       <MonthlyTask monthly={monthly} requestsSent={requestsSent} reload={onRetry} />
 
@@ -262,7 +268,7 @@ export function SetupArchive({ input, go, setTick, ticksOnServer }: Pick<Props, 
   );
 }
 
-export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, gbpEnabled, go, setTick, onRetry, monthly, requestsSent }: Props) {
+export default function Overview({ input, summary, phase, loading, failed, ticksOnServer, gbpEnabled, go, setTick, onRetry, monthly, requestsSent, email }: Props) {
   if (loading && !input.loaded) return <OverviewSkeleton />;
   if (failed) {
     return (
@@ -274,6 +280,6 @@ export default function Overview({ input, summary, phase, loading, failed, ticks
     );
   }
   if (phase === 'welcome') return <Welcome setTick={setTick} />;
-  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} gbpEnabled={gbpEnabled} go={go} monthly={monthly} requestsSent={requestsSent} onRetry={onRetry} />;
-  return <SetupOverview input={input} go={go} setTick={setTick} ticksOnServer={ticksOnServer} />;
+  if (phase === 'ongoing') return <OngoingOverview input={input} summary={summary} gbpEnabled={gbpEnabled} go={go} monthly={monthly} requestsSent={requestsSent} onRetry={onRetry} email={email} />;
+  return <SetupOverview input={input} go={go} setTick={setTick} ticksOnServer={ticksOnServer} email={email} />;
 }
