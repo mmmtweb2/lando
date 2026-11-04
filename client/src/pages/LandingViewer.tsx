@@ -15,6 +15,7 @@ import PageLegalFooter from '../components/PageLegalFooter';
 import RefundAck from '../components/RefundAck';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 import { safeHttpUrl } from '../lib/safeUrl';
+import ImageEditor from '../components/ImageEditor';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -494,6 +495,7 @@ function ImageSelectorModal({
   pageId,
   slot,
   initialPrompt,
+  currentSrc,
   credits,
   primaryColor,
   onClose,
@@ -503,12 +505,14 @@ function ImageSelectorModal({
   pageId: string;
   slot: string;
   initialPrompt: string;
+  /** The image currently in this slot (enables the editor); null when the slot is empty. */
+  currentSrc?: string | null;
   credits: number;
   primaryColor: string;
   onClose: () => void;
   onImageUpdated: (url: string, userImages: string) => void;
 }) {
-  const [step, setStep] = useState<'choose' | 'ai-prompt'>('choose');
+  const [step, setStep] = useState<'choose' | 'ai-prompt' | 'edit'>('choose');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promptText, setPromptText] = useState('');
@@ -523,9 +527,7 @@ function ImageSelectorModal({
     }
   }, [isOpen, initialPrompt]);
 
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function uploadFile(file: File) {
     setBusy(true);
     setError(null);
     try {
@@ -542,10 +544,17 @@ function ImageSelectorModal({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'שגיאה בהעלאת התמונה');
+      throw err;
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try { await uploadFile(file); } catch { /* error is shown in the modal */ }
   }
 
   async function handleAiRegenerate() {
@@ -631,19 +640,27 @@ function ImageSelectorModal({
             <div className="p-6 flex flex-col gap-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-extrabold text-slate-900">
-                  {step === 'ai-prompt' ? 'יצירת תמונה עם AI' : 'שינוי תמונה'}
+                  {step === 'ai-prompt' ? 'יצירת תמונה עם AI' : step === 'edit' ? 'עריכת התמונה' : 'שינוי תמונה'}
                 </h3>
                 {!busy && (
                   <button
-                    onClick={step === 'ai-prompt' ? () => setStep('choose') : onClose}
+                    onClick={step === 'ai-prompt' || step === 'edit' ? () => setStep('choose') : onClose}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-lg leading-none"
                   >
-                    {step === 'ai-prompt' ? '←' : '×'}
+                    {step === 'ai-prompt' || step === 'edit' ? '←' : '×'}
                   </button>
                 )}
               </div>
 
-              {step === 'choose' ? (
+              {step === 'edit' && currentSrc ? (
+                <ImageEditor
+                  src={currentSrc}
+                  defaultRatio="4:3"
+                  primaryColor={primaryColor}
+                  onCancel={() => setStep('choose')}
+                  onSave={async (file) => { await uploadFile(file); }}
+                />
+              ) : step === 'choose' ? (
                 <div className="flex flex-col gap-3">
                   <button
                     disabled={busy}
@@ -658,6 +675,22 @@ function ImageSelectorModal({
                       <span className="text-xs text-slate-500 leading-tight">JPG, PNG עד 10MB</span>
                     </div>
                   </button>
+
+                  {currentSrc && (
+                    <button
+                      disabled={busy}
+                      onClick={() => setStep('edit')}
+                      className="flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition text-right"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm flex-shrink-0">
+                        <Pencil size={20} className="text-slate-500" />
+                      </div>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-bold text-slate-800 text-sm">עריכת התמונה הנוכחית</span>
+                        <span className="text-xs text-slate-500 leading-tight">סיבוב, זום, הזזה והיפוך. בחינם</span>
+                      </div>
+                    </button>
+                  )}
 
                   <button
                     disabled={busy || credits < CREDIT_COSTS.IMAGE_SINGLE}
@@ -1015,6 +1048,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // an explicit open/close toggle, moved to the opposite side of the
   // screen from the publish button, and closes itself on save.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [logoOpen, setLogoOpen] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // ── FAQ accordion open index ──────────────────────────────────────────────
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -1138,6 +1175,41 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const facebook_url = safeHttpUrl(page.facebook_url);
   const instagram_url = safeHttpUrl(page.instagram_url);
   const externalLink = safeHttpUrl(page.external_link);
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || logoBusy) return;
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const r = await authFetch(`/api/landing/${page!.id}/update-logo`, { method: 'POST', body: fd });
+      const body = await r.json().catch(() => ({})) as { logo_url?: string | null; error?: string };
+      if (!r.ok) throw new Error(body.error ?? 'שגיאה בהעלאת הלוגו');
+      setPage((prev) => (prev ? { ...prev, logo_url: body.logo_url ?? null } : prev));
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'שגיאה בהעלאת הלוגו');
+    } finally {
+      setLogoBusy(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  }
+
+  async function handleLogoRemove() {
+    if (logoBusy) return;
+    setLogoBusy(true);
+    setLogoError(null);
+    try {
+      const r = await authFetch(`/api/landing/${page!.id}/logo`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('שגיאה בהסרת הלוגו');
+      setPage((prev) => (prev ? { ...prev, logo_url: null } : prev));
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'שגיאה בהסרת הלוגו');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
 
   const canEdit =
     !!page.isOwner ||
@@ -4282,6 +4354,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         pageId={page.id}
         slot={imageModalSlot ?? ''}
         initialPrompt={imageModalPrompt}
+        currentSrc={(() => {
+          const sl = imageModalSlot ?? '';
+          if (sl === 'hero') return heroImageUrl;
+          if (sl.startsWith('service_')) {
+            const i = parseInt(sl.slice(8), 10);
+            return (isAiFormat ? iconUrls[i] : legacyImages[i + 2]) || null;
+          }
+          return null;
+        })()}
         credits={credits}
         primaryColor={primary}
         onClose={() => setImageModalSlot(null)}
@@ -4363,7 +4444,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       {isEditingMode && (
         <>
           <button
-            onClick={() => setPaletteOpen((v) => !v)}
+            onClick={() => { setPaletteOpen((v) => !v); setLogoOpen(false); }}
             title="צבעי הדף"
             aria-label="פתיחת עורך הצבעים"
             className="fixed top-20 right-4 z-50 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg flex items-center justify-center text-lg hover:scale-105 transition"
@@ -4389,6 +4470,50 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent" />
               </label>
               <p className="text-[11px] text-slate-400 leading-tight">השינוי נשמר עם "שמור שינויים"</p>
+            </div>
+          )}
+          <button
+            onClick={() => { setLogoOpen((v) => !v); setPaletteOpen(false); }}
+            title="לוגו"
+            aria-label="פתיחת עורך הלוגו"
+            className="fixed top-20 right-[4.25rem] z-50 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:scale-105 transition"
+          >
+            <Camera size={18} />
+          </button>
+          {logoOpen && (
+            <div className="fixed top-[4.75rem] right-4 z-50 w-56 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl p-4 flex flex-col gap-3" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-slate-700">לוגו העסק</p>
+                <button onClick={() => setLogoOpen(false)} aria-label="סגירה" className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs leading-none">×</button>
+              </div>
+              {logo_url ? (
+                <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <img src={logo_url} alt="הלוגו הנוכחי" className="max-h-16 max-w-full object-contain" />
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 leading-snug">עדיין אין לוגו בדף. אפשר להעלות אחד עכשיו.</p>
+              )}
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
+              <button
+                onClick={() => logoInputRef.current?.click()}
+                disabled={logoBusy}
+                className="flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold text-white disabled:opacity-60"
+                style={{ backgroundColor: primary }}
+              >
+                {logoBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                {logo_url ? 'החלפת לוגו' : 'העלאת לוגו'}
+              </button>
+              {logo_url && (
+                <button
+                  onClick={handleLogoRemove}
+                  disabled={logoBusy}
+                  className="rounded-xl border border-slate-200 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  הסרת הלוגו
+                </button>
+              )}
+              {logoError && <p className="text-[11px] text-red-500 leading-tight">{logoError}</p>}
+              <p className="text-[11px] text-slate-400 leading-tight">נשמר מיד, בלי צורך ב"שמור שינויים". מומלץ PNG שקוף.</p>
             </div>
           )}
         </>
