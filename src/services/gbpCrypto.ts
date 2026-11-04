@@ -24,13 +24,25 @@ export function decryptToken(blob: string, key: Buffer): string | null {
   } catch { return null; }
 }
 
-export interface StatePayload { email: string; exp: number; n: string }
+/** `b` = SHA-256 of the per-browser nonce that was also set as an httpOnly cookie at /oauth/start. */
+export interface StatePayload { email: string; exp: number; n: string; b?: string }
 
 const stateKey = (key: Buffer) => crypto.createHmac('sha256', key).update('gbp-oauth-state-v1').digest();
 
-/** state = base64url(json) + "." + HMAC. Ties the callback to the account that started the flow. */
-export function signState(email: string, key: Buffer, now = Date.now(), ttlMs = 10 * 60 * 1000): string {
-  const body = b64(Buffer.from(JSON.stringify({ email, exp: now + ttlMs, n: crypto.randomBytes(8).toString('hex') } satisfies StatePayload)));
+/** A fresh random nonce for the browser that starts the flow (goes in a cookie, never in the URL). */
+export const newBrowserNonce = (): string => crypto.randomBytes(24).toString('hex');
+const nonceDigest = (nonce: string): string => crypto.createHash('sha256').update(nonce).digest('hex');
+
+/**
+ * state = base64url(json) + "." + HMAC. Ties the callback to the account that started the flow AND,
+ * when `browserNonce` is given, to the browser that started it (login-CSRF protection: a state
+ * minted by an attacker is useless in a victim's browser, which does not hold the matching cookie).
+ * The state carries only the nonce's SHA-256, so the URL never exposes the cookie value.
+ */
+export function signState(email: string, key: Buffer, now = Date.now(), ttlMs = 10 * 60 * 1000, browserNonce?: string): string {
+  const payload: StatePayload = { email, exp: now + ttlMs, n: crypto.randomBytes(8).toString('hex') };
+  if (browserNonce) payload.b = nonceDigest(browserNonce);
+  const body = b64(Buffer.from(JSON.stringify(payload)));
   const mac = b64(crypto.createHmac('sha256', stateKey(key)).update(body).digest());
   return `${body}.${mac}`;
 }
@@ -48,4 +60,12 @@ export function verifyState(state: unknown, key: Buffer, now = Date.now()): Stat
     if (typeof p.email !== 'string' || typeof p.exp !== 'number' || p.exp < now) return null;
     return p;
   } catch { return null; }
+}
+
+/** True only when the state carries a browser binding AND the presented cookie nonce matches it. */
+export function stateMatchesBrowser(p: StatePayload, cookieNonce: unknown): boolean {
+  if (typeof p.b !== 'string' || typeof cookieNonce !== 'string' || !cookieNonce || cookieNonce.length > 200) return false;
+  const want = Buffer.from(p.b, 'utf8');
+  const got = Buffer.from(nonceDigest(cookieNonce), 'utf8');
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
 }

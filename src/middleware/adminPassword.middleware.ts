@@ -8,7 +8,8 @@ import { timingSafeEqual } from 'crypto';
  * want a password.
  *
  * This is deliberately NOT an authentication mechanism and replaces nothing.
- * It is a second factor of the crudest kind — it means a stolen or mistakenly
+ * It runs AFTER requireAuth + requireAdmin (see admin.routes.ts), so only an authenticated admin ever
+ * learns whether it was right. It is a second factor of the crudest kind — it means a stolen or mistakenly
  * flagged admin session is not on its own enough to reach the admin API.
  *
  * FAILS CLOSED. If ADMIN_PANEL_PASSWORD is unset the check REJECTS every admin
@@ -26,6 +27,15 @@ function matches(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+// Wrong-password throttle. The password is now checked only AFTER the caller proved to be an admin,
+// so this only slows down a stolen/abused admin session guessing the second factor: 10 wrong
+// attempts per 15 minutes per account+IP, then 429 until the window passes. In memory (single
+// instance, like middleware/rateLimit.ts).
+const FAIL_WINDOW_MS = 15 * 60 * 1000;
+const FAIL_MAX = 10;
+const failures = new Map<string, { count: number; resetAt: number }>();
+export function _resetAdminPasswordFailuresForTests(): void { failures.clear(); }
+
 export function requireAdminPanelPassword(req: Request, res: Response, next: NextFunction): void {
   // Read per-request rather than at module load: import order is then irrelevant
   // (env.ts runs dotenv first today, but this must not silently break if that
@@ -40,7 +50,22 @@ export function requireAdminPanelPassword(req: Request, res: Response, next: Nex
 
   const header = req.headers['x-admin-password'];
   const provided = Array.isArray(header) ? header[0] : header;
+  const key = `${req.authEmail ?? '-'}|${req.ip ?? '-'}`;
+  const now = Date.now();
+  const f = failures.get(key);
+  if (f && now > f.resetAt) failures.delete(key);
+  const cur = failures.get(key);
+  if (cur && cur.count >= FAIL_MAX) {
+    res.setHeader('Retry-After', String(Math.ceil((cur.resetAt - now) / 1000)));
+    res.status(429).json({ adminPassword: true, error: 'יותר מדי ניסיונות סיסמה. נסו שוב מאוחר יותר.' });
+    return;
+  }
   if (!provided || !matches(provided, expected)) {
+    // An absent header is the client's normal first call before the password is typed: not a guess.
+    if (provided) {
+      if (failures.size > 2000) for (const [k, b] of failures) if (now > b.resetAt) failures.delete(k);
+      failures.set(key, { count: (cur?.count ?? 0) + 1, resetAt: cur?.resetAt ?? now + FAIL_WINDOW_MS });
+    }
     // `adminPassword: true` is what lets the client tell "wrong panel password"
     // apart from the pre-existing "your account is not an admin" denial, and
     // show "סיסמה שגויה" instead of the generic access-denied screen.

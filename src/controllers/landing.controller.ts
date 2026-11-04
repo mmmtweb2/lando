@@ -17,6 +17,8 @@ import { assignSubdomain, canonicalUrl } from '../services/subdomain.service';
 import { deleteLeadsForPageTree } from '../services/pageTree.service';
 import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
+import { optionalHttpUrl } from '../utils/safeUrl';
+import { serverError } from '../utils/httpErrors';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -28,7 +30,7 @@ export async function getAllLandingPages(_req: Request, res: Response): Promise<
     .order('created_at', { ascending: false });
 
   if (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[LANDING]');
     return;
   }
 
@@ -51,7 +53,7 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
     .order('created_at', { ascending: false });
 
   if (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[LANDING]');
     return;
   }
 
@@ -96,7 +98,7 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
     .select('id, slug, business_name, parent_id, hero_title:ai_content->hero->>title')
     .eq('owner_email', email);
   if (pagesErr) {
-    res.status(500).json({ error: pagesErr.message });
+    serverError(res, pagesErr, '[LANDING]');
     return;
   }
 
@@ -140,7 +142,7 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
 
   const failed = [formsRes, eventsRes, cForm, cWa, cCall, cEmail, cLink].find((r) => r.error);
   if (failed?.error) {
-    res.status(500).json({ error: failed.error.message });
+    serverError(res, failed.error, '[LANDING]');
     return;
   }
 
@@ -194,7 +196,7 @@ export async function updateLandingPage(req: Request, res: Response): Promise<vo
     .single();
 
   if (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[LANDING]');
     return;
   }
 
@@ -227,7 +229,7 @@ export async function deleteLandingPage(req: Request, res: Response): Promise<vo
     .eq('id', id);
 
   if (error) {
-    res.status(500).json({ error: error.message });
+    serverError(res, error, '[LANDING]');
     return;
   }
 
@@ -465,9 +467,12 @@ export async function suggestQuestions(req: Request, res: Response): Promise<voi
 }
 
 export async function createLandingPage(req: Request, res: Response): Promise<void> {
-  console.log('=== NEW REQUEST TO /api/landing ===');
-  console.log('req.body:', req.body);
-  console.log('req.files:', req.files);
+  // Deliberately NO logging of req.body / req.files: the body carries the visitor's phone,
+  // email, address and free text, and the files are raw uploads. Keep only non-PII facts.
+  console.log('[LANDING] createLandingPage request', {
+    authenticated: !!req.authEmail,
+    image_source: (req.body as { image_source?: unknown } | undefined)?.image_source ?? 'none',
+  });
 
   try {
     const files = req.files as {
@@ -530,8 +535,20 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Owner-supplied links end up as <a href> on a PUBLIC page (and in JSON-LD). Only absolute
+    // http(s) URLs are accepted — a `javascript:`/`data:` value would be stored XSS. Checked
+    // BEFORE any credit or AI cost is spent. A scheme-less "facebook.com/x" is upgraded to https.
+    const fbUrl = optionalHttpUrl(facebook_url);
+    const igUrl = optionalHttpUrl(instagram_url);
+    const extUrl = optionalHttpUrl(external_link);
+    if (!fbUrl.ok || !igUrl.ok || !extUrl.ok) {
+      const which = !fbUrl.ok ? 'קישור הפייסבוק' : !igUrl.ok ? 'קישור האינסטגרם' : 'הקישור החיצוני';
+      res.status(400).json({ error: `${which} אינו תקין. יש להזין כתובת מלאה שמתחילה ב-https://` });
+      return;
+    }
+
     console.log('[LANDING] image_source received:', image_source);
-    console.log('[LANDING] owner_email received:', owner_email ?? '(none)');
+    console.log('[LANDING] owner_email present:', !!owner_email);
 
     if (!VALID_IMAGE_SOURCES.includes(image_source as ImageSource)) {
       res.status(400).json({ error: `image_source must be one of: ${VALID_IMAGE_SOURCES.join(', ')}` });
@@ -572,12 +589,12 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
     const safeAbout = about_business || null;
     const safeUserText = user_provided_text || null;
     const safeDesignStyle   = design_style   || null;
-    const safeFacebookUrl   = facebook_url   || null;
-    const safeInstagramUrl  = instagram_url  || null;
+    const safeFacebookUrl   = fbUrl.value;
+    const safeInstagramUrl  = igUrl.value;
     const safeEnableForm    = enable_form === 'true';
     // Owner is the AUTHENTICATED user (verified token), never the spoofable body field.
     const safeOwnerEmail     = req.authEmail ?? (owner_email ? owner_email.trim().toLowerCase() : null);
-    const safeExternalLink   = external_link?.trim() || null;
+    const safeExternalLink   = extUrl.value;
     const safePageGoal       = page_goal || null;
     const safeCtaType        = ['whatsapp', 'email', 'phone', 'link'].includes(cta_type ?? '') ? cta_type! : 'whatsapp';
     const safeAutoExtract         = auto_extract_colors === 'true';
@@ -591,7 +608,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
     // ── AI image credit gate ───────────────────────────────────────────────
     if (image_source === 'ai') {
-      console.log('[LANDING] AI image requested — checking credit gate for:', safeOwnerEmail);
+      console.log('[LANDING] AI image requested — checking credit gate');
 
       if (!safeOwnerEmail) {
         console.log('[LANDING] Credit gate BLOCKED — no owner_email');
@@ -824,7 +841,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
       if (error) {
         console.error('=== SUPABASE INSERT ERROR ===', error);
-        res.status(500).json({ error: error.message });
+        serverError(res, error, '[LANDING]');
         return;
       }
 
@@ -1095,7 +1112,7 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
     .update({ user_images: serialized })
     .eq('id', id);
 
-  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (error) { serverError(res, error, '[LANDING]'); return; }
 
   touchDraft(id);
   res.json({ url, user_images: serialized });

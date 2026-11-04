@@ -16,13 +16,13 @@ interface Bucket {
  * NOTE: behind a proxy/load-balancer, set `app.set('trust proxy', 1)` so `req.ip`
  * reflects the real client and not the proxy.
  */
-export function rateLimit(opts: { windowMs: number; max: number; message?: string }) {
+export function rateLimit(opts: { windowMs: number; max: number; message?: string; key?: (req: Request) => string }) {
   const { windowMs, max } = opts;
   const message = opts.message ?? 'יותר מדי בקשות. נסו שוב מאוחר יותר.';
   const hits = new Map<string, Bucket>();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = opts.key ? opts.key(req) : (req.ip || req.socket.remoteAddress || 'unknown');
     const now = Date.now();
 
     // Opportunistic cleanup so the Map can't grow without bound.
