@@ -34,6 +34,10 @@ export async function serveSitemap(_req: Request, res: Response): Promise<void> 
     `  <url>\n    <loc>${SITE_URL}/</loc>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>`,
   ];
 
+  for (const path of ['/seo', '/audit']) {
+    urls.push(`  <url>\n    <loc>${SITE_URL}${path}</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.9</priority>\n  </url>`);
+  }
+
   const entry = (loc: string, lastmodRaw: string | null | undefined, priority: string): string => {
     const lastmod = lastmodRaw ? new Date(lastmodRaw).toISOString().slice(0, 10) : undefined;
     return `  <url>\n    <loc>${escapeXml(loc)}</loc>${lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : ''}\n    <changefreq>weekly</changefreq>\n    <priority>${priority}</priority>\n  </url>`;

@@ -255,7 +255,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
               aria-controls={listId}
               aria-activedescendant={listVisible && activeIdx >= 0 ? optionId(activeIdx) : undefined}
               autoComplete="off"
-              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2E63F6]/30 focus:border-[#2E63F6]"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pr-9 pl-9 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2E63F6]/30 focus:border-[#2E63F6]"
             />
             {(searching || auditing) && (
               <Loader2 size={16} className="absolute top-1/2 -translate-y-1/2 left-3 text-slate-400 animate-spin" />

@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef, useRef, useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { type Audit, type AuditItem, isNumericValue, scoreStyle } from '../lib/auditShared';
@@ -113,16 +113,22 @@ function fileSafe(name: string): string {
   return s || 'audit';
 }
 
-/** "Download as image" button. The card is rendered off-screen at full size and exported 1:1. */
+/** "Download as image" button. The card is rendered off-screen at full size ONLY while exporting (it
+ *  used to sit in the page permanently and gave the RTL page a ~10,000px horizontal scroll), and exported 1:1. */
 export function SnapshotButton({ audit }: { audit: Audit }) {
-  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   async function download() {
-    if (!node) return;
-    setBusy(true); setErr('');
+    if (busy) return;
+    setBusy(true); setErr(''); setExporting(true);
     try {
+      // The card mounts on the next render; wait (at most ~1s) for its element.
+      for (let i = 0; i < 60 && !nodeRef.current; i++) await new Promise<void>(r => requestAnimationFrame(() => r()));
+      const node = nodeRef.current;
+      if (!node) throw new Error('no node');
       try { await document.fonts?.ready; } catch { /* fonts are best effort */ }
       const url = await toPng(node, { width: SNAPSHOT_W, height: SNAPSHOT_H, pixelRatio: 1, cacheBust: true });
       const a = document.createElement('a');
@@ -135,7 +141,7 @@ export function SnapshotButton({ audit }: { audit: Audit }) {
     } catch {
       setErr('לא הצלחנו ליצור את התמונה. נסו שוב.');
     } finally {
-      setBusy(false);
+      setBusy(false); setExporting(false);
     }
   }
 
@@ -149,9 +155,11 @@ export function SnapshotButton({ audit }: { audit: Audit }) {
       </button>
       {err && <span className="text-xs text-rose-700" role="alert">{err}</span>}
       {/* Off-screen, full size: html-to-image measures real pixels. aria-hidden: it is only an export source. */}
-      <div aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, pointerEvents: 'none' }}>
-        <SnapshotCard ref={setNode} audit={audit} />
-      </div>
+      {exporting && (
+        <div aria-hidden="true" style={{ position: 'fixed', left: 0, top: -20000, pointerEvents: 'none' }}>
+          <SnapshotCard ref={nodeRef} audit={audit} />
+        </div>
+      )}
     </div>
   );
 }

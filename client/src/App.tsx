@@ -20,6 +20,7 @@ import ResetPassword   from './pages/ResetPassword';
 import Dashboard       from './pages/Dashboard';
 import Privacy         from './pages/legal/Privacy';
 import SeoLanding      from './pages/SeoLanding';
+import NotFound        from './pages/NotFound';
 import Terms           from './pages/legal/Terms';
 import Accessibility   from './pages/legal/Accessibility';
 import { authFetch } from './lib/api';
@@ -223,6 +224,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
       </UserProvider>
