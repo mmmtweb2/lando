@@ -98,7 +98,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={view} {...motionProps}>
           {view === 'overview' && (
-            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} />
+            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={user?.email ?? 'anonymous'} />
           )}
           {view === 'progress' && <ProgressView summary={data.summary} monthly={monthly} go={go} />}
           {view === 'more' && <MoreView go={go} />}
