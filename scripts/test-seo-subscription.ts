@@ -9,7 +9,7 @@ import { SubError, getSubscription, sweepSubscriptions } from '../src/services/s
 import { getEntitlements } from '../src/services/entitlements.service';
 
 type Row = Record<string, any>;
-const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [] };
+const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [], payments: [] };
 const UNIQUE: Record<string, string[]> = { seo_subscriptions: ['email'], seo_subscription_events: ['sumit_payment_id'] };
 let seq = 0;
 let missingTable = false;
@@ -34,7 +34,7 @@ let missingTable = false;
     return { data: rows(), error: null };
   };
   const q: any = {
-    select: () => q,
+    select: () => q, limit: () => q,
     insert: (p: Row) => { op = 'insert'; patch = p; return q; },
     update: (p: Row) => { op = 'update'; patch = p; return q; },
     upsert: (p: Row, o: { onConflict: string }) => { op = 'upsert'; patch = p; onConflict = o.onConflict.split(','); return q; },
@@ -49,7 +49,7 @@ let missingTable = false;
 
 // ── fake SUMIT ──
 const sumitCalls: Array<{ path: string; body: any }> = [];
-const payments: Record<string, { valid: boolean; amount: number }> = {};
+const payments: Record<string, { valid: boolean; amount: number; ext?: unknown }> = {};
 let beginFails = false;
 let cancelOk = true;
 (globalThis as any).fetch = async (url: string, init: any) => {
@@ -62,7 +62,7 @@ let cancelOk = true;
   }
   if (path === '/billing/payments/get/') {
     const p = payments[String(body.PaymentID)];
-    return p ? json({ Status: 0, Data: { Payment: { ValidPayment: p.valid, Amount: p.amount, Status: p.valid ? '000' : '1' } } }) : json({ Status: 1, UserErrorMessage: 'not found' });
+    return p ? json({ Status: 0, Data: { Payment: { ValidPayment: p.valid, Amount: p.amount, Status: p.valid ? '000' : '1', ...(p.ext !== undefined ? { ExternalIdentifier: p.ext } : {}) } } }) : json({ Status: 1, UserErrorMessage: 'not found' });
   }
   if (path === '/billing/recurring/cancel/') return json(cancelOk ? { Status: 0 } : { Status: 1, UserErrorMessage: 'nope' });
   throw new Error('unexpected SUMIT call ' + path);
@@ -144,6 +144,39 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(db.seo_subscriptions[1].status, 'pending', 'a consumed payment id cannot activate another account');
   db.seo_subscriptions.pop();
 
+  // 4b. BINDING to this subscription (payment echoes the ExternalIdentifier we sent = subscription id)
+  const OTHER = '00000000-0000-4000-8000-0000000000bb';
+  db.seo_subscriptions.push({ id: OTHER, email: 'w@x.co', status: 'pending', amount: 99, current_period_end: null, cancel_at_period_end: false });
+  payments['510'] = { valid: true, amount: 99, ext: sub.id };            // a valid payment that belongs to ANOTHER checkout
+  r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '510' } } as any, r);
+  assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review');
+  assert.equal(db.seo_subscriptions[1].status, 'pending', 'a valid payment bound to a different subscription activates nothing');
+  assert.equal(db.seo_subscription_events.filter(e => e.sumit_payment_id === '510').length, 0, 'and burns no replay-guard slot');
+  payments['511'] = { valid: true, amount: 99, ext: OTHER.toUpperCase() };  // matches (case-insensitive)
+  r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '511' } } as any, r);
+  assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok'); assert.equal(db.seo_subscriptions[1].status, 'active');
+  // strict mode: a payment with no identifier at all is refused; default mode accepts it (unverifiable)
+  db.seo_subscriptions[1].status = 'pending';
+  payments['512'] = { valid: true, amount: 99 };
+  process.env.SUMIT_REQUIRE_BINDING = 'true';
+  r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '512' } } as any, r);
+  assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review'); assert.equal(db.seo_subscriptions[1].status, 'pending');
+  delete process.env.SUMIT_REQUIRE_BINDING;
+  const warn0 = console.warn; console.warn = () => undefined;
+  r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '512' } } as any, r);
+  console.warn = warn0;
+  assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok'); assert.equal(db.seo_subscriptions[1].status, 'active');
+  // cross-product: an id that already settled a ONE-TIME payment cannot activate a subscription
+  db.seo_subscriptions[1].status = 'pending';
+  db.payments.push({ id: 'pay-1', status: 'paid', sumit_payment_id: '513' });
+  payments['513'] = { valid: true, amount: 99, ext: OTHER };
+  r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '513' } } as any, r);
+  assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review'); assert.equal(db.seo_subscriptions[1].status, 'pending');
+  assert.equal(db.seo_subscription_events.filter(e => e.sumit_payment_id === '513').length, 0);
+  db.payments.pop();
+  // (the webhook is bound the same way: see the 'binding_mismatch' check in section 6)
+  db.seo_subscriptions.pop();
+
   // 5. status + already subscribed
   r = res(); await getStatus(req(), r);
   assert.equal(r.body.enabled, true); assert.equal(r.body.price, 99); assert.equal(r.body.subscription.status, 'active');
@@ -178,6 +211,9 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(db.seo_subscriptions[0].status, 'active', 'a later good charge recovers');
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: 'garbage' } } as any, r);
   assert.equal(r.code, 200); assert.equal(r.body.applied, 'no_ref');
+  payments['603'] = { valid: true, amount: 99, ext: '00000000-0000-4000-8000-0000000000cc' };
+  r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: sub.id, 'Payment.ID': '603' } } as any, r);
+  assert.equal(r.body.applied, 'binding_mismatch', 'webhook: a payment bound to something else is refused');
 
   // 6b. past_due: may re-enter a card; the OLD standing order is stopped first (no double charging)
   db.seo_subscriptions[0].status = 'past_due';

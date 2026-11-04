@@ -852,6 +852,18 @@ quota cap there.
 
 ---
 
+## חלק 78 – קשירת תשלום SUMIT לעסקה שלנו [דורש אישור בעלים]
+
+- **הבעיה:** אימות התשלום (`getPayment` ב-`summit.service.ts`) בדק רק ש-`ValidPayment` אמיתי והסכום מספיק. נקודות ה-`/return` ציבוריות ולוקחות את ה-PaymentID מה-query, ולכן מי שמחזיק *כל* תשלום תקף בסכום מספיק (שלו מקודם, או של מישהו אחר) יכול להציג אותו מול תשלום/מנוי אחר שלו. הבדיקה הקיימת "PaymentID אחד לשורה אחת" חוסמת שימוש חוזר באותו מזהה, אבל לא מזהה זר שלא נוצל.
+- **הקשירה** (`src/services/paymentBinding.ts`): בפתיחת התשלום אנחנו שולחים ל-SUMIT `ExternalIdentifier` = `payments.id` (למנוי: `seo_subscriptions.id`, וגם על לקוח SUMIT). `getPayment` מחזיר עכשיו את כל ה-`ExternalIdentifier` שב-`Data` (עומק עד 3), והתשלום מתקבל רק אם אחד מהם שווה למזהה שלנו (ללא רגישות לאותיות). חל על `paymentReturn`, על `reverifyPayment` (מנהל; `force-activate` נשאר כמוצא ידני לאחר בדיקה ב-SUMIT), ועל החזרת המנוי וה-webhook שלו.
+  - מזהים קיימים **ואף אחד לא שלנו** = דחייה תמיד (`needs_review`, או `binding_mismatch` במנוי).
+  - **אין מזהה בכלל בתשובת SUMIT:** ברירת מחדל מתקבל כמו היום עם אזהרה בלוג (כדי שהפריסה לא תשבור תשלומים אם SUMIT לא מחזיר את השדה; מבנה התשובה של `/billing/payments/get/` לא אומת מול נתונים חיים). עם `SUMIT_REQUIRE_BINDING=true` נדחה. **המלצה:** לבדוק בלוג אחרי תשלום ניסיון אמיתי שאין אזהרת `[PAYMENT BINDING]`, ואז להפעיל את הדגל. חיוב חוזר (חידוש חודשי של SUMIT) נבדק לפי ה-ExternalIdentifier של הלקוח; לוודא שגם הוא מוחזר לפני הפעלת הדגל.
+- **ייחודיות גלובלית של `sumit_payment_id`** (מיגרציה `044_sumit_payment_global_unique.sql`): טבלת `sumit_payment_claims` שמפתחה הראשי הוא המזהה, וטריגרים על `payments` (סטטוס `paid`/`processing`) ו-`seo_subscription_events` שתובעים אליה אוטומטית. מזהה שתבע דבר אחד לא ניתן לתביעה שנייה (שגיאה 23505), גם בין תשלום חד-פעמי למנוי; אותה שורה יכולה לתבוע שוב את המזהה שלה (אימות מחדש). אידמפוטנטית; ה-backfill משתמש ב-`ON CONFLICT DO NOTHING` ומדווח ב-NOTICE על מזהים שכבר שימשו גם תשלום וגם מנוי, בלי למחוק או לשנות כלום. מדלגת אם הטבלאות חסרות. גם הקוד בודק מראש (`sumitPaymentIdAlreadyConsumed` בודק גם אירועי מנוי; `applyVerifiedPayment` בודק גם `payments` ומחזיר `conflict`), כך שהכישלון נקי ולא 500.
+- **הגבלת קצב:** `GET /api/payments/return` ו-`GET /api/seo/subscription/return`: 30 בקשות ל-10 דקות לכל IP (במנוי בנוסף למגבלה הקיימת של 20 לדקה).
+- **לא שונה:** מחירים, קופונים, סכומים נדרשים, זרימת ה-claim האטומית של השורה.
+- **משתנה סביבה חדש (אופציונלי):** `SUMIT_REQUIRE_BINDING=true`. **מיגרציה:** `044_sumit_payment_global_unique.sql` (להריץ ב-Supabase SQL editor).
+- **בדיקות:** `scripts/test-payment-binding.ts` (חדש: קשירה, שימוש חוזר, חציית מוצרים, התנגשות DB, אימות מנהל, מגבלות קצב) ו-`scripts/test-seo-subscription.ts` (הורחב). הרצה: `npx ts-node --transpile-only scripts/<name>.ts`. המיגרציה נבדקה על Postgres 16 מקומי (נתוני התנגשות קיימים, הרצה חוזרת, טבלאות חסרות, חסימת תביעה כפולה).
+
 ## חלק 77 – הקשחת אבטחה (10 סעיפים מביקורת האבטחה)
 
 - **1. כתובת IP של מבקר מאחורי Cloudflare** (`src/utils/clientIp.ts`, `src/app.ts`): הכותרת `CF-Connecting-IP` נחשבת אמינה **רק** אם הבקשה הגיעה מ-Cloudflare: (א) `TRUST_CF_HEADER=true`, או (ב) חיבור ה-TCP עצמו מטווח הכתובות המפורסם של Cloudflare (קבועים `CLOUDFLARE_IPV4/IPV6`, מקור: cloudflare.com/ips), או (ג) חיבור ה-TCP מגיע מפרוקסי פנימי (Traefik: כתובת פרטית), ו-`trust proxy` פעיל, וה-X-Forwarded-For **הימני ביותר** (זה ש-Traefik הוסיף) הוא כתובת של Cloudflare. אחרת משתמשים ב-`req.ip` הרגיל. בקשה שעוקפת את Cloudflare כבר לא יכולה "לבחור" לעצמה IP ולעקוף את מגבלות הקצב. אם הטווחים של Cloudflare ישתנו והרשימה תתיישן, מבקרים מהטווח החדש יקבלו את כתובת הפרוקסי (מגבלות גסות יותר, לא פרצה): לעדכן את הקבועים או להגדיר `TRUST_CF_HEADER=true`. נרשמת אזהרה אחת בלוג כשכותרת נדחית.
