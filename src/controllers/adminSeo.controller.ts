@@ -27,7 +27,12 @@ async function journeys(): Promise<JourneyR[]> {
 }
 const products = () => rows<ProductR>('user_products', supabase.from('user_products').select('email, status, current_period_end, source').eq('product', 'seo_autopilot').limit(5000));
 const subs = () => rows<SubR>('seo_subscriptions', supabase.from('seo_subscriptions').select('email, status, amount, created_at, cancel_at_period_end, needs_manual_cancel').limit(5000), true);
-const premiumRows = () => rows<PremiumR>('seo_manual_premium', supabase.from('seo_manual_premium').select('email, status, last_card_update, monthly_price, note').limit(5000), true);
+// Before migration 045 the expected_by column does not exist: fall back so the tabs keep loading.
+async function premiumRows(): Promise<PremiumR[]> {
+  const first = await supabase.from('seo_manual_premium').select('email, status, last_card_update, monthly_price, note, expected_by').limit(5000);
+  if (first.error && /expected_by/.test(first.error.message)) return rows<PremiumR>('seo_manual_premium', supabase.from('seo_manual_premium').select('email, status, last_card_update, monthly_price, note').limit(5000), true);
+  return rows<PremiumR>('seo_manual_premium', Promise.resolve(first), true);
+}
 const events = () => rows<EventR>('journey_events', supabase.from('journey_events')
   .select('event, email, anon_id, props, created_at').gte('created_at', new Date(Date.now() - EVENT_WINDOW_DAYS * 86400000).toISOString())
   .order('created_at', { ascending: false }).limit(20000), true);
@@ -98,9 +103,12 @@ export async function adminSetManualPremium(req: Request, res: Response): Promis
   const { data: acct, error: aErr } = await supabase.from('user_profiles').select('email').eq('email', v.email).maybeSingle();
   if (aErr) { fail(res, new LoadError('user_profiles', aErr.message)); return; }
   if (!acct) { res.status(404).json({ error: 'אין חשבון עם המייל הזה.' }); return; }
-  const { error } = await supabase.from('seo_manual_premium').upsert({
-    email: v.email, status: v.status, last_card_update: v.lastCardUpdate, monthly_price: v.monthlyPrice, note: v.note, updated_at: new Date().toISOString(),
-  }, { onConflict: 'email' });
+  const row = { email: v.email, status: v.status, last_card_update: v.lastCardUpdate, monthly_price: v.monthlyPrice, note: v.note, updated_at: new Date().toISOString() };
+  let { error } = await supabase.from('seo_manual_premium').upsert({ ...row, expected_by: v.expectedBy }, { onConflict: 'email' });
+  if (error && /expected_by/.test(error.message)) {
+    if (v.expectedBy) { res.status(503).json({ error: 'התאריך הצפוי יישמר אחרי שתרוץ מיגרציה 045.', code: 'not_migrated' }); return; }
+    ({ error } = await supabase.from('seo_manual_premium').upsert(row, { onConflict: 'email' }));
+  }
   if (error) { fail(res, new LoadError('seo_manual_premium', error.message)); return; }
   res.json({ ok: true });
 }

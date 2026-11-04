@@ -12,7 +12,7 @@ export interface JourneyR { email: string; place_id?: string | null; stage: 'reg
 export interface ProductR { email: string; status: string; current_period_end: string | null; source: string }
 export interface SubR { email: string; status: string; amount: number | string; created_at: string; cancel_at_period_end: boolean; needs_manual_cancel: boolean }
 export interface SubEventR { kind: string; created_at: string }
-export interface PremiumR { email: string; status: 'active' | 'paused' | 'ended'; last_card_update: string | null; monthly_price: number | string | null; note: string | null }
+export interface PremiumR { email: string; status: 'active' | 'paused' | 'ended'; last_card_update: string | null; monthly_price: number | string | null; note: string | null; expected_by?: string | null }
 /** A public-Audit lead (audit_leads): the only place a phone number is known, matched to a journey by place_id. */
 export interface AuditContactR { place_id: string; name: string | null; phone: string | null; business_name: string | null; created_at: string }
 export interface BusinessNameR { owner_email: string; name: string }
@@ -159,7 +159,7 @@ export function funnel(journeys: JourneyR[], events: EventR[], products: Product
 // ── Users ────────────────────────────────────────────────────────────────────
 export interface UserRow {
   email: string; state: AccountState; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string;
-  premium: { status: string; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null } | null;
+  premium: { status: string; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null; expectedBy: string | null } | null;
   /** No verified Google profile yet (task #12): the owner is creating or verifying it. */
   profilePending: boolean; pendingName: string | null;
   /** When the customer asked for activation (the owner grants it by hand); null = never asked. */
@@ -186,7 +186,7 @@ export function users(journeys: JourneyR[], products: ProductR[], premium: Premi
       email: j.email, state, stage: j.stage, registeredAt: j.registered_at, lastProgressAt: new Date(lastProgressAt(j)).toISOString(),
       stuck: isStuck(j, state, now), source: sourceOf(j),
       profilePending: j.profile_state === 'pending_verification', pendingName: j.profile_state === 'pending_verification' ? j.pending_name ?? null : null,
-      premium: p ? { status: p.status, lastCardUpdate: p.last_card_update, monthlyPrice: p.monthly_price === null ? null : num(p.monthly_price), note: p.note } : null,
+      premium: p ? { status: p.status, lastCardUpdate: p.last_card_update, monthlyPrice: p.monthly_price === null ? null : num(p.monthly_price), note: p.note, expectedBy: p.expected_by ?? null } : null,
     };
   }).sort((a, b) => (a.registeredAt < b.registeredAt ? 1 : -1));
 }
@@ -220,7 +220,7 @@ export function churn30(events: SubEventR[], activeNow: number, now: Date): { ca
 }
 
 // ── Manual premium input ─────────────────────────────────────────────────────
-export interface PremiumInput { email: string; status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null }
+export interface PremiumInput { email: string; status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null; expectedBy: string | null }
 export type PremiumParse = { ok: true; value: PremiumInput } | { ok: false; error: string };
 export function parsePremium(b: unknown, now = new Date()): PremiumParse {
   const o = (b && typeof b === 'object' ? b : {}) as Record<string, unknown>;
@@ -241,8 +241,16 @@ export function parsePremium(b: unknown, now = new Date()): PremiumParse {
     if (!Number.isFinite(n) || n < 0 || n > 100000) return { ok: false, error: 'מחיר חודשי לא תקין.' };
     monthlyPrice = Math.round(n * 100) / 100;
   }
+  let expectedBy: string | null = null;
+  if (o.expectedBy !== null && o.expectedBy !== undefined && o.expectedBy !== '') {
+    const s = String(o.expectedBy);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : null;
+    if (!d || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return { ok: false, error: 'התאריך הצפוי לא תקין.' };
+    if (d.getTime() > now.getTime() + 365 * DAY) return { ok: false, error: 'התאריך הצפוי רחוק מדי (עד שנה קדימה).' };
+    expectedBy = s;
+  }
   const note = typeof o.note === 'string' && o.note.trim() ? o.note.trim().slice(0, 300) : null;
-  return { ok: true, value: { email, status: o.status, lastCardUpdate, monthlyPrice, note } };
+  return { ok: true, value: { email, status: o.status, lastCardUpdate, monthlyPrice, note, expectedBy } };
 }
 
 // ── Feedback signals from the event log ──────────────────────────────────────

@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { Card, State } from './adminUi';
 import { PREMIUM_LABEL, STATE_LABEL, day, ils, useAdminData, type Fetcher } from './adminData';
 
-interface Premium { status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null }
+interface Premium { status: 'active' | 'paused' | 'ended'; lastCardUpdate: string | null; monthlyPrice: number | null; note: string | null; expectedBy?: string | null }
 interface Row { email: string; state: string; stage: string; registeredAt: string; lastProgressAt: string; stuck: boolean; source: string; premium: Premium | null; profilePending?: boolean; pendingName?: string | null; activationRequestedAt?: string | null; placeName?: string | null; phone?: string | null }
-interface Data { users: Row[]; premiumWithoutJourney: { email: string; status: Premium['status']; last_card_update: string | null; monthly_price: number | string | null; note: string | null }[] }
+interface Data { users: Row[]; premiumWithoutJourney: { email: string; status: Premium['status']; last_card_update: string | null; monthly_price: number | string | null; note: string | null; expected_by?: string | null }[] }
 
 const HELLO = 'שלום, ראיתי שהתחלתם להגדיר את כרטיס העסק שלכם בגוגל ב-Pagey ורציתי לבדוק אם אפשר לעזור.';
 
@@ -22,6 +22,7 @@ function Contact({ email, phone }: { email: string; phone?: string | null }) {
 function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email: string; current: Premium | null; adminFetch: Fetcher; onDone: () => void; onCancel: () => void }) {
   const [status, setStatus] = useState<Premium['status']>(current?.status ?? 'active');
   const [last, setLast] = useState(current?.lastCardUpdate ?? '');
+  const [expected, setExpected] = useState(current?.expectedBy ?? '');
   const [price, setPrice] = useState(current?.monthlyPrice != null ? String(current.monthlyPrice) : '');
   const [note, setNote] = useState(current?.note ?? '');
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email
     try {
       const r = await adminFetch('/api/admin/seo/manual-premium', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, status, lastCardUpdate: last || null, monthlyPrice: price.trim() === '' ? null : Number(price), note: note || null }),
+        body: JSON.stringify({ email, status, lastCardUpdate: last || null, expectedBy: expected || null, monthlyPrice: price.trim() === '' ? null : Number(price), note: note || null }),
       });
       const b = await r.json().catch(() => ({})) as { error?: string };
       if (!r.ok) { setErr(b.error ?? 'השמירה נכשלה.'); return; }
@@ -51,6 +52,9 @@ function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email
       <label className="text-xs text-slate-500">עדכון אחרון של הכרטיס
         <input type="date" dir="ltr" value={last} onChange={(e) => setLast(e.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" />
       </label>
+      <label className="text-xs text-slate-500">תאריך צפוי לסיום עדכון הכרטיס
+        <input type="date" dir="ltr" value={expected} onChange={(e) => setExpected(e.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" />
+      </label>
       <label className="text-xs text-slate-500">מחיר חודשי (₪, חופשי)
         <input type="number" min={0} max={100000} step="any" dir="ltr" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="ריק = לא נקבע"
           className="mt-1 block w-36 rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" />
@@ -61,7 +65,7 @@ function PremiumEditor({ email, current, adminFetch, onDone, onCancel }: { email
       <button type="submit" disabled={busy} className="rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">שמירה</button>
       <button type="button" onClick={onCancel} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">ביטול</button>
       {err && <span role="alert" className="text-xs text-red-600 w-full">{err}</span>}
-      <p className="text-xs text-slate-400 w-full">מעקב בלבד. לא נשלח כלום לגוגל או ל-SUMIT, והמחיר נגבה ידנית.</p>
+      <p className="text-xs text-slate-400 w-full">מעקב בלבד. לא נשלח כלום לגוגל או ל-SUMIT, והמחיר נגבה ידנית. התאריך הצפוי מופיע ללקוח בהקמה כ״בטיפול אצלנו״.</p>
     </form>
   );
 }
@@ -116,7 +120,7 @@ export default function SeoUsersTab({ adminFetch }: { adminFetch: Fetcher }) {
                     <td className="px-3 py-2 text-slate-500" dir="auto">{u.source}</td>
                     <td className="px-3 py-2 text-slate-600">
                       {u.premium ? (
-                        <span>{PREMIUM_LABEL[u.premium.status]} · כרטיס עודכן {day(u.premium.lastCardUpdate)}{u.premium.monthlyPrice != null && ` · ${ils(u.premium.monthlyPrice)}/חודש`}</span>
+                        <span>{PREMIUM_LABEL[u.premium.status]} · כרטיס עודכן {day(u.premium.lastCardUpdate)}{u.premium.expectedBy && ` · צפוי עד ${day(u.premium.expectedBy)}`}{u.premium.monthlyPrice != null && ` · ${ils(u.premium.monthlyPrice)}/חודש`}</span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2"><Contact email={u.email} phone={u.phone} /></td>
@@ -142,7 +146,7 @@ export default function SeoUsersTab({ adminFetch }: { adminFetch: Fetcher }) {
           </ul>
           {editing && data.premiumWithoutJourney.some((p) => p.email === editing) && (
             <PremiumEditor email={editing} adminFetch={adminFetch} onCancel={() => setEditing(null)} onDone={() => { setEditing(null); reload(); }}
-              current={(() => { const p = data.premiumWithoutJourney.find((x) => x.email === editing)!; return { status: p.status, lastCardUpdate: p.last_card_update, monthlyPrice: p.monthly_price == null ? null : Number(p.monthly_price), note: p.note }; })()} />
+              current={(() => { const p = data.premiumWithoutJourney.find((x) => x.email === editing)!; return { status: p.status, lastCardUpdate: p.last_card_update, monthlyPrice: p.monthly_price == null ? null : Number(p.monthly_price), note: p.note, expectedBy: p.expected_by ?? null }; })()} />
           )}
         </Card>
       )}

@@ -31,6 +31,8 @@ export interface StepCopy {
   /** can be postponed; the first two cannot (everything after them needs the business and the check) */
   skippable: boolean;
   cta: string;
+  /** the question asked before a manual step is closed */
+  confirm?: string;
 }
 
 export const GUIDED_COPY: Record<GuidedId, StepCopy> = {
@@ -60,6 +62,29 @@ export const GUIDED_COPY: Record<GuidedId, StepCopy> = {
     why: 'ביקורות אמיתיות הן מה שלקוחות חדשים קוראים לפני שהם בוחרים עסק.',
   },
 };
+
+/**
+ * Manual-premium customer: we fill in the card ourselves and the customer only approves.
+ * Same step, same place in the order; only who does it, the sentence and the button change.
+ */
+export const PREMIUM_DETAILS: StepCopy = {
+  id: 'profile_details', skippable: true, title: 'פרטי הכרטיס שלך בגוגל', who: 'we', auto: false, minutes: 2, cta: 'אישור',
+  what: 'אנחנו משלימים בשבילך את הטלפון, שעות הפתיחה והתמונות בכרטיס שלך בגוגל. כשנסיים, אתה רק מאשר.',
+  why: 'לקוחות מחפשים בדיוק את הפרטים האלה לפני שהם מתקשרים או מגיעים.',
+  confirm: 'ראית את הכרטיס המעודכן ואתה מאשר? אחרי האישור עוברים לצעד הבא.',
+};
+
+/** "12.11" from "2026-11-12"; null for anything that is not a plain date. */
+export function shortDate(iso: string | null | undefined): string | null {
+  const m = typeof iso === 'string' ? /^\d{4}-(\d{2})-(\d{2})$/.exec(iso) : null;
+  return m ? `${Number(m[2])}.${Number(m[1])}` : null;
+}
+
+/** The "when" line of a step we handle: "בטיפול אצלנו, צפוי עד 12.11". */
+export function inOurHandsText(expectedBy: string | null | undefined): string {
+  const d = shortDate(expectedBy);
+  return d ? `בטיפול אצלנו, צפוי עד ${d}` : 'בטיפול אצלנו. התאריך הצפוי יופיע כאן';
+}
 
 export interface GuidedStepState { id: GuidedId; done: boolean; skipped: boolean }
 
@@ -103,6 +128,7 @@ export function deriveGuided(input: OverviewInput, skipsIn: readonly GuidedId[])
   const doneOf = (id: GuidedId) => setup.find((s) => s.id === id)?.done === true;
   const skips = skipsIn.filter((s) => !doneOf(s) && GUIDED_COPY[s].skippable);
   const steps: GuidedStepState[] = GUIDED_IDS.map((id) => ({ id, done: doneOf(id), skipped: skips.includes(id) }));
+  const copyOf = (id: GuidedId): StepCopy => (input.premium && id === 'profile_details' ? PREMIUM_DETAILS : GUIDED_COPY[id]);
   const open = steps.filter((s) => !s.done);
   const fresh = open.filter((s) => !s.skipped).map((s) => s.id);
   const postponed = skips.filter((s) => open.some((o) => o.id === s));
@@ -112,10 +138,10 @@ export function deriveGuided(input: OverviewInput, skipsIn: readonly GuidedId[])
     total: GUIDED_TOTAL,
     doneCount: GUIDED_TOTAL - open.length,
     steps,
-    current: currentId ? GUIDED_COPY[currentId] : null,
+    current: currentId ? copyOf(currentId) : null,
     position: currentId ? GUIDED_IDS.indexOf(currentId) + 1 : GUIDED_TOTAL,
     revisiting: currentId !== null && fresh.length === 0,
-    upcoming: order.slice(1).map((id) => GUIDED_COPY[id]),
+    upcoming: order.slice(1).map(copyOf),
     onlyThisLeft: order.length === 1,
     complete: open.length === 0,
   };
