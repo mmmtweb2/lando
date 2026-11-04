@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import LegalLayout, { LegalSection, LegalList } from './LegalLayout';
 import { TERMS_REFUND_CLAUSE } from '../../legal/refundPolicy';
+import { PRICING, fmt } from '../../config/pricing';
 
 // תנאי השימוש של Pagey. Prices mirror src/config/billing.ts and the lifecycle
 // mirrors src/services/renewal.service.ts — if either changes, this changes.
@@ -47,12 +48,12 @@ export default function Terms() {
       <LegalSection id="pricing" title="3. מה נרכש בכל מחיר, ומהי אספקה">
         <p>אין ב-Pagey מנוי ואין חיוב חוזר. כל הרכישות הן חד־פעמיות:</p>
         <LegalList items={[
-          <><span className="font-semibold">פרסום דף בודד — 249 ש"ח.</span> מזכה בפרסום דף אחד לציבור למשך שנה ממועד הפרסום, לרבות טופס לידים פעיל, 10 קרדיטי AI, וזכות ליצור (לרבות טיוטות) עד 2 דפים בסך הכל.</>,
-          <><span className="font-semibold">חבילת 5 דפים — 990 ש"ח.</span> מזכה ב-5 יחידות פרסום ליתרת החשבון, ב-75 קרדיטי AI, ובזכות יצירה של עד 10 דפים בסך הכל.</>,
-          <><span className="font-semibold">חבילת 10 דפים — 1,490 ש"ח.</span> מזכה ב-10 יחידות פרסום, ב-150 קרדיטי AI, בזכות יצירה של עד 20 דפים בסך הכל, וכן בהסרת מיתוג Pagey מהדפים באופן קבוע.</>,
-          <><span className="font-semibold">תוסף הסרת מיתוג — 350 ש"ח.</span> תוסף עצמאי, חד־פעמי וקבוע, שאינו תלוי ברכישת חבילה.</>,
+          <><span className="font-semibold">פרסום דף בודד — {fmt(PRICING.singlePage.price)} ש"ח.</span> מזכה בפרסום דף אחד לציבור למשך שנה ממועד הפרסום, לרבות טופס לידים פעיל, {PRICING.singlePage.aiCredits} קרדיטי AI, וזכות ליצור (לרבות טיוטות) עד {PRICING.singlePage.createAllowance} דפים בסך הכל.</>,
+          <><span className="font-semibold">חבילת {PRICING.bundle5.pages} דפים — {fmt(PRICING.bundle5.price)} ש"ח.</span> מזכה ב-{PRICING.bundle5.pages} יחידות פרסום ליתרת החשבון, ב-{PRICING.bundle5.aiCredits} קרדיטי AI, ובזכות יצירה של עד {PRICING.bundle5.createAllowance} דפים בסך הכל.</>,
+          <><span className="font-semibold">חבילת {PRICING.bundle10.pages} דפים — {fmt(PRICING.bundle10.price)} ש"ח.</span> מזכה ב-{PRICING.bundle10.pages} יחידות פרסום, ב-{PRICING.bundle10.aiCredits} קרדיטי AI, בזכות יצירה של עד {PRICING.bundle10.createAllowance} דפים בסך הכל, וכן בהסרת מיתוג Pagey מהדפים באופן קבוע.</>,
+          <><span className="font-semibold">תוסף הסרת מיתוג — {PRICING.whiteLabelAddon.price} ש"ח.</span> תוסף עצמאי, חד־פעמי וקבוע, שאינו תלוי ברכישת חבילה.</>,
           <><span className="font-semibold">קרדיטי AI.</span> נרכשים בנפרד (או ניתנים במתנה עם רכישת דף כאמור לעיל) ומשמשים ליצירת תמונות ולכתיבה מחדש של תוכן.</>,
-          <><span className="font-semibold">חידוש שנתי של דף מפורסם — 99 ש"ח (79 ש"ח למי שרכש 5 דפים לפחות במצטבר, 59 ש"ח למי שרכש 10 דפים לפחות במצטבר).</span> מאריך את תוקף הדף בשנה נוספת.</>,
+          <><span className="font-semibold">חידוש שנתי של דף מפורסם — {PRICING.renewal.base} ש"ח ({PRICING.renewal.atFivePages} ש"ח למי שרכש {PRICING.bundle5.pages} דפים לפחות במצטבר, {PRICING.renewal.atTenPages} ש"ח למי שרכש {PRICING.bundle10.pages} דפים לפחות במצטבר).</span> מאריך את תוקף הדף בשנה נוספת.</>,
         ]} />
         <p>
           יתרת דפים אינה פגה ואינה מתחדשת מעצמה. כל פרסום מנכה יחידת פרסום אחת מהיתרה. אם היתרה ריקה,
