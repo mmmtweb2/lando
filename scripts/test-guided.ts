@@ -1,7 +1,7 @@
 // Run: npx tsx scripts/test-guided.ts   (imports client ES modules)
 import assert from 'node:assert/strict';
 import {
-  GUIDED_COPY, GUIDED_IDS, GUIDED_TOTAL, SUCCESS_MS, cardTexts, deriveGuided, minutesText, parseSkips, successLine, withSkip,
+  GUIDED_COPY, GUIDED_IDS, GUIDED_TOTAL, PREMIUM_DETAILS, SUCCESS_MS, inOurHandsText, shortDate, cardTexts, deriveGuided, minutesText, parseSkips, successLine, withSkip,
   type GuidedId,
 } from '../client/src/dashboard/guided';
 import type { OverviewInput } from '../client/src/dashboard/journey';
@@ -116,5 +116,28 @@ assert.deepEqual(texts.map((t) => t.id), ['about', 'hours', 'photos']);
 assert.match(texts[0].text, /שרברב דני/);
 assert.match(texts[0].text, /\[/);
 assert.match(cardTexts(null)[0].text, /\[שם העסק\]/);
+
+// 12. manual premium: the card step is ours, the customer only approves; the order is unchanged
+const prem = { ...biz, ticks: ['first_check'], premium: { expectedBy: '2026-11-12' } };
+v = deriveGuided(prem, []);
+assert.equal(v.current?.id, 'profile_details');
+assert.equal(v.current?.who, 'we');
+assert.equal(v.current?.cta, 'אישור');
+assert.match(v.current?.what ?? '', /אנחנו משלימים/);
+assert.ok(v.current?.confirm);
+assert.equal(v.position, 3);
+assert.equal(deriveGuided({ ...biz, ticks: ['first_check'] }, []).current?.who, 'you', 'a regular customer is unchanged');
+assert.equal(deriveGuided({ ...prem, ticks: [] }, []).upcoming.find((s) => s.id === 'profile_details')?.who, 'we');
+assert.equal(deriveGuided({ ...prem, ticks: ['first_check', 'profile_details'] }, []).current?.id, 'profile_verified', 'approving moves on');
+assert.equal(PREMIUM_DETAILS.id, 'profile_details');
+assert.equal(PREMIUM_DETAILS.auto, false);
+assert.equal(shortDate('2026-11-12'), '12.11');
+assert.equal(shortDate('2026-01-05'), '5.1');
+assert.equal(shortDate('soon'), null);
+assert.equal(shortDate(null), null);
+assert.equal(inOurHandsText('2026-11-12'), 'בטיפול אצלנו, צפוי עד 12.11');
+assert.match(inOurHandsText(null), /^בטיפול אצלנו/);
+assert.doesNotMatch(inOurHandsText(null), /\d/);
+for (const bad of ['מובטח', 'מבטיח', 'ראשון בגוגל', 'תעלו', 'דירוג']) assert.ok(!`${PREMIUM_DETAILS.what} ${PREMIUM_DETAILS.why} ${PREMIUM_DETAILS.confirm}`.includes(bad), bad);
 
 console.log('guided setup checks passed');

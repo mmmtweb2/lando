@@ -261,7 +261,7 @@ function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
 
 /* ---------- screens ---------- */
 
-export function Facts({ s, now }: { s: Pick<StepCopy, 'what' | 'why' | 'minutes' | 'who'>; now: boolean }) {
+export function Facts({ s, now, when }: { s: Pick<StepCopy, 'what' | 'why' | 'minutes' | 'who'>; now: boolean; when?: string }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[15px]">
       <dt className="font-bold text-[var(--ink)]">מה עושים</dt><dd className="text-[var(--ink)]">{s.what}</dd>

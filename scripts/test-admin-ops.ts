@@ -103,7 +103,8 @@ assert.equal(us[0].email, 'c@x.co', 'newest first');
 const byEmail = (e: string) => us.find((x) => x.email === e)!;
 assert.equal(byEmail('stuck@x.co').stuck, true); assert.equal(byEmail('c@x.co').stuck, false);
 assert.deepEqual([byEmail('a@x.co').state, byEmail('p@x.co').state], ['active_beta', 'active']);
-assert.deepEqual(byEmail('a@x.co').premium, { status: 'active', lastCardUpdate: '2026-10-30', monthlyPrice: 500, note: null });
+assert.deepEqual(byEmail('a@x.co').premium, { status: 'active', lastCardUpdate: '2026-10-30', monthlyPrice: 500, note: null, expectedBy: null });
+assert.equal(users(journeys, products, [{ ...premium[0], expected_by: '2026-11-12' }], now).find((u) => u.email === 'a@x.co')!.premium!.expectedBy, '2026-11-12');
 assert.equal(byEmail('stuck@x.co').premium, null);
 assert.deepEqual(premiumOnly(journeys, premium).map((x) => x.email), ['ghost@x.co']);
 
@@ -141,6 +142,11 @@ let r = parsePremium({ email: ' A@X.co ', status: 'active', lastCardUpdate: '202
 assert.ok(r.ok && r.value.email === 'a@x.co' && r.value.monthlyPrice === 500 && r.value.note === 'ok');
 r = parsePremium({ email: 'a@x.co', status: 'active' }, now);
 assert.ok(r.ok && r.value.monthlyPrice === null && r.value.lastCardUpdate === null, 'price stays empty unless written');
+r = parsePremium({ email: 'a@x.co', status: 'active', expectedBy: '2026-11-12' }, now);
+assert.ok(r.ok && r.value.expectedBy === '2026-11-12', 'expected date is kept');
+r = parsePremium({ email: 'a@x.co', status: 'active', expectedBy: '' }, now);
+assert.ok(r.ok && r.value.expectedBy === null, 'empty expected date clears it');
+for (const bad of [{ email: 'a@x.co', status: 'active', expectedBy: '2026-02-31' }, { email: 'a@x.co', status: 'active', expectedBy: 'soon' }, { email: 'a@x.co', status: 'active', expectedBy: '2030-01-01' }]) assert.equal(parsePremium(bad, now).ok, false, JSON.stringify(bad));
 for (const bad of [{ email: 'nope', status: 'active' }, { email: 'a@x.co', status: 'vip' }, { email: 'a@x.co', status: 'active', lastCardUpdate: '2026-02-31' },
   { email: 'a@x.co', status: 'active', lastCardUpdate: '2027-01-01' }, { email: 'a@x.co', status: 'active', monthlyPrice: -1 }, { email: 'a@x.co', status: 'active', monthlyPrice: 'abc' }, null]) {
   assert.equal(parsePremium(bad, now).ok, false, JSON.stringify(bad));
@@ -161,10 +167,11 @@ assert.equal(placesUsageView([]).every((x) => x.calls === 0 && !x.alert), true);
 
 // job heartbeats
 const hb = (job: string, o: object) => ({ job, last_run_at: ago(1), last_ok_at: null, last_error: null, last_error_at: null, runs: 3, ...o });
-let jv = jobsView([hb('digest', { last_ok_at: ago(2) }), hb('review_alerts', { last_ok_at: ago(30) }), hb('subscriptions', { last_ok_at: ago(10), last_error: 'boom', last_error_at: ago(1) })], {}, now);
+let jv = jobsView([hb('digest', { last_ok_at: ago(2) }), hb('review_alerts', { last_ok_at: ago(30) }), hb('subscriptions', { last_ok_at: ago(10), last_error: 'boom', last_error_at: ago(1) })], { setup_reminder: false }, now);
 assert.deepEqual(jv.map((x) => x.status), ['ok', 'late', 'failing']); assert.equal(jv[2].lastError, 'boom');
-jv = jobsView([], { digest: false, review_alerts: false }, now);
+jv = jobsView([], { digest: false, review_alerts: false, setup_reminder: false }, now);
 assert.deepEqual(jv.map((x) => [x.job, x.status]), [['subscriptions', 'never']], 'jobs that are switched off are not reported');
+assert.ok(jobsView([], {}, now).some((x) => x.job === 'setup_reminder' && x.status === 'never'), 'the reminder sweep is listed when switched on');
 jv = jobsView([hb('digest', { last_ok_at: ago(1), last_error: 'old', last_error_at: ago(20) })], {}, now);
 assert.equal(jv[0].status, 'ok'); assert.equal(jv[0].lastError, null, 'an old error followed by a success is not shown');
 
