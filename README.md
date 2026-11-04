@@ -946,6 +946,13 @@ quota cap there.
 - **שאלה נפוצה (ממצא 12):** "ובקרוב נכין גם טיוטת תשובה לביקורות", בהתאם לטבלת החבילות; JSON-LD נוצר מאותו מקור.
 - **לא טופלו כאן:** תגיות meta לכל route (ממצא 3), code-splitting (ממצא 7), יעדי השוואה בקטגוריות (ממצא 5), פרטיות (ממצא 4, מושהה).
 
+## Part 83 — Task #16 follow-up: a link to the Google draft wizard on the dashboard home (no migration)
+
+- **מה זה:** שורה קטנה בבית דשבורד הקידום (השלב השוטף, מתחת למשימת החודש): "עוד אין לעסק דף נחיתה" עם כפתור "יצירת טיוטה" אל `/create?from=google&business=<id>`, האשף של #16 (קובי). הוא ממלא טיוטה מנתוני הכרטיס, הלקוח בודק ומתקן, והדף לא מתפרסם לבד.
+- **תנאי הצגה:** אותו תנאי של הכרטיס ב"הדפים שלי": יש עסק מחובר עם `google_place_id` וללא `landing_page_id`. אם מצב הקישור לא ידוע, השורה מוסתרת, כדי לא להציע דף שני בטעות.
+- **בלי שינוי בשרת, בלי מיגרציה ובלי משתנה סביבה.** `useSeoOverview` קורא את `landing_page_id` שכבר חוזר מ-`/api/seo/businesses` ומעביר `landingLinked` ל-`OverviewInput`. לא נוגע בקבצים של קובי.
+- **קבצים:** `client/src/dashboard/googleDraft.ts` (התנאי והנתיב, טהור), `GoogleDraftLink.tsx`, חיווט ב-`Overview.tsx`, `journey.ts`, `useSeoOverview.ts`. בדיקה: `scripts/test-google-draft-link.ts`.
+
 ## חלק 86 – פיצול קוד לפי נתיב (משימה #21, קובי)
 - `client/src/App.tsx`: רק דף הבית (`MarketingLanding`) ו-`NotFound` נשארו בחבילה הראשית. כל שאר המסכים (אשף, דשבורד, ניהול, `LandingViewer`, `/seo`, `/audit`, התחברות ועמודי חוק) נטענים כ-chunk נפרד דרך `React.lazy`.
 - בזמן טעינת chunk מוצג רקע ריק ל-250ms ואז ספינר קטן, כך שטעינה מהירה או מהמטמון לא מהבהבת. למשתמש מחובר, הדשבורד והאשף נטענים ברקע בזמן שהדפדפן פנוי, כדי שהמעבר אליהם לא יחכה לרשת.
