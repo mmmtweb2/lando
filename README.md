@@ -932,7 +932,7 @@ quota cap there.
 - **איפה מוצג:** בית הדשבורד בשלב השוטף (מעל משימת החודש), בסקירת ההקמה בתפריט המלא, ובמסך ההקמה המונחית מתחת לצעד הנוכחי (שם רואה אותו לקוח חדש בכניסה הראשונה).
 - **נגישות:** כותרת h2 עם כפתור `aria-expanded`/`aria-controls`, גובה מגע 48px, אנימציה רק בלי `prefers-reduced-motion`, קישור המקור 44px עם הערת "נפתח בלשונית חדשה" לקוראי מסך. נבדק ב-375px, בלי גלילה אופקית, ועם מקלדת (Enter ורווח).
 - **לבדיקה משפטית (משה):** המשפט על כך שאי אפשר לשלם לגוגל על דירוג הוא ציטוט של גוגל, ולכן שורת המקור צמודה אליו. שינוי נוסח רק מול דוד.
-- **קבצים:** `client/src/dashboard/whatPromotes.ts` (הנוסח וההיגיון, טהור), `WhatPromotes.tsx`, חיווט קטן ב-`Overview.tsx`, `GuidedSetup.tsx` ו-`SeoDashboardV2.tsx` (פרופ `email`). בדיקה: `scripts/test-what-promotes.ts` (כולל שהנוסח נשמר כלשונו ושאין בו הבטחות או ז'רגון).
+- **קבצים:** `client/src/dashboard/whatPromotesData.ts` (הנוסח וההיגיון, טהור), `WhatPromotes.tsx`, חיווט קטן ב-`Overview.tsx`, `GuidedSetup.tsx` ו-`SeoDashboardV2.tsx` (פרופ `email`). בדיקה: `scripts/test-what-promotes.ts` (כולל שהנוסח נשמר כלשונו ושאין בו הבטחות או ז'רגון).
 
 ## חלק 82 – תיקוני QA קטנים (fix/qa-small-fixes)
 
@@ -953,3 +953,10 @@ quota cap there.
 - `scripts/test-pricing-sync.ts` נכשל אם הקובץ סוטה מהשרת (מחירים, קרדיטים, זכות יצירה, מדרגות חידוש, חבילות קרדיטים) או אם נכתב שוב מחיר ביד באחד מארבעת העמודים.
 - נבדק: הטקסט המוצג בדף הבית (כולל שאלת המחיר), בעמוד התנאים, זהה אות באות לפני ואחרי. Dashboard ו-LandingViewer נבדקו ב-tsc בלבד (דורשים נתוני חשבון).
 - שינוי מחירים בעתיד: לעדכן `billing.ts` ו-`pricing.ts` יחד, והבדיקה תוודא שהם תואמים.
+
+## חלק 84 – תגיות meta לפי נתיב ל-/seo ו-/audit (משימה #20, קובי)
+בעיה: כל נתיב בצד לקוח חזר מהשרת עם ה-index.html של דף הבית, ולכן תצוגה מקדימה בוואטסאפ/פייסבוק (בלי JS) הציגה את דף הבית.
+- `src/services/spaMeta.ts`: טבלה קבועה של נתיבים (`/seo`, `/audit`), והחלפת `title`, `description`, `og:title`, `og:description`, `og:url`, `twitter:*` והוספת `canonical` בקובץ ה-HTML. כל ערך עובר escape, ושום קלט מהבקשה לא נכנס ל-HTML (רק נתיב מנורמל כמפתח חיפוש). נתיב לא מוכר או קובץ שלא נקרא: התנהגות כמו קודם (`sendFile`).
+- `src/app.ts`: בנתיב הנפילה ל-index.html שורה אחת קוראת ל-`serveSpaWithMeta` לנתיבים מוכרים.
+- הטקסטים זהים ל-Helmet ב-`SeoLanding.tsx` ול-`PublicAudit.tsx`; בשינוי טקסט שם צריך לעדכן גם את הטבלה.
+- נבדק: `scripts/test-spa-meta.ts` (נתיבים, escape, בלי כפילויות, בלי חיפוש ב-prototype) ובדיקת HTTP אמיתית של הפונקציה מול `client/dist/index.html` לנתיבים `/`, `/seo`, `/seo/`, `/audit`, `/dashboard`, `/seo?utm_source=x`. ללא מיגרציה וללא env.
