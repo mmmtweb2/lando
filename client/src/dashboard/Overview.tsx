@@ -5,6 +5,7 @@ import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
 import MonthlyTask from './MonthlyTask';
 import WhatPromotes from './WhatPromotes';
+import GoogleDraftLink from './GoogleDraftLink';
 import type { Monthly } from './useMonthly';
 import {
   deriveSetup, inquiriesText, readiness,
@@ -221,6 +222,8 @@ function OngoingOverview({ input, summary, gbpEnabled, go, monthly, requestsSent
       <WhatPromotes email={email} />
 
       <MonthlyTask monthly={monthly} requestsSent={requestsSent} reload={onRetry} />
+
+      <GoogleDraftLink input={input} />
 
       {summary.month_total > 0 && (
         <section aria-labelledby="dv2-channels">

@@ -25,6 +25,8 @@ export interface OverviewInput {
   /** the connected business: Google place id and our id (null when none) */
   placeId?: string | null;
   businessId?: string | null;
+  /** the connected business already has a landing page linked to it (absent = unknown, treated as linked) */
+  landingLinked?: boolean;
   /** manual-premium customer: we fill in the card, the customer approves (null/absent = regular) */
   premium?: { expectedBy: string | null } | null;
   subscriptionStatus: 'active' | 'past_due' | 'canceled' | null;
