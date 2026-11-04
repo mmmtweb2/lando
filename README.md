@@ -852,7 +852,7 @@ quota cap there.
 
 ---
 
-## חלק 73 – הקשחת אבטחה (10 סעיפים מביקורת האבטחה)
+## חלק 77 – הקשחת אבטחה (10 סעיפים מביקורת האבטחה)
 
 - **1. כתובת IP של מבקר מאחורי Cloudflare** (`src/utils/clientIp.ts`, `src/app.ts`): הכותרת `CF-Connecting-IP` נחשבת אמינה **רק** אם הבקשה הגיעה מ-Cloudflare: (א) `TRUST_CF_HEADER=true`, או (ב) חיבור ה-TCP עצמו מטווח הכתובות המפורסם של Cloudflare (קבועים `CLOUDFLARE_IPV4/IPV6`, מקור: cloudflare.com/ips), או (ג) חיבור ה-TCP מגיע מפרוקסי פנימי (Traefik: כתובת פרטית), ו-`trust proxy` פעיל, וה-X-Forwarded-For **הימני ביותר** (זה ש-Traefik הוסיף) הוא כתובת של Cloudflare. אחרת משתמשים ב-`req.ip` הרגיל. בקשה שעוקפת את Cloudflare כבר לא יכולה "לבחור" לעצמה IP ולעקוף את מגבלות הקצב. אם הטווחים של Cloudflare ישתנו והרשימה תתיישן, מבקרים מהטווח החדש יקבלו את כתובת הפרוקסי (מגבלות גסות יותר, לא פרצה): לעדכן את הקבועים או להגדיר `TRUST_CF_HEADER=true`. נרשמת אזהרה אחת בלוג כשכותרת נדחית.
 - **2. מלח ל-hash של IP בלידים של הבדיקה** (`auditLeads.service.ts`): בלי `AUDIT_IP_SALT` המלח נגזר ב-HMAC מ-`SUPABASE_SERVICE_ROLE_KEY` (במקום הקבוע `pagey-audit`), עם אזהרה אחת בעליית השרת; אם גם זה חסר, מלח אקראי לתהליך. האפליקציה לא קורסת. ה-`ip_hash` של לידים חדשים לא יתאים ללידים ישנים (משמש רק לבדיקת ניצול לרעה).
@@ -866,3 +866,32 @@ quota cap there.
 - **10. הודעות שגיאה:** `error.message` גולמי של מסד הנתונים כבר לא מוחזר ללקוח (`utils/httpErrors.ts`): הודעה כללית בעברית והפירוט נכתב ללוג. תוקן ב-user/landing/adminStats/coupon/payment/health, וב-`/gbp/stats` הוסר השדה `detail`.
 - **משתני סביבה חדשים (כולם אופציונליים):** `TRUST_CF_HEADER`, `AUDIT_IP_SALT` (קיים, מומלץ להגדיר), `PAGE_LEAD_DAILY_CAP`, `PAGE_LEAD_PER_PAGE_DAILY_CAP`, `GBP_COOKIE_DOMAIN`. **חבילה חדשה:** `helmet`. **מיגרציה:** `043_gbp_connections_fk.sql` (להריץ ב-Supabase SQL editor; בטוחה להרצה חוזרת).
 - **בדיקות:** `scripts/test-client-ip.ts`, `test-audit-salt.ts`, `test-security-hardening.ts` (שער הניהול, טופס הלידים, קישורים, תקרות, שגיאות כלליות), `test-security-headers.ts` (כולל הווידג'ט ו-HSTS בפרודקשן), ועודכן `test-gbp-controller.ts`. הרצה: `npx ts-node --transpile-only scripts/<name>.ts`. `tsc` של השרת והלקוח נקיים.
+
+## Part 76 — GBP diagnosis tool (admin, read-only)
+
+- **Where:** `/admin` → "בריאות מערכת" → "אבחון חיבור גוגל (Business Profile)". Enter the email of a connected account (empty = the admin's own) and press "הרצת אבחון".
+- **What it does:** walks the product's own Google calls in order and shows, per step, the HTTP status and **Google's own error** (status, full message, reasons, quota metric/limit/value, consumer project number): server settings → saved connection → token refresh → accounts (Account Management API) → locations (Business Information API) → read one location → performance (Performance API) → reviews (My Business v4). A failed step does not hide the independent ones after it. A verdict line says which case it is: works / quota (0 or exhausted) / API not enabled in the project / permission / reconnect (revoked or expired token) / not connected / server settings.
+- **Safe by design:** only GET requests to Google (plus the token refresh), nothing is written to Google; tokens, client secret and the Authorization header never enter the report (tested). Admin only (password + login + is_admin), at most one run per 10 seconds (it spends a few API calls). A "copy for chat" block is included.
+- **Needed to run it:** `GBP_CONNECT_ENABLED=true` with valid settings (see "Google Business Profile: בדיקת הגדרות"), and the Google account that manages the business card connected from `/dashboard` (add its Pagey email to `GBP_CONNECT_ALLOWED_EMAILS` if that list is set). No migration, no new env var.
+- **Test:** `npx ts-node --transpile-only scripts/test-gbp-diagnose.ts` (all steps, the 429/quota case with Google's real error shape, API disabled, permission, revoked token, not connected, no config, network failure, no secrets in the report, run guard).
+
+## Part 73 — Task #11 (v4), PR A: guided setup, one screen at a time (no migration)
+
+- **מה השתנה:** בזמן ההקמה הדשבורד מציג מסך אחד בכל פעם, בלי לשוניות: "צעד X מתוך 5", פס התקדמות, כפתור ראשי אחד. כל צעד מראה מה עושים, למה (בלי הבטחת תוצאה), כמה דקות, מי עושה (אנחנו/אתם) ומתי. אחרי צעד: מסך הצלחה קצר (1.8 שניות, לפני/אחרי, והציון אם יש) ומעבר אוטומטי לבא.
+- **חמשת הצעדים:** חיבור העסק (מילוי מראש מה-`/start`), בדיקה ראשונה מול מתחרים (רצה לבד אחרי חיבור, בקשת Places אחת לעסק בכל טעינת עמוד), פרטי הכרטיס בגוגל (טקסטים להעתקה עם סוגריים להשלמה, וקישור ל-business.google.com), אימות הכרטיס, בקשת ביקורת ראשונה (הכרטיס הקיים של בקשות ביקורת, וצעד נסגר אחרי שליחה בוואטסאפ). "תוכן החיפוש" ו"מעקב פניות" כבר לא חלק מההקמה (יהיו משימות חודשיות ב-PR B).
+- **לוגיקה:** `client/src/dashboard/guided.ts` (טהור, נבדק ב-`scripts/test-guided.ts`). `journey.ts`/`deriveSetup` מחזיר 5 צעדים. הציון של הבדיקה מוצג ולא נשמר (תנאי Places).
+- **דילוג ושמירה:** "אעשה אחר כך" מדלג בלי לחסום, והצעד חוזר בסוף (דילוג חוזר שולח אותו לסוף התור). חיבור והבדיקה האוטומטית אי אפשר לדלג. סימוני "בוצע" נשמרים בטבלה הקיימת `seo_setup_steps` (032), לכן חזרה מכל מכשיר נוחתת באותו צעד. **רשימת הדילוגים נשמרת בדפדפן בלבד** (מפתח `pagey_setup_skips:<email>`), כי אילוץ ה-CHECK בטבלה 032 לא מאפשר מפתחות חדשים בלי מיגרציה. בלי דפדפן המקורי, הצעד שדולג פשוט חוזר לפי הסדר.
+- **אירועים (journey_events, חשבון מחובר):** `step_viewed`, `step_completed` (`mode`: auto/manual), `step_skipped`, `auto_advanced`, עם `step_id` בלבד.
+- **נגישות:** כותרת צעד מקבלת פוקוס בכל מעבר, אזור `aria-live` מכריז "צעד X מתוך 5", מסך ההצלחה `role=status`, יעדי לחיצה 44px, נבדק ב-375px בלי גלילה אופקית.
+- **קישור "מעבר לתפריט המלא":** קישור קטן בתחתית ההקמה, כדי שלקוח לא ייתקע בלי גישה למנוי/הגדרות. אפשר להסיר אם משה רוצה הקמה סגורה.
+- **בלי מיגרציה ובלי משתנה סביבה.** `ReviewRequestsCard` קיבל פרופ אופציונלי `onSent`.
+
+## Part 74 — Task #11 (v4), PR B: monthly task and the short navigation (no migration)
+
+- **מה השתנה:** אחרי ההקמה הדשבורד מציג "משימת החודש" אחת בכל פעם, באותו מבנה של צעדי ההקמה (מה/למה/דקות/מי/מתי), עם מסך הצלחה קצר, "סיימתי" באישור קצר ו"אעשה אחר כך". הניווט: **בית / ביקורות / התקדמות / עוד**. תחת "עוד": הפרופיל שלי, תוכן ודפים, פניות, מנוי והגדרות, ההקמה שלי (עם קישור "חזרה ל״עוד״"). לקוח שיצא מההקמה דרך "מעבר לתפריט המלא" רואה את ששת המסכים הישנים.
+- **ארבע המשימות (מאושרות):** שלוש בקשות ביקורת בחודש; מענה לביקורות שמחכות (רק כשיש טיוטות מחכות); ביטויי חיפוש חדשים; בדיקת מעקב אחרי פניות. "תוכן החיפוש" ו"מעקב פניות" עברו לכאן מההקמה.
+- **זיהוי אוטומטי:** בקשות ביקורת שנשלחו החודש (`sent_at` מ-`/api/seo/review-requests`, 3 סוגרות); ביקורות שנענו (אין עוד טיוטות ב-`/api/seo/review-drafts`); תוכן חדש מאז תחילת החודש (פריטי תוכן ודפי חיפוש גדלו מול מצב תחילת החודש); פנייה אחת החודש (`month_total`). אחרת "סיימתי".
+- **שמירה:** מה שסומן או נדחה החודש נשמר בדפדפן בלבד (`pagey_month_tasks:<email>`) ומתאפס בתחילת כל חודש קלנדרי. בלי טבלה ובלי מיגרציה (בהתאם להחלטה על דילוג ב-PR A).
+- **לוגיקה:** `client/src/dashboard/monthly.ts` (טהור, `scripts/test-monthly.ts`), `useMonthly.ts`, `MonthlyTask.tsx`, `AfterSetupViews.tsx` (עוד, התקדמות). `Overview.tsx` בשלב השוטף: סקירת פניות, משימת החודש, מקורות הפניות, "בדרך אליכם". "ההמלצה לחודש" ורשת הפעולות הוחלפו במשימה אחת.
+- **אירועים:** אותם ארבעה (`step_viewed/step_completed/step_skipped/auto_advanced`) עם `step_id` = `month_<משימה>`. בלי שינוי בשרת. `useSeoOverview` טוען עוד שתי קריאות קיימות (בלי Places).
+- **בלי מיגרציה ובלי משתנה סביבה.** `ReviewDraftsCard` קיבל פרופ אופציונלי `onChange`.
