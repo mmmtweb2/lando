@@ -994,3 +994,9 @@ quota cap there.
 - `scripts/test-image-slots.ts` (גבולות, אי-התנגשות, חורים, חיתוך זנב, אריזת העלאות) ו-`test-logo-routes.ts` הורחב לנתיב המחיקה.
 - בלוק `portfolio_grid` הישן לא מציג את תמונות הגלריה (הוא ממשיך להציג את תמונות השירותים כמו קודם).
 - נבדק בדפדפן ב-375px: צפייה ציבורית ועריכה, הוספה, הסרה, בלי גלישה אופקית. ללא מיגרציה וללא env.
+
+## חלק 91 – העברת Supabase בין אזורים: `scripts/migrate-supabase.mjs`
+- סקריפט אחד עם שלבים: `check`, `reset-new`, `schema`, `data`, `storage`, `rewrite`, `verify`, `all`. מעביר ממסד ישן (קריאה בלבד) לחדש: סכמה מ-`migrations/` (001-045), כל טבלאות `public`, `auth.users` ו-`auth.identities` (עם hash הסיסמאות), אובייקטי ה-bucket לפי אותם נתיבים, ומחליף את כתובת הפרויקט הישן בחדש בכל עמודת טקסט/JSON.
+- הגנות: חיבור קריאה בלבד לישן; מסרב אם בחדש כבר יש נתונים; `reset-new` דורש `CONFIRM_RESET_NEW=<host>`; מגלה טבלאות שקיימות רק בישן.
+- `verify` משווה ספירות שורות, משתמשים, hash סיסמאות, RLS, פונקציות RPC, ושלא נשארה כתובת ישנה. נבדק מקצה לקצה על שני Postgres 16 מקומיים (כולל reset וחזרה). שלב התמונות נבדק בקוד בלבד, לא מול Supabase אמיתי.
+- מדריך ללא טכנאי: `scripts/MIGRATE-SUPABASE.md`, תבנית הגדרות: `scripts/migrate-supabase.env.example`. אין שינוי באפליקציה, מיגרציה או env.
