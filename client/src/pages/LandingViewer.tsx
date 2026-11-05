@@ -16,6 +16,10 @@ import RefundAck from '../components/RefundAck';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 import { safeHttpUrl } from '../lib/safeUrl';
 import ImageEditor from '../components/ImageEditor';
+import type { V3Ctx } from './landingV3/LandingV3';
+
+// Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
+const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1124,6 +1128,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     || (designParam !== '1'
       && !!page && !page.parent_id
       && (!page.created_at || Date.parse(page.created_at) >= DESIGN_V2_FROM));
+  // ?design=3 renders the new open/editorial design (phase 0: opt-in per link, see README part 90).
+  const designV3 = designParam === '3';
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
@@ -3964,6 +3970,69 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     );
   }
 
+  // ── Design V3 hand-over: everything LandingV3 needs, nothing more ──────────
+  function buildV3Ctx(): V3Ctx {
+    const heroSubtitle = heroTagline ?? '';
+    return {
+      businessName: business_name,
+      logoUrl: logo_url,
+      phone,
+      email: ctaEmail,
+      address: ai_content.contact?.address ?? '',
+      hours: ai_content.contact?.business_hours ?? '',
+      facebookUrl: facebook_url,
+      instagramUrl: instagram_url,
+      hero: { title: ai_content.hero?.title ?? business_name, subtitle: heroSubtitle, cta: ctaText },
+      about: ai_content.about ? { heading: ai_content.about.heading ?? '', content: ai_content.about.content ?? '' } : null,
+      aboutImage: legacyImages[1] || null,
+      services: services.map((sv) => ({ id: sv.id, title: sv.title, description: sv.description })),
+      serviceImages: services.map((_, i) => serviceImageSource[i] || null),
+      galleryUrls,
+      heroImageUrl,
+      process: ai_content.process_steps ?? [],
+      testimonials: ai_content.testimonials ?? [],
+      faq: ai_content.faq ?? [],
+      badges: (ai_content.trust_badges ?? []).map((b) => b.label),
+      headings: {
+        services: ai_content.services_heading || 'מה אנחנו מציעים',
+        process: ai_content.process_heading || 'איך זה עובד',
+        testimonials: ai_content.testimonials_heading || 'מה אומרים עלינו',
+        faq: ai_content.faq_heading || 'שאלות נפוצות',
+      },
+      closing: {
+        headline: `מוכנים להתחיל עם ${business_name}?`,
+        subline: ai_content.cta_banner_subline || '',
+        waMessage: !useExternalLink && waUrl ? waMessage : null,
+      },
+      primary, secondary, accent, bgTint: bgLightTint,
+      headingFont, bodyFont, vibe,
+      isEditing: isEditingMode && !!canEdit, canEdit: !!canEdit,
+      reduceMotion: !!reduceMotion, topPad: isDraft ? 112 : 64,
+      ctaHref: primaryCtaHref, ctaIcon, isWhatsApp: !useExternalLink,
+      serviceHref: (title: string) => {
+        const u = buildWhatsAppUrl(phone, `שלום, אשמח לשמוע על ${title}`);
+        return !useExternalLink && u ? u : primaryCtaHref;
+      },
+      onCta: (href: string) => handleCtaClick(href),
+      getEdit, setEdit,
+      openImageModal,
+      removeGalleryImage: (i: number) => { void removeGalleryImage(i); },
+      isHidden: (ids: string[]) => ids.some((id) => hiddenSections.includes(id)),
+      toggleHidden: (ids: string[]) => {
+        const hiddenNow = ids.find((id) => hiddenSections.includes(id));
+        const inComposition = (ai_content.layout_composition ?? []).find((id) => ids.includes(id));
+        void toggleSectionVisibility(hiddenNow ?? inComposition ?? ids[0]);
+      },
+      maxGallery: MAX_GALLERY_IMAGES,
+      EditableText, EditableImage, SectionWrap: SectionEditorWrapper,
+      headerExtra: canEdit && user?.email
+        ? <WalletBadge email={user.email} refreshKey={creditsRefreshKey} onLoad={setCredits} />
+        : null,
+      leadForm: enable_form ? renderLeadForm() : null,
+      waIcon: <WhatsAppIcon size={20} />,
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   const ogDescription =
     heroTagline ||
@@ -4006,7 +4075,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         {heroImageUrl && <meta name="twitter:image" content={heroImageUrl} />}
       </Helmet>
 
-      {/* Sticky glassmorphism header */}
+      {!designV3 && (
       <header className={`fixed top-0 inset-x-0 z-50 h-16 transition-all duration-300 ${
         designV2 && heroV2On() && !scrolled
           ? 'bg-transparent border-b border-transparent'
@@ -4033,6 +4102,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           </div>
         </div>
       </header>
+      )}
 
       {/* Draft banner — visible to all visitors when page is in draft.
           The copy must stay TRUE: a draft page is served by the public,
@@ -4058,6 +4128,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         </div>
       )}
 
+      {designV3 ? (
+        <React.Suspense fallback={<div className="min-h-screen" style={{ backgroundColor: '#faf6ee' }} />}>
+          <LandingV3 ctx={buildV3Ctx()} />
+        </React.Suspense>
+      ) : (
+      <>
       {/* Dynamic layout body */}
       {renderLayout()}
 
@@ -4114,6 +4190,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           </a>
         </div>
       </footer>
+      </>
+      )}
 
       {/* Per-page terms of use + accessibility statement, in the page owner's
           own name. Accessibility duties attach to the business that owns the
@@ -4137,7 +4215,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         </div>
       )}
 
-      {designV2 && <ScrollProgress color={primary} />}
+      {designV2 && !designV3 && <ScrollProgress color={primary} />}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
       {designV2 ? (
