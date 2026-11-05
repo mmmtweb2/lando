@@ -24,7 +24,12 @@ node scripts/migrate-supabase.mjs verify     # אימות מלא (כל הבדי�
 1. ב-Coolify: **עצור** את האפליקציה (כך שאין כתיבות חדשות).
 2. `reset-new` ואז `schema`, `data`, `storage`, `rewrite`, `verify`. חייב להסתיים ב-"All checks passed".
 3. ב-Supabase החדש, **העתק ידנית את הגדרות Auth מהישן** (Authentication): Site URL = `https://pagey.co.il`; Redirect URLs (כולל `https://pagey.co.il/reset-password`); הגדרות SMTP ותבניות מייל; משך טוקן; הרשמה פתוחה/סגורה כמו בישן. בדוק גם Extensions: pgcrypto פעיל.
-4. ב-Coolify עדכן משתני סביבה (ערכים מהפרויקט החדש): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL`, ובנוסף משתני **בנייה** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+4. ב-Coolify עדכן משתני סביבה (ערכים מהפרויקט החדש). שמות המשתנים בקוד שונים מהשמות בדשבורד של Supabase:
+   - `NEXT_PUBLIC_SUPABASE_URL` = Project URL (`https://<ref>.supabase.co`)
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = Publishable key (`sb_publishable_...`), Settings > API Keys
+   - `SUPABASE_SERVICE_ROLE_KEY` = **Secret key** (`sb_secret_...`), Settings > API Keys
+   - `DATABASE_URL`: רק אם מוגדר היום ב-Coolify (בקוד `src/config/db.ts` אינו בשימוש), ואז Session pooler של החדש
+   - משתני **בנייה** (Build Variables, דורשים Redeploy): `VITE_SUPABASE_URL` = אותו Project URL, ו-`VITE_SUPABASE_ANON_KEY` = אותו Publishable key
 5. **Redeploy** (חובה: משתני VITE נאפים בזמן הבנייה).
 6. בדיקות עשן: התחברות עם חשבון קיים (הסיסמה נשמרה; כולם יתחברו מחדש כי סשנים לא עוברים), דשבורד נטען, יצירת דף עם תמונה, דף ציבורי עם תמונות ולוגו, איפוס סיסמה (המייל והקישור).
 
