@@ -14,9 +14,22 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
+/**
+ * Supabase hands out a NEW `session.user` object on every auth event (INITIAL_SESSION, SIGNED_IN on
+ * tab focus, TOKEN_REFRESHED, ...). Many pages list `user` in their effect deps, so every event used
+ * to re-run their data fetches (the dashboard fired my-pages / plan / my-leads up to 7 times on first
+ * load). Keep the SAME object while it is still the same user at the same revision.
+ */
+function sameUser(a: User | null, b: User | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.id === b.id && a.email === b.email && a.updated_at === b.updated_at;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const setUser = (next: User | null) => setUserState((prev) => (sameUser(prev, next) ? prev : next));
 
   useEffect(() => {
     // Hydrate from any existing session on first mount
