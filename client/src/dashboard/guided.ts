@@ -43,7 +43,7 @@ export const GUIDED_COPY: Record<GuidedId, StepCopy> = {
   },
   first_check: {
     id: 'first_check', skippable: false, title: 'בדיקה ראשונה מול מתחרים', who: 'we', auto: true, minutes: 1, cta: 'התחלת הבדיקה',
-    what: 'אנחנו משווים את הכרטיס שלך בגוגל לשלושת העסקים המובילים באזור.',
+    what: 'אנחנו משווים את הכרטיס שלך בגוגל לעסקים דומים באזור (חציון הביקורות והעסק עם הכי הרבה ביקורות).',
     why: 'כדי לדעת מה חסר בכרטיס שלך לעומת העסקים שמופיעים לפניך.',
   },
   profile_details: {
