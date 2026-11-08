@@ -129,13 +129,16 @@ import { compareCategory } from '../src/services/placesAudit';
 const peer = (id: string, type: string, label: string, n: number) => ({ id, primaryType: type, primaryTypeDisplayName: { text: label }, userRatingCount: n });
 const me = { id: 'me', primaryType: 'plumber', primaryTypeDisplayName: { text: 'אינסטלטור' } };
 let c = compareCategory(me, [peer('a', 'plumber', 'אינסטלטור', 90), peer('b', 'plumber', 'אינסטלטור', 80), peer('c', 'contractor', 'קבלן', 70)]);
-assert.equal(c?.status, 'same');
+assert.equal(c, null, '#22: leaders matching us → no line at all');
 c = compareCategory(me, [peer('a', 'general_contractor', 'קבלן שיפוצים', 90), peer('b', 'general_contractor', 'קבלן שיפוצים', 80), peer('c', 'plumber', 'אינסטלטור', 70), peer('me', 'plumber', 'אינסטלטור', 999)]);
 assert.equal(c?.status, 'different');
 assert.equal(c?.line, 'המתחרים מוגדרים כ-קבלן שיפוצים ואתם כ-אינסטלטור. כדאי לבדוק שהקטגוריה שלכם מתאימה למה שלקוחות מחפשים.');
 assert.equal(compareCategory(me, [peer('a', 'plumber', 'אינסטלטור', 90)]), null, 'too few peers → skipped');
 assert.equal(compareCategory({ id: 'me' }, [peer('a', 'x', 'x', 5), peer('b', 'x', 'x', 4)]), null, 'no category of ours → skipped');
 assert.equal(compareCategory(me, [{ id: 'a', userRatingCount: 5 }, { id: 'b', userRatingCount: 4 }]), null, 'peers without category → skipped');
-// A tie between two categories goes to the more-reviewed business.
-c = compareCategory(me, [peer('a', 'x1', 'איקס', 100), peer('b', 'y1', 'ווי', 90)]);
-assert.equal(c?.theirs, 'איקס');
+// #22 ב: only ≥2 leaders sharing a DIFFERENT category produce a line; a split or a lone outlier hides it.
+assert.equal(compareCategory(me, [peer('a', 'x1', 'איקס', 100), peer('b', 'y1', 'ווי', 90)]), null, 'two leaders that disagree → hidden');
+assert.equal(compareCategory(me, [peer('a', 'x1', 'איקס', 100), peer('b', 'plumber', 'אינסטלטור', 90), peer('c', 'y1', 'ווי', 80)]), null, '1 of 3 differs → hidden');
+assert.equal(compareCategory(me, [peer('a', 'x1', 'איקס', 100), peer('b', 'y1', 'ווי', 90), peer('c', 'z1', 'זד', 80)]), null, 'all three different → hidden');
+c = compareCategory(me, [peer('a', 'x1', 'איקס', 100), peer('b', 'x1', 'איקס', 90)]);
+assert.equal(c?.theirs, 'איקס', '2 of 2 agree on another category → shown');
