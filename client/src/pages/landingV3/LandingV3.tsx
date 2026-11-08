@@ -63,6 +63,9 @@ export interface V3Ctx {
   EditableText: TextComp; EditableImage: ImageComp; SectionWrap: SectionWrapComp;
   headerExtra: ReactNode;
   leadForm: ReactNode;
+  /** per-page terms + accessibility statement (legal, in the owner's name) and the Pagey credit line (null when white-label) */
+  legal: ReactNode;
+  credit: ReactNode;
   waIcon: ReactNode;
 }
 
@@ -216,7 +219,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
   });
 
   useEffect(() => {
-    if (!motion) { setReady(true); return; }
+    if (!motion) { setReady(true); return; }   // eslint-disable-line react-hooks/set-state-in-effect -- motion is off in edit mode: show everything at once
     const r = requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
     return () => cancelAnimationFrame(r);
   }, [motion]);
@@ -549,12 +552,14 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
       </main>
 
       <footer className="foot"><div className="wrap">
-        <span><b>{c.businessName}</b>{c.phone ? <> · <span dir="ltr">{c.phone}</span></> : null}{c.email ? <> · <a href={`cta:${c.email}`} dir="ltr">{c.email}</a></> : null}</span>
+        <span><b>{c.businessName}</b>{c.phone ? <> · <span dir="ltr">{c.phone}</span></> : null}{c.email ? <> · <a href={`mailto:${c.email}`} dir="ltr">{c.email}</a></> : null}</span>
         <span className="soc">
           {c.facebookUrl && <a href={c.facebookUrl} target="_blank" rel="noopener noreferrer">Facebook</a>}
           {c.instagramUrl && <a href={c.instagramUrl} target="_blank" rel="noopener noreferrer">Instagram</a>}
         </span>
       </div></footer>
+      {c.legal}
+      {c.credit}
     </div>
   );
 }
