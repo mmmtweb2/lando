@@ -53,7 +53,12 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
   });
   const [openTask, setOpenTask] = useState<MonthlyId | null>(null);
   const [skips, setSkips] = useState<GuidedId[]>(() => readSkips(email));
-  const phase = derivePhase(data.input);
+  // Preview only: ?preview=ongoing shows the monthly screens on an account that has not finished the
+  // setup. Read once per page load, nothing is saved, no tick is written; it only picks which view shows.
+  const [previewOngoing] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('preview') === 'ongoing'; } catch { return false; }
+  });
+  const phase = previewOngoing ? 'ongoing' : derivePhase(data.input);
   const monthly = useMonthly(email, data.input, data.requestsSent, data.pendingReplies);
   const setup = buildSetupTasks(data.input, skips);
   const monthTasks = buildMonthTasks(monthly.view);
