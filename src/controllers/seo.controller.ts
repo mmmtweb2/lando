@@ -91,8 +91,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function getBusinesses(req: Request, res: Response): Promise<void> {
   try {
     // The business chosen in /start becomes the dashboard's business here (once, best effort, never throws).
-    await linkJourneyBusiness(req.authEmail!);
-    res.json({ businesses: await listBusinesses(req.authEmail!), max: MAX_BUSINESSES_PER_ACCOUNT });
+    // The list is read while the link check runs (two independent reads). Only when the link
+    // actually added a business is the list read again; that happens once per account.
+    const [linked, first] = await Promise.all([linkJourneyBusiness(req.authEmail!), listBusinesses(req.authEmail!)]);
+    const businesses = linked === 'linked' ? await listBusinesses(req.authEmail!) : first;
+    res.json({ businesses, max: MAX_BUSINESSES_PER_ACCOUNT });
   } catch (e) {
     console.error('[SEO] list businesses failed:', e);
     res.status(500).json({ error: 'שגיאה פנימית.' });
