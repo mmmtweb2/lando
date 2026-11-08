@@ -102,7 +102,7 @@ export default function AuditLeadForm({
       {/* honeypot */}
       <input
         tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={e => setWebsite(e.target.value)}
-        style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden', clipPath: 'inset(50%)', pointerEvents: 'none' }}
       />
       <label className="flex items-start gap-2 text-sm text-slate-700">
         <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} className="mt-1" />
