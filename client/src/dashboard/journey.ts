@@ -61,7 +61,7 @@ export function deriveSetup(i: OverviewInput): SetupItem[] {
     { id: 'connect', title: 'חיבור העסק', who: 'you', manual: false, view: 'profile', cta: 'לחיבור העסק',
       how: 'מחפשים את העסק בגוגל מפות ושומרים אותו כאן. אם עוד אין לו כרטיס בגוגל, נראה לכם איך פותחים אחד.', done: i.hasBusiness },
     { id: 'first_check', title: 'בדיקה ראשונה מול מתחרים', who: 'we', manual: true, view: 'profile', cta: 'בדוק עכשיו',
-      how: 'אנחנו משווים את הכרטיס שלך בגוגל לשלושת העסקים המובילים באזור, ואתם רואים מה חסר.', done: t('first_check') },
+      how: 'אנחנו משווים את הכרטיס שלך בגוגל לעסקים דומים באזור (חציון הביקורות והעסק עם הכי הרבה ביקורות), ואתם רואים מה חסר.', done: t('first_check') },
     { id: 'profile_details', title: 'פרטי הכרטיס שלך בגוגל', who: 'you', manual: true, view: 'profile', cta: 'מה חסר לי',
       how: 'טלפון, שעות פתיחה ותמונות אמיתיות. את זה רק בעל העסק יכול לעדכן, בחשבון הגוגל שלו.', done: t('profile_details') },
     { id: 'profile_verified', title: 'אימות הכרטיס', who: 'you', manual: true, view: 'profile', cta: 'איך מאמתים',

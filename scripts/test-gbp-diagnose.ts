@@ -50,7 +50,7 @@ const QUOTA_BODY = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 
   assert.equal(calls.filter((c) => c.startsWith('POST ')).length, 1);
   const blob = JSON.stringify(d);
   for (const secret of ['ACCESS-TOKEN-XYZ', 'REFRESH-TOKEN-123', 'GOCSPX-secret-value']) assert.equal(blob.includes(secret), false, `${secret} must not be in the report`);
-  assert.equal(d.steps.find((s) => s.key === 'locations')!.detail, '1 מיקומים בחשבון הראשון');
+  assert.equal(d.steps.find((s) => s.key === 'locations')!.detail, '1 מיקומים (לפי חשבון: 1)');
 
   // 2) the reported scenario: approved project but quota 0 on Business Information -> full Google error is shown
   d = await runDiagnosis('a@x.co', fakeFetch([TOKEN, OK[1], { match: /mybusinessbusinessinformation/, status: 429, body: QUOTA_BODY }]));
@@ -83,6 +83,34 @@ const QUOTA_BODY = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 
   conn = { email: 'a@x.co', refresh_token_enc: encryptToken('R', Buffer.from(KEY, 'hex')), location_name: null, status: 'active' };
   d = await runDiagnosis('a@x.co', (async (u: string) => { if (String(u).includes('oauth2')) return new Response(JSON.stringify({ access_token: 'A' }), { status: 200 }); throw new TypeError('fetch failed'); }) as unknown as typeof fetch);
   assert.equal(d.verdict, 'unknown'); assert.ok(d.steps.find((s) => s.key === 'accounts')!.message!.startsWith('network:'));
+
+  // 3) closing-session item 3: the dev email is a MANAGER, so the card is in a second (group) account, not the personal one
+  const mgr: Route[] = [
+    TOKEN,
+    { match: /mybusinessaccountmanagement/, status: 200, body: { accounts: [{ name: 'accounts/1', type: 'PERSONAL', role: 'PRIMARY_OWNER' }, { name: 'accounts/2', type: 'LOCATION_GROUP', role: 'SITE_MANAGER' }] } },
+    { match: /mybusinessbusinessinformation.*\/accounts\/1\/locations/, status: 200, body: {} },
+    { match: /mybusinessbusinessinformation.*\/accounts\/2\/locations/, status: 200, body: { locations: [{ name: 'locations/222', title: 'מספרה' }] } },
+    { match: /mybusinessbusinessinformation.*\/locations\/222\?readMask/, status: 200, body: { name: 'locations/222' } },
+    { match: /businessprofileperformance/, status: 200, body: {} },
+    { match: /mybusiness\.googleapis\.com\/v4\/accounts\/2\/locations\/222\/reviews/, status: 200, body: { reviews: [] } },
+  ];
+  conn = { ...conn!, location_name: null };
+  resetRunGuard(); calls.length = 0;
+  d = await runDiagnosis('a@x.co', fakeFetch(mgr), new Date('2026-11-04T10:00:00Z'));
+  assert.equal(d.verdict, 'works', 'a card managed through a second account is found');
+  assert.equal(d.steps.find((s) => s.key === 'locations')!.detail, '1 מיקומים (לפי חשבון: 0, 1)');
+  assert.equal(d.steps.find((s) => s.key === 'accounts')!.detail, '2 חשבונות (PERSONAL/PRIMARY_OWNER, LOCATION_GROUP/SITE_MANAGER)');
+  assert.ok(calls.some((c) => c.includes('/v4/accounts/2/locations/222/reviews')), 'reviews are read through the account that holds the card');
+
+  // 4) connected, but the Google account sees no card at all: NOT "works" (the invitation was not accepted / wrong Google account)
+  const none: Route[] = [TOKEN, OK[1], { match: /mybusinessbusinessinformation.*\/accounts\/9\/locations/, status: 200, body: {} }];
+  resetRunGuard();
+  d = await runDiagnosis('a@x.co', fakeFetch(none));
+  assert.equal(d.verdict, 'no_locations'); assert.ok(d.summary.includes('מנהל')); assert.equal(d.steps.find((s) => s.key === 'performance')!.skipped, true);
+  const noAcc: Route[] = [TOKEN, { match: /mybusinessaccountmanagement/, status: 200, body: {} }];
+  resetRunGuard();
+  d = await runDiagnosis('a@x.co', fakeFetch(noAcc));
+  assert.equal(d.verdict, 'no_locations'); assert.ok(d.summary.includes('אין שום חשבון'));
 
   // helpers
   assert.deepEqual([readGoogleError(null).reasons, readGoogleError(null).quota], [[], []]);
