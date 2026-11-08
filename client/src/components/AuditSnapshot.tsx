@@ -32,9 +32,16 @@ export function pickFindings(items: AuditItem[]): AuditItem[] {
   return out;
 }
 
+/** " חציון באזור: X. הגבוה ביותר: Y." — both shown as facts; empty when the numbers are not there. */
+export function regionFacts(b: Audit['benchmark'] & object): string {
+  if (b.maxReviews === undefined) return '';
+  const median = b.reviewsTargetKind === 'max' ? b.medianReviews : b.reviewsTarget;
+  return ` חציון באזור: ${median} ביקורות. הגבוה ביותר: ${b.maxReviews}.`;
+}
+
 export function comparisonLine(a: Audit): string {
   return a.benchmark
-    ? `הציון נמדד מול שלושת העסקים המובילים מתוך ${a.benchmark.count} עסקים דומים באזור.`
+    ? `הציון נמדד מול ${a.benchmark.count} עסקים דומים באזור.${regionFacts(a.benchmark)}`
     : 'לא היו מספיק עסקים דומים באזור, ולכן הציון נמדד מול יעדים כלליים.';
 }
 
