@@ -3877,7 +3877,49 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     }
   }
 
-  function renderLeadForm() {
+  function renderLeadForm(v3 = false) {
+    // Design V3 (Pinkas): same state and submit handler, drawn in the page's paper and ink (landingV3.css).
+    if (v3) {
+      return (
+        <section className="lp3-lead" aria-labelledby="lp3-lead-h" data-rv="">
+          <p className="lp3-lead-kick">השאירו פרטים</p>
+          <h2 id="lp3-lead-h">נחזור אליכם בהקדם</h2>
+          {leadSent ? (
+            <div className="lp3-lead-sent" role="status">
+              <span aria-hidden>✓</span>
+              <div>
+                <p><b>הפרטים התקבלו.</b></p>
+                <p>ניצור איתכם קשר בהקדם האפשרי.</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {isDraft && <p className="lp3-lead-note" role="status">הדף עדיין בטיוטה. אי אפשר לשלוח פניות דרך הטופס עד שהדף מתפרסם.</p>}
+              <form onSubmit={handleLeadSubmit} className="lp3-lead-form">
+                {[
+                  { id: 'name', label: 'שם מלא', type: 'text', value: leadName, set: setLeadName, placeholder: 'ישראל ישראלי', dir: 'rtl' as const, required: true, ac: 'name' },
+                  { id: 'phone', label: 'טלפון', type: 'tel', value: leadPhone, set: setLeadPhone, placeholder: '050-0000000', dir: 'ltr' as const, required: true, ac: 'tel' },
+                  { id: 'email', label: 'אימייל (לא חובה)', type: 'email', value: leadEmail, set: setLeadEmail, placeholder: 'you@example.com', dir: 'ltr' as const, required: false, ac: 'email' },
+                ].map((f) => (
+                  <div key={f.id} className="lp3-field">
+                    <label htmlFor={`lp3-${f.id}`}>{f.label}</label>
+                    <input id={`lp3-${f.id}`} type={f.type} required={f.required} value={f.value} onChange={(e) => f.set(e.target.value)}
+                      placeholder={f.placeholder} dir={f.dir} autoComplete={f.ac} disabled={leadSubmitting} />
+                  </div>
+                ))}
+                <div className="lp3-field">
+                  <label htmlFor="lp3-msg">הודעה (לא חובה)</label>
+                  <textarea id="lp3-msg" rows={3} value={leadMessage} onChange={(e) => setLeadMessage(e.target.value)}
+                    placeholder="ספרו לנו איך נוכל לעזור" disabled={leadSubmitting} />
+                </div>
+                {leadError && <p className="lp3-lead-err" role="alert">{leadError}</p>}
+                <button type="submit" className="lp3-submit" disabled={isDraft || leadSubmitting}>{leadSubmitting ? 'שולח…' : 'שליחה'}</button>
+              </form>
+            </>
+          )}
+        </section>
+      );
+    }
     return (
       <motion.section className="px-6 py-16" style={sectionBgAlt ?? { backgroundColor: '#f8fafc' }}
         variants={V.classic.container} initial="hidden" whileInView="visible" {...VIEW}>
@@ -4028,7 +4070,23 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       headerExtra: canEdit && user?.email
         ? <WalletBadge email={user.email} refreshKey={creditsRefreshKey} onLoad={setCredits} />
         : null,
-      leadForm: enable_form ? renderLeadForm() : null,
+      leadForm: enable_form ? renderLeadForm(true) : null,
+      legal: (
+        <PageLegalFooter
+          variant="v3"
+          businessName={business_name}
+          phone={ai_content.contact?.phone || phone_number || undefined}
+          email={ai_content.contact?.email || undefined}
+          address={ai_content.contact?.address || undefined}
+          accent={accent}
+          extraBottomPad={whiteLabel && toolbarVisible}
+        />
+      ),
+      credit: whiteLabel ? null : (
+        <div className={`lp3-credit${toolbarVisible ? ' pad' : ''}`}>
+          <a href="/"><LandoMark size={16} /> נוצר באמצעות Pagey</a>
+        </div>
+      ),
       waIcon: <WhatsAppIcon size={20} />,
     };
   }
@@ -4193,6 +4251,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       </>
       )}
 
+      {!designV3 && (<>
       {/* Per-page terms of use + accessibility statement, in the page owner's
           own name. Accessibility duties attach to the business that owns the
           page, not to Pagey — see components/PageLegalFooter.tsx. */}
@@ -4214,6 +4273,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           </a>
         </div>
       )}
+      </>)}
 
       {designV2 && !designV3 && <ScrollProgress color={primary} />}
 
