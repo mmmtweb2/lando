@@ -142,10 +142,12 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   if (testPrice !== null) console.warn('[SUBSCRIPTION] payment test mode: charging the test price for a listed account');
 
   // Already has the product some other way (e.g. a manual grant)? Do not bill them for it.
+  // Exception: an account in payment test mode (the owner's admin account) may pay the test price so the
+  // whole path can be exercised without resetting its grants. mirrorEntitlement never overwrites a manual grant.
   const { data: prod } = await supabase
     .from('user_products').select('status, current_period_end, source').eq('email', email).eq('product', 'seo_autopilot').maybeSingle();
   const p = prod as { status: string; current_period_end: string | null; source: string } | null;
-  if (p && p.source !== 'sumit' && isEntitled(p)) throw new SubError('already_has_access');
+  if (p && p.source !== 'sumit' && isEntitled(p) && testPrice === null) throw new SubError('already_has_access');
 
   const existing = await getSubscription(email);
   if (existing && existing.status === 'active' && !existing.cancel_at_period_end
