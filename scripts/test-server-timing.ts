@@ -76,6 +76,13 @@ async function t(name: string, fn: () => void | Promise<void>) {
     } finally { delete process.env.SERVER_TIMING; srv.close(); }
   });
 
+  await t('#33: no middleware asks Supabase about a session on every request', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const app = require('../src/app').default;
+    const names = (app._router?.stack ?? []).map((l: { name?: string }) => l.name);
+    assert.ok(!names.includes('supabaseSession'), 'supabaseSession is gone');
+  });
+
   console.log(failed ? `\n${failed} failed` : '\nall passed');
   process.exit(failed ? 1 : 0);
 })();

@@ -3,7 +3,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
-import { supabaseSession } from './utils/supabase/middleware';
 import router from './routes';
 import { servePageWithOgTags, serveBPage } from './controllers/og.controller';
 import { rateLimit } from './middleware/rateLimit';
@@ -77,7 +76,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 app.use(serverTimingMiddleware);
-app.use(supabaseSession);
 
 // OG tag injection for public landing pages — must be before static middleware
 // so crawlers (WhatsApp, Facebook) that hit /p/:slug get server-rendered meta tags.
