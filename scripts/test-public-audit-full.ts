@@ -41,7 +41,7 @@ const res = () => { const r: any = { code: 200, body: null, status(c: number) { 
   // Same category as the leaders.
   category = ['plumber', 'אינסטלטור'];
   const r2 = res(); await publicAudit({ params: { placeId: 'ChIJselfselfself' } } as any, r2);
-  assert.equal(r2.body.categoryCheck.status, 'same');
+  assert.equal(r2.body.categoryCheck, null, 'leaders match our category → no category line (#22)');
 
   // Switches.
   process.env.AUDIT_CATEGORY_CHECK_ENABLED = 'false'; process.env.AUDIT_AI_READINESS_ENABLED = 'false';

@@ -46,7 +46,7 @@
 // full editing budget for free. The real editing budget now comes from
 // actually BUYING a page (see SINGLE_PAGE_AI_CREDITS in config/billing.ts),
 // which also fixed a real inaccuracy: the checkout modal and Terms of Service
-// used to promise "20 עריכות AI כלולות" as part of the ₪249 page purchase, but
+// used to promise "20 עריכות AI כלולות" as part of the ₪250 page purchase, but
 // a single-page purchase granted 0 AI credits — the 20-credit budget was
 // actually STARTING_CREDITS, a ONE-TIME signup grant unrelated to any specific
 // purchase. Now the promise is real: buying a page grants AI credits directly.

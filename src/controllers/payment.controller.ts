@@ -71,7 +71,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
       res.status(409).json({ error: 'הדף כבר מפורסם.' });
       return;
     }
-    // A frozen page is an expired page, not an unpublished one. Selling a 249₪
+    // A frozen page is an expired page, not an unpublished one. Selling a 250₪
     // publish for it would charge two and a half times the renewal price for the
     // same outcome — the customer is entitled to bring it back at their renewal
     // price instead (2026-09-14: this used to hardcode "99 ₪" regardless of the
@@ -86,7 +86,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
       });
       return;
     }
-    // Never open a 249₪ charge for a page the customer's page-publish balance
+    // Never open a 250₪ charge for a page the customer's page-publish balance
     // already covers. The client's publish flow tries the free balance-publish
     // endpoint first, but that is a client-side courtesy — a direct call to this
     // endpoint (or a stale tab) could still start a real charge for a page the
@@ -120,7 +120,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     if (!eligibility.ok) {
       if (eligibility.reason === 'not_renewable') {
         // A draft was never published, so there is no year to extend — it needs
-        // a 249₪ publish, not a 99₪ renewal. Taking the 99₪ here would leave
+        // a 250₪ publish, not a 99₪ renewal. Taking the 99₪ here would leave
         // the page exactly as offline as before.
         res.status(409).json({
           error: 'ניתן לחדש רק דף שפורסם. דף בטיוטה יש לפרסם תחילה.',
@@ -135,7 +135,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
     }
 
     // NOTE: page_credits are deliberately NOT consulted. A page credit buys the
-    // right to publish a NEW page (249₪ of value); spending one on a 99₪
+    // right to publish a NEW page (250₪ of value); spending one on a 99₪
     // renewal would quietly overcharge the customer. Renewal is its own fee —
     // see RENEWAL_PRICE / renewalPriceFor in config/billing.ts. Discounted for
     // accounts that have bought enough pages, lifetime (2026-09-14).
@@ -429,7 +429,7 @@ async function grantPaymentValue(pay: PaymentRow): Promise<boolean> {
       return false;
     }
 
-    // Since 2026-09-01 a single 249₪ page purchase goes through the SAME
+    // Since 2026-09-01 a single 250₪ page purchase goes through the SAME
     // page-publish balance as a bundle: it buys one page credit, which is then
     // immediately spent on the page that was paid for. Unifying the two removes
     // the second, parallel notion of "this page is paid for".

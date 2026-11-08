@@ -492,7 +492,7 @@ export default function MarketingLanding() {
           <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים — פעם אחת, בלי מנוי.</p>
         </div>
 
-        {/* Single page (unchanged, 249₪ one-time) + two one-time page bundles.
+        {/* Single page (unchanged, 250₪ one-time) + two one-time page bundles.
             Subscriptions were withdrawn 2026-09-01 — nothing here renews, and
             no card is kept on file. Numbers mirror the server config
             (src/config/billing.ts); keep in sync if prices change there. */}

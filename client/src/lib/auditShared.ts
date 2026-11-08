@@ -8,6 +8,8 @@ export interface AuditItem {
 export interface Benchmark {
   count: number; medianRating: number; medianReviews: number;
   topReviews: number; ratingTarget: number; reviewsTarget: number;
+  /** #22: the highest review count in the area (always shown), and whether `reviewsTarget` is the median or that maximum. */
+  maxReviews?: number; reviewsTargetKind?: 'median' | 'max';
 }
 export interface Audit {
   placeId: string; name: string; address: string | null; category: string | null;
