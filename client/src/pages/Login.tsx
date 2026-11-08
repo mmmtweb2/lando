@@ -324,9 +324,9 @@ export default function Login() {
           ✦ Pagey
         </p>
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-          <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
-          <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
-          <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+          <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+          <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+          <Link to="/accessibility" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
         </div>
       </motion.div>
     </div>

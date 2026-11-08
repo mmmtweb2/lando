@@ -631,11 +631,11 @@ export default function MarketingLanding() {
           </div>
           <p className="text-xs text-slate-600">© {new Date().getFullYear()} {BRAND} · דפי נחיתה מבוססי AI לעסקים בישראל</p>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-500">
-            <Link to="/create" className="hover:text-[#2E63F6] transition">צרו דף</Link>
-            <Link to="/login" className="hover:text-[#2E63F6] transition">התחברות</Link>
-            <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
-            <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
-            <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+            <Link to="/create" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">צרו דף</Link>
+            <Link to="/login" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">התחברות</Link>
+            <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+            <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+            <Link to="/accessibility" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
           </div>
         </div>
       </footer>

@@ -286,10 +286,10 @@ export default function SeoLanding() {
 
       <footer className="px-5 py-8 text-center text-xs text-slate-500">
         <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <Link to="/" className="hover:underline">Pagey</Link>
-          <Link to="/privacy" className="hover:underline">מדיניות פרטיות</Link>
-          <Link to="/terms" className="hover:underline">תנאי שימוש</Link>
-          <Link to="/accessibility" className="hover:underline">הצהרת נגישות</Link>
+          <Link to="/" className="inline-flex min-h-[44px] items-center px-1 hover:underline">Pagey</Link>
+          <Link to="/privacy" className="inline-flex min-h-[44px] items-center px-1 hover:underline">מדיניות פרטיות</Link>
+          <Link to="/terms" className="inline-flex min-h-[44px] items-center px-1 hover:underline">תנאי שימוש</Link>
+          <Link to="/accessibility" className="inline-flex min-h-[44px] items-center px-1 hover:underline">הצהרת נגישות</Link>
         </nav>
       </footer>
     </div>
