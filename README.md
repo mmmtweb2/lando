@@ -1082,3 +1082,7 @@ quota cap there.
 - **בלי שינוי טקסט משפטי:** `Privacy.tsx`, `Terms.tsx`, `Accessibility.tsx` לא שונו כלל; רק המעטפת (`LegalSection` / `LegalList` / `LegalLayout`) מתחלפת לפי הדגל.
 - **נבדק בדפדפן:** 1280 ו-390, בלי גלישה אופקית, כל יעדי המגע לפחות 44px (כפתורי 404: 48px), טקסט לבן על הגרדיאנט.
 - **שלבים הבאים:** התחברות ואיפוס סיסמה (עיצוב בלבד, באישור משה), "הדפים שלי" בדשבורד, אשף, StartJourney ו-PublicAudit, דפי השיווק, SeoPlan (תשלום, בנפרד), אדמין אחרון.
+
+## חלק 103 – הסרת `supabaseSession` (משימה #33, איציק)
+
+אושר על ידי משה. ה-middleware רץ בכל בקשה (גם קבצים סטטיים ודפים ציבוריים) וקרא ל-`supabase.auth.getUser()` כדי לרענן עוגיות סשן של Supabase. האפליקציה עובדת עם טוקן ב-`Authorization` ו-`localStorage`, אין עוגיות סשן, ושום קוד לא קרא לתוצאה, ולכן זו הייתה פנייה לרשת בלי שימוש בכל בקשה. הוסרו `supabaseSession` מ-`app.ts` והקבצים `utils/supabase/middleware.ts` ו-`utils/supabase/server.ts` (שרק הוא השתמש בו). `requireAuth` לא שונה: אימות הטוקן בנתיבים מוגנים נשאר זהה. בדיקה ב-`test-server-timing.ts`. הערה: חבילת `@supabase/ssr` נשארת ב-`package.json` כי `utils/supabase/client.ts` (שלא בשימוש בשרת) עדיין מייבא אותה.
