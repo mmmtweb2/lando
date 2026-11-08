@@ -76,7 +76,7 @@ export default function PublicAudit() {
         <BusinessAuditCard mode="public" />
       </main>
       <footer className="mx-auto max-w-2xl px-4 pb-10 text-center text-xs text-slate-400">
-        <Link to="/privacy" className="hover:underline">פרטיות</Link> · <Link to="/terms" className="hover:underline">תנאי שימוש</Link> · <Link to="/accessibility" className="hover:underline">הצהרת נגישות</Link>
+        <Link to="/privacy" className="inline-flex min-h-[44px] items-center px-1 hover:underline">פרטיות</Link> · <Link to="/terms" className="inline-flex min-h-[44px] items-center px-1 hover:underline">תנאי שימוש</Link> · <Link to="/accessibility" className="inline-flex min-h-[44px] items-center px-1 hover:underline">הצהרת נגישות</Link>
       </footer>
     </div>
   );

@@ -16,8 +16,8 @@ const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_di
 
 // Credit packs. Prices in ₪.
 export const CREDIT_PACKS: Record<string, { credits: number; price: number }> = {
-  small: { credits: 10, price: 49 },
-  large: { credits: 100, price: 399 },
+  small: { credits: 10, price: 50 },
+  large: { credits: 100, price: 400 },
 };
 
 /**
@@ -210,13 +210,15 @@ export async function getPlan(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: 'נדרשת התחברות.' });
     return;
   }
-  const status = await getAccountStatus(email, { entitlements: true });
   // Read-only hint for the client: admins get the new dashboard (v2) by default. A failed lookup is just "not admin".
-  let isAdmin = false;
-  try {
-    const { data: prof } = await supabase.from('user_profiles').select('is_admin').eq('email', email).maybeSingle();
-    isAdmin = (prof as { is_admin?: boolean } | null)?.is_admin === true;
-  } catch { /* default off */ }
+  // Looked up together with the status (independent reads, one round trip instead of two in a row).
+  const adminLookup = (async () => {
+    try {
+      const { data: prof } = await supabase.from('user_profiles').select('is_admin').eq('email', email).maybeSingle();
+      return (prof as { is_admin?: boolean } | null)?.is_admin === true;
+    } catch { return false; /* default off */ }
+  })();
+  const [status, isAdmin] = await Promise.all([getAccountStatus(email, { entitlements: true }), adminLookup]);
   res.json({ status, bundles: BUNDLES, singlePagePrice: SINGLE_PAGE_PRICE, isAdmin });
 }
 

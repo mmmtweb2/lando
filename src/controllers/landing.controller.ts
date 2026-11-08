@@ -932,7 +932,7 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
   // published page, not at signup — closes the self-referral credit-mint loop
   // that used to grant +5/+5 on signup alone, no usage required. This is the
   // one choke point every publish passes through (balance-covered or a paid
-  // 249₪ publish), so it is the natural hook. Best-effort and fire-and-forget
+  // 250₪ publish), so it is the natural hook. Best-effort and fire-and-forget
   // on purpose: a referral-bonus hiccup must never fail or delay a publish
   // that has otherwise already succeeded.
   const ownerEmail = (data as PublishedPage & { owner_email?: string | null }).owner_email;
@@ -951,7 +951,7 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
  *
  * The single place that turns a page-publish balance into a live page — used
  * both by the free publish endpoint below and by the SUMIT return handler after
- * a 249₪ single-page purchase, so there is exactly one ordering of
+ * a 250₪ single-page purchase, so there is exactly one ordering of
  * "take the credit, then publish, and give it back if publishing failed".
  *
  * Returns a `reason` instead of throwing so each caller can phrase its own
@@ -974,7 +974,7 @@ export async function publishPageWithCredit(
   }
   // A FROZEN page must never be brought back through the publish path. It would
   // work — the page would go live again — but it would spend a page credit
-  // (249₪ of value) on something the customer is entitled to buy for 99₪, and
+  // (250₪ of value) on something the customer is entitled to buy for 99₪, and
   // would reset published_at as if the page were new. Restoring a frozen page is
   // a RENEWAL: purpose 'renew' → grantRenewal, which charges 99₪ and touches no
   // balance. Refuse here and point the caller at that flow.
@@ -1000,7 +1000,7 @@ export async function publishPageWithCredit(
 // Balance-aware publish. If the caller holds at least one page credit, the page
 // is published immediately at no extra charge and the balance drops by one.
 // Otherwise we return 402 { needsPayment:true } and the client falls back to the
-// per-page (249₪) SUMIT checkout. Ownership is already enforced by requireOwnPage.
+// per-page (250₪) SUMIT checkout. Ownership is already enforced by requireOwnPage.
 export async function publishLandingPage(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const email = req.authEmail;

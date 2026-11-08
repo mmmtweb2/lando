@@ -12,6 +12,17 @@ export const SITE_URL = 'https://pagey.co.il';
 
 // Keep the texts in sync with the client (SeoLanding.tsx Helmet, PublicAudit.tsx document.title).
 export const SPA_META: Record<string, SpaMeta> = {
+  // The home page keeps the title/description already in client/index.html; the entry only adds the canonical.
+  '/': {
+    path: '/',
+    title: 'Pagey — דף נחיתה מקצועי בדקה בערך',
+    description: 'Pagey בונה לעסק שלכם דף נחיתה מקצועי ומותאם למובייל בדקה בערך, בעזרת AI — בעברית, בלי מעצב ובלי מתכנת. בונים בחינם, משלמים רק כשמפרסמים.',
+  },
+  '/login': {
+    path: '/login',
+    title: 'התחברות | Pagey',
+    description: 'התחברו לחשבון Pagey כדי לנהל את דפי הנחיתה והקידום שלכם בגוגל.',
+  },
   '/seo': {
     path: '/seo',
     title: 'בדיקה חינמית לכרטיס העסק שלך בגוגל | Pagey',

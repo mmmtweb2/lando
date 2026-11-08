@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { makeTimedFetch } from '../services/serverTiming';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -30,4 +31,6 @@ console.log(
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false, autoRefreshToken: false },
+  // Per-request timing (SERVER_TIMING=true) and a ceiling on READ queries; see services/serverTiming.ts.
+  global: { fetch: makeTimedFetch() },
 });

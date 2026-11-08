@@ -139,9 +139,13 @@ export async function getAccountStatus(
   email: string,
   opts: { entitlements?: boolean } = {},
 ): Promise<AccountStatus> {
-  const row = await loadBillingRow(email);
+  // Independent reads: run them together instead of one after the other (each is a network round trip).
+  const [row, activePages, entitlements] = await Promise.all([
+    loadBillingRow(email),
+    countActivePages(email),
+    opts.entitlements ? getEntitlements(email) : Promise.resolve(undefined),
+  ]);
   const tier = tierFor(row);
-  const activePages = await countActivePages(email);
   // Free tier: the counter resets every calendar month (period_key rotates).
   // Paid tier: the SAME `pages_created_period` column is reused as a LIFETIME
   // counter instead (see consumeMonthlyCreate) — no period check, it just
@@ -159,7 +163,7 @@ export async function getAccountStatus(
     monthlyCreate: creationCapFor(row, tier),
     createdThisPeriod,
     whiteLabel: !!row.white_label,
-    ...(opts.entitlements ? { entitlements: await getEntitlements(email) } : {}),
+    ...(entitlements ? { entitlements } : {}),
   };
 }
 
@@ -390,7 +394,7 @@ export async function grantBundle(email: string, bundleKey: string): Promise<boo
 }
 
 /**
- * Grant the single 249₪ page purchase: one page credit + SINGLE_PAGE_AI_CREDITS
+ * Grant the single 250₪ page purchase: one page credit + SINGLE_PAGE_AI_CREDITS
  * (10, as of 2026-09-14 — see config/billing.ts for why this replaced the old
  * 0-AI-credit grant).
  */

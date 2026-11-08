@@ -14,6 +14,7 @@ import { ROOT_DOMAIN, subdomainFromHost, getPageBySubdomain } from './services/s
 import { describeRequest, notifyOwner } from './services/alerts';
 import { recordHttp } from './services/opsMetrics.service';
 import { serveSpaWithMeta } from './services/spaMeta';
+import { serverTimingMiddleware } from './services/serverTiming';
 import { applyCloudflareIp } from './utils/clientIp';
 
 const app = express();
@@ -75,6 +76,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   });
   next();
 });
+app.use(serverTimingMiddleware);
 app.use(supabaseSession);
 
 // OG tag injection for public landing pages — must be before static middleware

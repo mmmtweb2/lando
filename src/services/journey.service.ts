@@ -138,8 +138,8 @@ export interface JourneyView {
   profilePending: boolean; pendingName: string | null;
 }
 
-async function view(email: string, row: JourneyRow | null, now: Date): Promise<JourneyView> {
-  const ent = await entitlementOf(email, now);
+async function view(email: string, row: JourneyRow | null, now: Date, known?: { entitled: boolean; source: string | null }): Promise<JourneyView> {
+  const ent = known ?? await entitlementOf(email, now);
   return {
     state: deriveState(row?.stage ?? 'registered', ent),
     placeId: row?.place_id ?? null,
@@ -153,7 +153,9 @@ async function view(email: string, row: JourneyRow | null, now: Date): Promise<J
 
 /** Read-only: never creates a row (used by the dashboard banner). */
 export async function peek(email: string, now = new Date()): Promise<JourneyView> {
-  return view(email, await getRow(email), now);
+  // The journey row and the entitlement are independent reads: fetch them together.
+  const [row, ent] = await Promise.all([getRow(email), entitlementOf(email, now)]);
+  return view(email, row, now, ent);
 }
 
 /** Starts the journey (idempotent). The `signup` event is logged once, and only for accounts that are not already customers. */

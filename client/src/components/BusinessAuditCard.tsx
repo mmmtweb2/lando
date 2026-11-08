@@ -6,7 +6,7 @@ import { RoleTag } from './RoleTag';
 import NoProfileGuide from './NoProfileGuide';
 import AuditLeadForm from './AuditLeadForm';
 import ConciergeButton from './ConciergeButton';
-import { SnapshotButton } from './AuditSnapshot';
+import { SnapshotButton, regionFacts } from './AuditSnapshot';
 import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit, type AiReadiness, type CategoryCheck } from '../lib/auditShared';
 import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
@@ -333,7 +333,7 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
 
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
             {audit.benchmark
-              ? `הציון נמדד מול שלושת העסקים המובילים מתוך ${audit.benchmark.count} עסקים דומים באזור (יעד: ${audit.benchmark.reviewsTarget} ביקורות ודירוג ${audit.benchmark.ratingTarget.toFixed(1)}; חציון האזור: ${audit.benchmark.medianReviews} ביקורות).`
+              ? `הציון נמדד מול ${audit.benchmark.count} עסקים דומים באזור (יעד דירוג: ${audit.benchmark.ratingTarget.toFixed(1)}).${regionFacts(audit.benchmark)}${audit.benchmark.reviewsTargetKind ? ` יעד הביקורות שלכם: ${audit.benchmark.reviewsTarget}${audit.benchmark.reviewsTargetKind === 'max' ? ' (הגבוה ביותר באזור)' : ' (החציון באזור)'}.` : ''}`
               : 'לא מצאנו מספיק עסקים דומים באזור להשוואה, ולכן הציון נמדד מול יעדים כלליים.'}
           </p>
 

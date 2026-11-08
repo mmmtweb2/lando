@@ -9,7 +9,8 @@ const html = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf-8'
 ok(metaForPath('/seo')?.path === '/seo', '/seo known');
 ok(metaForPath('/seo/')?.path === '/seo', 'trailing slash');
 ok(metaForPath('/audit')?.path === '/audit', '/audit known');
-ok(metaForPath('/') === null && metaForPath('/dashboard') === null && metaForPath('/p/x') === null, 'others untouched');
+ok(metaForPath('/')?.path === '/' && metaForPath('/login')?.path === '/login', '/ and /login known (canonical)');
+ok(metaForPath('/dashboard') === null && metaForPath('/create') === null && metaForPath('/p/x') === null, 'others untouched');
 ok(metaForPath('/__proto__') === null && metaForPath('/constructor') === null, 'no prototype lookups');
 
 for (const k of Object.keys(SPA_META)) {
@@ -21,7 +22,7 @@ for (const k of Object.keys(SPA_META)) {
   ok(out.includes(`<meta property="og:url" content="https://pagey.co.il${k}"`), `${k} og:url`);
   ok(out.includes(`<link rel="canonical" href="https://pagey.co.il${k}" />`), `${k} canonical`);
   ok((out.match(/<title>/g) ?? []).length === 1 && (out.match(/rel="canonical"/g) ?? []).length === 1, `${k} no duplicates`);
-  ok(!out.includes('Pagey — דף נחיתה מקצועי בדקה בערך'), `${k} home title gone`);
+  if (k !== '/') ok(!out.includes('Pagey — דף נחיתה מקצועי בדקה בערך'), `${k} home title gone`);
 }
 // Escaping: a hostile value can never break out of the attribute.
 const evil = applySpaMeta(html, { path: '/x', title: 'a"><script>1</script>', description: 'd"&<' });

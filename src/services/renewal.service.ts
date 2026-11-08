@@ -121,7 +121,7 @@ export interface RenewedPage {
  * A page is renewable while it is 'published' (renewing early, straight from a
  * reminder email) or 'frozen' (renewing to bring it back online). A 'draft' page
  * is NOT renewable — it was never published, so there is nothing to extend; it
- * needs a 249₪ publish, not a 99₪ renewal. Selling a renewal for a draft would
+ * needs a 250₪ publish, not a 99₪ renewal. Selling a renewal for a draft would
  * take 99₪ and leave the page exactly as offline as before.
  */
 export const RENEWABLE_STATUSES = ['published', 'frozen'] as const;
@@ -176,7 +176,7 @@ export async function checkRenewEligibility(email: string, id: string): Promise<
  *
  * All-or-nothing, and NOTHING else is touched:
  *  • `page_credits` is not read or written — a renewal is a flat 99₪ fee, not a
- *    249₪ page credit (see RENEWAL_PRICE in config/billing.ts).
+ *    250₪ page credit (see RENEWAL_PRICE in config/billing.ts).
  *  • the page's content, slug and leads are untouched — a frozen page comes back
  *    exactly as it was.
  *

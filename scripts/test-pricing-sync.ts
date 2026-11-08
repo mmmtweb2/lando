@@ -28,13 +28,17 @@ for (const k of ['small', 'large'] as const) {
 }
 
 // Derived numbers that the copy used to hard-code.
-ok(perPage('bundle5') === 198 && perPage('bundle10') === 149, 'per-page derived');
+ok(perPage('bundle5') === 200 && perPage('bundle10') === 150, 'per-page derived');
 ok(savingPercent('bundle5') === 20 && savingPercent('bundle10') === 40, 'saving derived');
-ok(fmt(1490) === '1,490' && fmt(249) === '249', 'fmt');
+ok(fmt(1500) === '1,500' && fmt(250) === '250', 'fmt');
 
 // No hand-typed prices in the pages that display them (comments are ignored).
 const files = ['client/src/pages/MarketingLanding.tsx', 'client/src/pages/Dashboard.tsx', 'client/src/pages/LandingViewer.tsx', 'client/src/pages/legal/Terms.tsx'];
-const banned = /(^|[^0-9A-Za-z.,])(249|990|1,490|350|198|149|399)(?![0-9])/;
+// Old odd prices are caught anywhere; the new round ones (250, 1,000, ...) only next to a currency sign,
+// because plain 200 / 400 / 150 also appear as pixel sizes and animation numbers.
+const stale = /(^|[^0-9A-Za-z.,/\[-])(249|990|1,490|198|149|399)(?![0-9])/;
+const money = /(?:₪\s*(?:250|1,000|1,500|350|200|150|400)(?![0-9,])|(?<![0-9,.])(?:250|1,000|1,500|350|200|150|400)\s*(?:₪|ש"ח|שקלים))/;
+const banned = { test: (code: string) => stale.test(code) || money.test(code) };
 for (const f of files) {
   const lines = readFileSync(join(root, f), 'utf-8').split('\n');
   let inBlock = false;
