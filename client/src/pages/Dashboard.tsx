@@ -22,7 +22,7 @@ import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
 import SeoProductPanel, { ProductSwitch } from '../components/SeoProductPanel';
-import SeoDashboardV2 from '../dashboard/SeoDashboardV2';
+import SeoDashboardV2 from '../dashboard/v3/SeoDashboardEntry';   // v2, or v3 with ?dash=v3
 import { dashV2Enabled } from '../dashboard/flag';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
