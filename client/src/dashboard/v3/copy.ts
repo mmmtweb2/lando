@@ -7,6 +7,7 @@
 
 import type { GuidedId } from '../guided';
 import type { MonthlyId } from '../monthly';
+import type { View } from '../journey';
 
 export interface PartsCopy {
   what: string;
@@ -69,3 +70,14 @@ export const MONTH_PARTS: Record<MonthlyId, PartsCopy> = {
     you: 'להטמיע את הקישור באתר שלכם. אם פניות כבר מגיעות, המשימה נסגרת לבד.',
   },
 };
+
+/** One line under the header of each view. */
+export const VIEW_HINT: Partial<Record<View, string>> = {
+  reviews: 'ביקורות אמיתיות מלקוחות: לענות להן ולבקש חדשות.',
+  profile: 'כרטיס העסק שלך בגוגל והבדיקה מול מתחרים.',
+  content: 'ביטויי חיפוש, ערכות תוכן ודפי חיפוש.',
+  leads: 'שיחות, וואטסאפ וטפסים במקום אחד.',
+  plan: 'מנוי, חיוב והגדרות.',
+  setup: 'חמשת צעדי ההקמה, לעיון.',
+};
+

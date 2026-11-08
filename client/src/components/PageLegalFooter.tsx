@@ -30,11 +30,14 @@ interface Props {
   accent: string;
   /** Extra bottom padding when the owner's edit toolbar is on screen. */
   extraBottomPad?: boolean;
+  /** 'v3': drawn inside the Pinkas page, in its paper and ink colours (see landingV3.css) */
+  variant?: 'v3';
 }
 
 export default function PageLegalFooter({
-  businessName, phone, email, address, accent, extraBottomPad = false,
+  businessName, phone, email, address, accent, extraBottomPad = false, variant,
 }: Props) {
+  const v3 = variant === 'v3';
   const [open, setOpen] = useState(false);
   const name = businessName?.trim() || 'העסק';
   const hasContact = !!(phone || email);
@@ -47,23 +50,23 @@ export default function PageLegalFooter({
     : 'באמצעות טופס יצירת הקשר בדף זה';
 
   return (
-    <section className={`bg-slate-900 text-slate-400 px-6 ${extraBottomPad ? 'pb-24' : 'pb-8'}`} dir="rtl">
-      <div className="max-w-2xl mx-auto border-t border-white/10 pt-6">
+    <section className={v3 ? `lp3-legal${extraBottomPad ? ' pad' : ''}` : `bg-slate-900 text-slate-400 px-6 ${extraBottomPad ? 'pb-24' : 'pb-8'}`} dir="rtl">
+      <div className={v3 ? 'lp3-legal-in' : 'max-w-2xl mx-auto border-t border-white/10 pt-6'}>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="mx-auto flex items-center gap-1.5 text-xs hover:text-white transition"
+          className={v3 ? 'lp3-legal-toggle' : 'mx-auto flex items-center gap-1.5 text-xs hover:text-white transition'}
         >
           <span>תנאי שימוש ונגישות</span>
           <span aria-hidden className={`transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
         </button>
 
         {open && (
-          <div className="mt-5 flex flex-col gap-5 text-right text-[12px] leading-[1.85] text-slate-400">
+          <div className={v3 ? 'lp3-legal-body' : 'mt-5 flex flex-col gap-5 text-right text-[12px] leading-[1.85] text-slate-400'}>
 
             <div>
-              <h3 className="text-[13px] font-bold text-slate-200 mb-1.5" style={{ color: accent }}>תנאי שימוש</h3>
+              <h3 className={v3 ? undefined : 'text-[13px] font-bold text-slate-200 mb-1.5'} style={v3 ? undefined : { color: accent }}>תנאי שימוש</h3>
               <p>
                 דף זה מופעל על ידי {name} ומיועד למסירת מידע על העסק ולפנייה אליו. המידע המוצג בדף,
                 לרבות תיאורי שירותים, מחירים, שעות פעילות וזמינות, ניתן כמות שהוא ועשוי להשתנות מעת לעת.
@@ -84,7 +87,7 @@ export default function PageLegalFooter({
             </div>
 
             <div>
-              <h3 className="text-[13px] font-bold text-slate-200 mb-1.5" style={{ color: accent }}>הצהרת נגישות</h3>
+              <h3 className={v3 ? undefined : 'text-[13px] font-bold text-slate-200 mb-1.5'} style={v3 ? undefined : { color: accent }}>הצהרת נגישות</h3>
               <p>
                 {name} רואה חשיבות במתן שירות לכלל הציבור, לרבות אנשים עם מוגבלות, ופועל לשיפור נגישות הדף
                 בהתאם לחוק שוויון זכויות לאנשים עם מוגבלות, התשנ"ח-1998 ולתקנות שהותקנו מכוחו.
@@ -99,7 +102,7 @@ export default function PageLegalFooter({
                 נתקלתם בקושי בשימוש בדף? נשמח שתפנו אלינו ונפעל לתקן. {contactLine}
                 {address ? ` · כתובת: ${address}` : ''}
               </p>
-              <p className="mt-2 text-slate-500">
+              <p className={v3 ? 'note' : 'mt-2 text-slate-500'}>
                 האחריות לתוכן הדף ולהנגשתו היא של {name}, המפעיל את הדף.
               </p>
             </div>

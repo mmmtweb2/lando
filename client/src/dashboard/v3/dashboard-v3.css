@@ -243,3 +243,38 @@
   .dv3-flash { animation: none; }
   .dv3-btn, .dv3-nav button, .dv3-toggle { transition: none; }
 }
+
+/* ---------- stage 2: the other views ---------- */
+.dv3-view { display: flex; flex-direction: column; gap: 16px; }
+.dv3-view-title { margin-top: 8px; font-size: 26px; font-weight: 700; line-height: 1.25; }
+@media (max-width: 819px) { .dv3-view-title { font-size: 22px; } }
+.dv3-skin { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* The existing cards keep their markup and logic. Only the frame follows the v3 tokens. */
+.dv3-skin .dv2-card, .dv3-skin .dv2-card-flat { border-radius: 24px; box-shadow: var(--v3-shadow); }
+.dv3-skin [class*="rounded-xl"][class*="border"] { border-radius: 24px; border-color: var(--line); box-shadow: var(--v3-shadow); }
+.dv3-skin [class*="rounded-lg"][class*="border-slate-200"][class*="p-4"] { border-radius: 18px; border-color: var(--line); }
+.dv3-skin h2, .dv3-skin h3 { color: var(--ink); }
+
+.dv3-block { padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--v3-shadow); }
+.dv3-block h3 { margin-bottom: 10px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.dv3-block h3 span { margin-inline-start: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.dv3-block p { font-size: 14px; color: var(--muted); }
+.dv3-recheck { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.dv3-recheck h3 { margin-bottom: 2px; }
+
+.dv3-tasklist { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.dv3-tasklist li { display: flex; align-items: center; gap: 12px; }
+.dv3-tick { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid #9AA8C7; background: #fff; color: var(--v3-mint-ink); }
+.dv3-tasklist li[data-done="true"] .dv3-tick { background: var(--v3-mint); border-color: var(--v3-mint-line); }
+.dv3-tasklist-name { flex: 1; font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.dv3-more { display: flex; flex-direction: column; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.dv3-more button {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 64px; padding: 12px 20px; text-align: right;
+  background: #fff; border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--v3-shadow); color: var(--muted); transition: background .15s ease;
+}
+.dv3-more button:hover { background: var(--tint); }
+.dv3-more strong { display: block; font-size: 16px; font-weight: 700; color: var(--ink); }
+.dv3-more small { display: block; font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .dv3-more button { transition: none; } }
