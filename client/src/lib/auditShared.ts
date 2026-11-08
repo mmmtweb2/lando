@@ -40,3 +40,38 @@ export function scoreStyle(score: number, hasGaps: boolean): { ring: string; lab
 
 /** Numeric values like "10+" must keep their order inside an RTL page ("+10" otherwise). */
 export const isNumericValue = (v: string): boolean => /^[\d.+★\s]+$/.test(v);
+
+export interface ScoreExplainer {
+  /** Short heading, as a question the customer is likely asking. */
+  title: string;
+  text: string;
+  /** True when the business is at/above the median and so is measured against the highest in the area. */
+  vsHighest: boolean;
+}
+
+/**
+ * Plain-language note shown right next to the score (task #32). Since #22 a business at or above the
+ * regional median is measured against the HIGHEST review count in the area, so its score can drop a
+ * little compared with a measurement against the median. Without this note that looks like the
+ * card got worse. States facts only: no ranking promise, nothing about Google's own ranking.
+ * Returns null when there is no local benchmark (the card already says general targets are used).
+ */
+export function scoreExplainer(a: Pick<Audit, 'reviewCount' | 'benchmark'>): ScoreExplainer | null {
+  const b = a.benchmark;
+  if (!b || b.maxReviews === undefined) return null;
+  const median = b.reviewsTargetKind === 'max' ? b.medianReviews : b.reviewsTarget;
+  if (b.reviewsTargetKind === 'max') {
+    const gap = Math.max(0, b.maxReviews - a.reviewCount);
+    const gapText = gap > 0 ? ` כדי להגיע אליו חסרות בערך ${gap} ביקורות.` : ' כבר הגעתם אליו.';
+    return {
+      vsHighest: true,
+      title: 'למה הציון נמדד מול הגבוה ביותר?',
+      text: `יש לכם ${a.reviewCount} ביקורות, כלומר אתם בחציון באזור (${median}) או מעליו. לכן אנחנו מודדים אתכם מול העסק עם הכי הרבה ביקורות באזור (${b.maxReviews}).${gapText} אם הציון נמוך מעט ממה שהיה, זה לא אומר שהכרטיס נפגע: היעד פשוט עלה, כי אתם כבר בחציון או מעליו.`,
+    };
+  }
+  return {
+    vsHighest: false,
+    title: 'מול מה הציון נמדד?',
+    text: `הציון נמדד מול החציון באזור (${b.reviewsTarget} ביקורות). כשתגיעו אליו, נמדוד אתכם מול הגבוה ביותר באזור (${b.maxReviews}).`,
+  };
+}
