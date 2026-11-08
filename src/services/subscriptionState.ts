@@ -31,16 +31,27 @@ export function addOneMonth(d: Date): Date {
   return out;
 }
 
+/** `months` months after d (same day, clamped to the end of a shorter month; never drifts by chaining). */
+export function addMonths(d: Date, months: number): Date {
+  const out = new Date(d.getTime());
+  const day = out.getUTCDate();
+  out.setUTCDate(1);
+  out.setUTCMonth(out.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(out.getUTCFullYear(), out.getUTCMonth() + 1, 0)).getUTCDate();
+  out.setUTCDate(Math.min(day, lastDay));
+  return out;
+}
+
 /**
  * A verified, sufficient payment arrived. Extends from the later of "now" and the current
  * period end, so an early renewal never loses days and a late one never gives free days.
  * A canceled subscription ignores a late payment (a human decides about the refund).
  */
-export function applyChargeOk(s: SubState, now: Date): { state: SubState; ignored: boolean } {
+export function applyChargeOk(s: SubState, now: Date, months = 1): { state: SubState; ignored: boolean } {
   if (s.status === 'canceled') return { state: s, ignored: true };
   const base = s.currentPeriodEnd && s.currentPeriodEnd.getTime() > now.getTime() ? s.currentPeriodEnd : now;
   return {
-    state: { status: 'active', currentPeriodEnd: addOneMonth(base), cancelAtPeriodEnd: false },
+    state: { status: 'active', currentPeriodEnd: addMonths(base, months), cancelAtPeriodEnd: false },
     ignored: false,
   };
 }
@@ -61,13 +72,17 @@ export function applyCancel(s: SubState, now: Date): SubState {
   return { ...s, cancelAtPeriodEnd: true };
 }
 
-/** Time-driven transitions, run by the sweep. Returns the same object when nothing changes. */
-export function expire(s: SubState, now: Date): SubState {
+/**
+ * Time-driven transitions, run by the sweep. Returns the same object when nothing changes.
+ * `autoRenews` is false for an annual single payment: nothing is charged at the end, so there is no
+ * failed charge and no "past due" — the paid year simply ends (status canceled, access over).
+ */
+export function expire(s: SubState, now: Date, autoRenews = true): SubState {
   if (s.status === 'canceled' || s.status === 'pending') return s;
   const end = s.currentPeriodEnd ? s.currentPeriodEnd.getTime() : null;
   if (end === null) return s;
   if (end > now.getTime()) return s;
-  if (s.cancelAtPeriodEnd) return { ...s, status: 'canceled', cancelAtPeriodEnd: false };
+  if (s.cancelAtPeriodEnd || !autoRenews) return { ...s, status: 'canceled', cancelAtPeriodEnd: false };
   if (s.status === 'active') return { ...s, status: 'past_due' };
   if (s.status === 'past_due' && now.getTime() >= end + PAST_DUE_GRACE_DAYS * DAY) {
     return { ...s, status: 'canceled' };

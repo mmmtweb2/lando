@@ -1,7 +1,7 @@
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1'; process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake'; process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
 import {
-  addOneMonth, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow, SubState,
+  addMonths, addOneMonth, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow, SubState,
 } from '../src/services/subscriptionState';
 
 const d = (s: string) => new Date(s);
@@ -74,5 +74,19 @@ assert.equal(expire(canceled, now), canceled);
 assert.equal(toEntitlementRow(pending), null);
 assert.deepEqual(toEntitlementRow(active), { status: 'active', current_period_end: '2026-12-01T12:00:00.000Z' });
 assert.equal(toEntitlementRow(canceled)!.status, 'canceled');
+
+// annual (#30): twelve months in one payment, no renewal, so the end is the end (no past_due, no grace)
+assert.equal(addMonths(d('2026-02-28T10:00:00Z'), 12).toISOString(), '2027-02-28T10:00:00.000Z');
+assert.equal(addMonths(d('2027-11-30T10:00:00Z'), 12).toISOString(), '2028-11-30T10:00:00.000Z');
+assert.equal(addMonths(d('2026-01-31T10:00:00Z'), 12).toISOString(), '2027-01-31T10:00:00.000Z', 'no drift from clamping');
+assert.equal(addMonths(d('2028-02-29T10:00:00Z'), 12).toISOString(), '2029-02-28T10:00:00.000Z', 'leap day clamps');
+const yr = applyChargeOk(pending, now, 12).state;
+assert.equal(yr.currentPeriodEnd!.toISOString(), '2027-11-01T12:00:00.000Z');
+const yrEnd = yr.currentPeriodEnd!.getTime();
+assert.equal(expire(yr, new Date(yrEnd - DAY), false), yr, 'still inside the paid year');
+assert.equal(expire(yr, new Date(yrEnd + 1), false).status, 'canceled', 'no grace and no past_due for a single payment');
+assert.equal(expire(yr, new Date(yrEnd + 1), true).status, 'past_due', 'a standing order still goes through past_due');
+// buying a second year before the first ends adds to the end (no lost days)
+assert.equal(applyChargeOk(yr, d('2027-06-01T00:00:00Z'), 12).state.currentPeriodEnd!.toISOString(), '2028-11-01T12:00:00.000Z');
 
 console.log('subscription state checks passed');

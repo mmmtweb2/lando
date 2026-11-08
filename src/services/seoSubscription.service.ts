@@ -6,17 +6,19 @@
 import { withHeartbeat } from './opsMetrics.service';
 import { logEvent } from './journey.service';
 import { supabase } from '../config/supabase';
-import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
+import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
+import { SEO_ANNUAL_REMINDER_DAYS, SeoCycle, SeoPlan, SeoPlanId, getSeoPlan, planFor } from '../config/seoCatalog';
 import { isEntitled } from './entitlements.service';
 import { summitConfigured } from './summit.service';
-import { beginRecurringRedirect, cancelRecurring } from './sumitRecurring';
+import { AnnualReminderParams, sendAnnualReminder } from './seoReminder.mailer';
+import { beginRecurringRedirect, beginSinglePaymentRedirect, cancelRecurring } from './sumitRecurring';
 import {
   SubState, SubStatus, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow,
 } from './subscriptionState';
 
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type SubErrorCode = 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit';
+export type SubErrorCode = 'bad_plan' | 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit';
 export class SubError extends Error {
   constructor(public code: SubErrorCode, message?: string) { super(message ?? code); }
 }
@@ -31,9 +33,23 @@ export interface SubRow {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   needs_manual_cancel: boolean;
+  plan_id: SeoPlanId;
+  cycle: SeoCycle;
+  with_page: boolean;
+  reminder_for_period_end: string | null;
 }
 
-const COLS = 'id, email, status, amount, sumit_customer_id, sumit_recurring_item_id, current_period_end, cancel_at_period_end, needs_manual_cancel';
+const COLS = 'id, email, status, amount, sumit_customer_id, sumit_recurring_item_id, current_period_end, cancel_at_period_end, needs_manual_cancel, plan_id, cycle, with_page, reminder_for_period_end';
+
+/** An annual subscription is one payment for the year: nothing renews, so nothing can be "past due". */
+export function autoRenews(r: Pick<SubRow, 'cycle'>): boolean {
+  return r.cycle !== 'year';
+}
+
+/** The plan a stored row is on (rows from before migration 046 are monthly without a page). */
+export function planOf(r: Pick<SubRow, 'plan_id' | 'cycle' | 'with_page'>): SeoPlan {
+  return getSeoPlan(r.plan_id) ?? planFor(r.cycle === 'year' ? 'year' : 'month', !!r.with_page);
+}
 
 function dbError(e: { code?: string; message: string }): SubError {
   // 42P01 = undefined_table: the code was deployed before migration 030 was run.
@@ -96,9 +112,11 @@ async function mirrorEntitlement(email: string, s: SubState): Promise<void> {
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-export async function startSubscription(email: string): Promise<{ redirectUrl: string }> {
-  const price = seoPlanPrice();
-  if (!seoSubscriptionEnabled() || price === null || !summitConfigured()) throw new SubError('disabled');
+export async function startSubscription(email: string, planId: unknown = 'monthly'): Promise<{ redirectUrl: string }> {
+  if (!seoSubscriptionEnabled() || !summitConfigured()) throw new SubError('disabled');
+  const plan = getSeoPlan(planId);
+  if (!plan) throw new SubError('bad_plan');
+  const price = plan.price;
 
   // Already has the product some other way (e.g. a manual grant)? Do not bill them for it.
   const { data: prod } = await supabase
@@ -122,26 +140,33 @@ export async function startSubscription(email: string): Promise<{ redirectUrl: s
   let subId: string;
   if (!existing) {
     const { data, error } = await supabase.from('seo_subscriptions')
-      .insert({ email, status: 'pending', amount: price }).select('id').single();
+      .insert({ email, status: 'pending', amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage }).select('id').single();
     if (error || !data) throw dbError(error ?? { message: 'insert failed' });
     subId = (data as { id: string }).id;
   } else {
     subId = existing.id;
-    const patch: Record<string, unknown> = { amount: price, updated_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = {
+      amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage, updated_at: new Date().toISOString(),
+    };
     if (existing.status === 'canceled' || existing.status === 'pending') patch.status = 'pending';
     const { error } = await supabase.from('seo_subscriptions').update(patch).eq('id', subId);
     if (error) throw dbError(error);
   }
 
+  const common = {
+    itemName: plan.withPage ? `${seoPlanName()} + דף נחיתה` : seoPlanName(),
+    amount: price,
+    externalIdentifier: subId,
+    redirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}`,
+    cancelRedirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}&cancel=1`,
+    customerEmail: email,
+  };
   try {
-    return await beginRecurringRedirect({
-      itemName: seoPlanName(),
-      amount: price,
-      externalIdentifier: subId,
-      redirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}`,
-      cancelRedirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}&cancel=1`,
-      customerEmail: email,
-    });
+    // Monthly = a standing order. Annual = ONE payment (installments are the customer's choice on
+    // SUMIT's page), never auto-renewed.
+    return plan.cycle === 'year'
+      ? await beginSinglePaymentRedirect({ ...common, maxInstallments: 12 })
+      : await beginRecurringRedirect(common);
   } catch (e) {
     throw new SubError('sumit', e instanceof Error ? e.message : undefined);
   }
@@ -187,7 +212,7 @@ export async function applyVerifiedPayment(
 
   const current = stateOf(row);
   if (sufficient) {
-    const { state, ignored } = applyChargeOk(current, now);
+    const { state, ignored } = applyChargeOk(current, now, planOf(row).months);
     if (ignored) {
       console.error('[SUBSCRIPTION] payment on a canceled subscription — needs a human (refund?)', { id: row.id, payment: payment.sumitPaymentId });
       return 'ignored';
@@ -221,7 +246,9 @@ export async function cancelSubscription(email: string, now = new Date()): Promi
 
   // Stop the charges at SUMIT first. If that fails, the customer's cancellation is still
   // honoured here (access ends at period end) and a human is told to stop it at SUMIT.
-  const stopped = row.status === 'pending' && !row.sumit_recurring_item_id
+  // An annual plan has no standing order, so there is nothing to stop at SUMIT: cancelling only
+  // switches off renewal. The paid year stays (no refund for the remaining months, spec §1).
+  const stopped = (row.status === 'pending' && !row.sumit_recurring_item_id) || !autoRenews(row)
     ? true
     : await cancelRecurring(row.sumit_customer_id, row.sumit_recurring_item_id);
   if (!stopped) {
@@ -236,7 +263,10 @@ export async function cancelSubscription(email: string, now = new Date()): Promi
 
 // ─── Time-driven housekeeping ────────────────────────────────────────────────
 
-export async function sweepSubscriptions(now = new Date()): Promise<number> {
+export async function sweepSubscriptions(
+  now = new Date(),
+  sendReminder: (p: AnnualReminderParams) => Promise<boolean> = sendAnnualReminder,
+): Promise<number> {
   const { data, error } = await supabase.from('seo_subscriptions').select(COLS).in('status', ['active', 'past_due']);
   if (error) {
     const e = dbError(error);
@@ -246,8 +276,11 @@ export async function sweepSubscriptions(now = new Date()): Promise<number> {
   let changed = 0;
   for (const row of (data ?? []) as SubRow[]) {
     const cur = stateOf(row);
-    const next = expire(cur, now);
-    if (sameState(cur, next)) continue;
+    const next = expire(cur, now, autoRenews(row));
+    if (sameState(cur, next)) {
+      await maybeRemindAnnual(row, now, sendReminder);
+      continue;
+    }
     try {
       await saveState(row, next);
       changed += 1;
@@ -256,6 +289,24 @@ export async function sweepSubscriptions(now = new Date()): Promise<number> {
     }
   }
   return changed;
+}
+
+/**
+ * An annual plan does not renew by itself, so the customer is told SEO_ANNUAL_REMINDER_DAYS before
+ * the paid year ends. Once per period: `reminder_for_period_end` remembers which end it was sent for
+ * and is written only after the mail was accepted, so a failed send is retried by the next sweep.
+ */
+async function maybeRemindAnnual(row: SubRow, now: Date, send: (p: AnnualReminderParams) => Promise<boolean>): Promise<void> {
+  if (autoRenews(row) || row.status !== 'active' || !row.current_period_end) return;
+  const end = new Date(row.current_period_end).getTime();
+  const daysLeft = (end - now.getTime()) / (24 * 60 * 60 * 1000);
+  if (daysLeft <= 0 || daysLeft > SEO_ANNUAL_REMINDER_DAYS) return;
+  if (row.reminder_for_period_end && new Date(row.reminder_for_period_end).getTime() === end) return;
+  const ok = await send({ to: row.email, periodEnd: row.current_period_end, withPage: !!row.with_page });
+  if (!ok) return;
+  const { error } = await supabase.from('seo_subscriptions')
+    .update({ reminder_for_period_end: row.current_period_end }).eq('id', row.id);
+  if (error) console.error('[SUBSCRIPTION] reminder mark failed:', error.message);
 }
 
 const SWEEP_EVERY_MS = 6 * 60 * 60 * 1000;
