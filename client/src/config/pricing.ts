@@ -6,20 +6,20 @@
 // All prices are in ₪ and include VAT.
 
 export const PRICING = {
-  singlePage: { price: 249, aiCredits: 10, createAllowance: 2 },
-  bundle5: { pages: 5, price: 990, aiCredits: 75, createAllowance: 10 },
-  bundle10: { pages: 10, price: 1490, aiCredits: 150, createAllowance: 20 },
+  singlePage: { price: 250, aiCredits: 10, createAllowance: 2 },
+  bundle5: { pages: 5, price: 1000, aiCredits: 75, createAllowance: 10 },
+  bundle10: { pages: 10, price: 1500, aiCredits: 150, createAllowance: 20 },
   whiteLabelAddon: { price: 350 },
   renewal: { base: 99, atFivePages: 79, atTenPages: 59 },
   creditPacks: {
-    small: { credits: 10, price: 49 },
-    large: { credits: 100, price: 399 },
+    small: { credits: 10, price: 50 },
+    large: { credits: 100, price: 400 },
   },
 } as const;
 
 export type BundleId = 'bundle5' | 'bundle10';
 
-/** 1490 -> "1,490" (the same grouping the pages already used). */
+/** 1500 -> "1,500" (the same grouping the pages already used). */
 export function fmt(n: number): string {
   return n.toLocaleString('en-US');
 }
