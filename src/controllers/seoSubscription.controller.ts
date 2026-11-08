@@ -2,7 +2,7 @@ import { logEvent } from '../services/journey.service';
 import { recordHeartbeat } from '../services/opsMetrics.service';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
+import { seoPlanName, seoSubscriptionEnabled, seoTestMode } from '../config/seoPlan';
 import { SEO_MONTHLY_PRICE, publicSeoCatalog } from '../config/seoCatalog';
 import { getPayment } from '../services/summit.service';
 import { addonPageInfo } from '../services/seoPageAddon.service';
@@ -61,7 +61,8 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
   // `price` stays the base monthly price (older clients); `catalog` carries all four plans.
-  res.json({ enabled, planName: seoPlanName(), price: enabled ? SEO_MONTHLY_PRICE : null, catalog: publicSeoCatalog(), subscription: sub });
+  // `testMode`: only the accounts listed in SEO_TEST_EMAILS (while SEO_TEST_PRICE is valid) see true; everyone else false.
+  res.json({ enabled, testMode: enabled && seoTestMode(email), planName: seoPlanName(), price: enabled ? SEO_MONTHLY_PRICE : null, catalog: publicSeoCatalog(), subscription: sub });
 }
 
 /** GET /api/seo/plans — the plan catalog, read-only. Public prices, nothing account-specific. */
