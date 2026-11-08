@@ -2,12 +2,14 @@ import { logEvent } from '../services/journey.service';
 import { recordHeartbeat } from '../services/opsMetrics.service';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { seoPlanName, seoPlanPrice, seoSubscriptionEnabled } from '../config/seoPlan';
+import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
+import { SEO_MONTHLY_PRICE, publicSeoCatalog } from '../config/seoCatalog';
 import { getPayment } from '../services/summit.service';
+import { addonPageInfo } from '../services/seoPageAddon.service';
 import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import {
-  SubError, applyVerifiedPayment, cancelSubscription, getSubscription, startSubscription,
+  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, getSubscription, planOf, startSubscription,
 } from '../services/seoSubscription.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -16,6 +18,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function fail(res: Response, e: unknown): void {
   if (e instanceof SubError) {
     switch (e.code) {
+      case 'bad_plan': res.status(400).json({ error: 'תוכנית לא מוכרת.', code: 'bad_plan' }); return;
       case 'disabled': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_disabled' }); return;
       case 'not_migrated': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_not_migrated' }); return;
       case 'already_has_access': res.status(409).json({ error: 'המוצר כבר פעיל בחשבון שלך, אין צורך במנוי.', code: 'already_has_access' }); return;
@@ -29,11 +32,18 @@ function fail(res: Response, e: unknown): void {
   res.status(500).json({ error: 'משהו השתבש. נסו שוב.' });
 }
 
+/** The included landing page: whether the plan has one, and which page / what state. */
+async function pageState(row: SubRow) {
+  if (!row.with_page) return { included: false, pageId: null, status: null };
+  const info = await addonPageInfo(row.email);
+  return { included: true, pageId: info.pageId, status: info.status };
+}
+
 /** GET /api/seo/subscription — what the dashboard card shows. Never fails the page. */
 export async function getStatus(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
-  const enabled = seoSubscriptionEnabled() && seoPlanPrice() !== null;
+  const enabled = seoSubscriptionEnabled();
   let sub = null;
   try {
     const row = await getSubscription(email);
@@ -42,17 +52,29 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         status: row.status,
         currentPeriodEnd: row.current_period_end,
         cancelAtPeriodEnd: row.cancel_at_period_end,
+        planId: planOf(row).id,
+        cycle: planOf(row).cycle,
+        withPage: planOf(row).withPage,
+        renews: autoRenews(row),   // annual: false, it ends on its date unless a new plan is bought
+        page: await pageState(row),
       };
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
-  res.json({ enabled, planName: seoPlanName(), price: enabled ? seoPlanPrice() : null, subscription: sub });
+  // `price` stays the base monthly price (older clients); `catalog` carries all four plans.
+  res.json({ enabled, planName: seoPlanName(), price: enabled ? SEO_MONTHLY_PRICE : null, catalog: publicSeoCatalog(), subscription: sub });
+}
+
+/** GET /api/seo/plans — the plan catalog, read-only. Public prices, nothing account-specific. */
+export function getPlans(_req: Request, res: Response): void {
+  res.json({ enabled: seoSubscriptionEnabled(), planName: seoPlanName(), ...publicSeoCatalog() });
 }
 
 export async function start(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
   try {
-    const started = await startSubscription(email);
+    const planId = typeof req.body?.plan === 'string' ? req.body.plan : 'monthly';
+    const started = await startSubscription(email, planId);
     void logEvent({ event: 'payment_started', email });
     res.json(started);
   } catch (e) { fail(res, e); }

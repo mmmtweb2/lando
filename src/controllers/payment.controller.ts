@@ -127,6 +127,13 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
         });
         return;
       }
+      if (eligibility.reason === 'managed_by_subscription') {
+        res.status(409).json({
+          error: 'הדף הזה כלול במנוי הקידום ולכן אין צורך לחדש אותו בנפרד. הוא חוזר לאוויר כשהמנוי פעיל.',
+          code: 'managed_by_subscription',
+        });
+        return;
+      }
       // not_found and not_owner are answered identically on purpose: a probe
       // must not be able to tell "this page id exists but isn't yours" from
       // "this page id doesn't exist".

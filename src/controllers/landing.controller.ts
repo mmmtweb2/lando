@@ -9,6 +9,8 @@ import { ensureUserProfile, type MinimalProfile } from '../services/profile.serv
 import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
+import { addonAccessOf, getSubscription } from '../services/seoSubscription.service';
+import { canUseAddon, claimAddonPage, reconcileAddonPage, releaseAddonClaim } from '../services/seoPageAddon.service';
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 import { logFunnelEvent } from '../services/funnel.service';
@@ -997,6 +999,34 @@ export async function publishPageWithCredit(
   return { ok: true, page };
 }
 
+/**
+ * Publishes `id` as the account's included page (a "with page" plan, subscription active, slot unused
+ * or already this page). Returns the published page, or null when this path does not apply (the
+ * caller then continues with the credit flow). The slot is claimed BEFORE publishing so two parallel
+ * requests cannot both get a free page, and released again if the publish failed.
+ */
+export async function publishIncludedPage(email: string, id: string): Promise<PublishedPage | null> {
+  try {
+    const sub = await getSubscription(email);
+    if (!sub || !sub.with_page) return null;
+    const access = addonAccessOf(sub);
+    if (!(await canUseAddon(email, id, access))) return null;
+    const { data: existing } = await supabase.from('landing_pages').select('status, owner_email, parent_id').eq('id', id).maybeSingle();
+    const row = existing as { status?: string; owner_email?: string | null; parent_id?: string | null } | null;
+    if (!row || row.parent_id || (row.owner_email ?? '').trim().toLowerCase() !== email.trim().toLowerCase()) return null;
+    if (row.status === 'published') return null;       // already live: nothing to spend, the normal path says so
+    if (row.status === 'frozen') return null;          // brought back by reconcile when the subscription is active
+    if (!(await claimAddonPage(email, id, sub.id))) return null;
+    const page = await publishPageById(id);
+    if (!page) { await releaseAddonClaim(email, id); return null; }
+    await reconcileAddonPage(email, access);           // expires_at = end of the paid period
+    return page;
+  } catch (e) {
+    console.error('[PUBLISH] included-page path failed, falling back to the credit flow:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // Balance-aware publish. If the caller holds at least one page credit, the page
 // is published immediately at no extra charge and the balance drops by one.
 // Otherwise we return 402 { needsPayment:true } and the client falls back to the
@@ -1005,6 +1035,12 @@ export async function publishLandingPage(req: Request, res: Response): Promise<v
   const { id } = req.params;
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
+
+  // A "with page" promotion plan includes ONE published page while the subscription is active: that
+  // page is published without spending a page credit (billing-spec §1). Anything else falls through
+  // to the normal balance / per-page payment below.
+  const included = await publishIncludedPage(email, id);
+  if (included) { res.json({ ...included, coveredBySubscription: true }); return; }
 
   const { covered } = await canPublishFromBalance(email);
   if (!covered) {

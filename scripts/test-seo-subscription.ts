@@ -4,12 +4,12 @@
 import './_env-seo-subscription';
 import assert from 'node:assert/strict';
 import { supabase } from '../src/config/supabase';
-import { cancel, getStatus, start, subscriptionReturn, subscriptionWebhook } from '../src/controllers/seoSubscription.controller';
+import { cancel, getPlans, getStatus, start, subscriptionReturn, subscriptionWebhook } from '../src/controllers/seoSubscription.controller';
 import { SubError, getSubscription, sweepSubscriptions } from '../src/services/seoSubscription.service';
 import { getEntitlements } from '../src/services/entitlements.service';
 
 type Row = Record<string, any>;
-const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [], payments: [] };
+const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [], payments: [], seo_addon_pages: [], landing_pages: [] };
 const UNIQUE: Record<string, string[]> = { seo_subscriptions: ['email'], seo_subscription_events: ['sumit_payment_id'] };
 let seq = 0;
 let missingTable = false;
@@ -85,9 +85,9 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(r.code, 503); assert.equal(r.body.code, 'subscription_disabled');
   assert.equal(sumitCalls.length, 0, 'disabled -> SUMIT never called');
   process.env.SEO_SUBSCRIPTION_ENABLED = 'true';
-  r = res(); await start(req(), r);
-  assert.equal(r.code, 503, 'enabled but no price -> still off');
-  process.env.SEO_PLAN_PRICE = '99';
+  r = res(); await start(req({ body: { plan: 'bogus' } }), r);
+  assert.equal(r.code, 400); assert.equal(r.body.code, 'bad_plan');
+  assert.equal(sumitCalls.length, 0, 'unknown plan -> SUMIT never called');
 
   // 2. start: a pending row, and a SUMIT request that says monthly + the exact price
   beginFails = true;
@@ -98,9 +98,9 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(r.code, 200); assert.equal(r.body.redirectUrl, 'https://pay.sumit/x');
   assert.equal(db.seo_subscriptions.length, 1, 'one row per account, reused on retry');
   const sub = db.seo_subscriptions[0];
-  assert.equal(sub.status, 'pending'); assert.equal(sub.amount, 99);
+  assert.equal(sub.status, 'pending'); assert.equal(sub.amount, 250);
   const begin = sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').pop()!.body;
-  assert.equal(begin.Items[0].UnitPrice, 99); assert.equal(begin.Items[0].Duration_Months, 1);
+  assert.equal(begin.Items[0].UnitPrice, 250); assert.equal(begin.Items[0].Duration_Months, 1);
   assert.equal(begin.ExternalIdentifier, sub.id);
   assert.equal(begin.RedirectURL, `https://api.test/api/seo/subscription/return?ref=${sub.id}`);
   assert.equal(begin.VATIncluded, true);
@@ -126,7 +126,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '500' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review');
   assert.equal(db.user_products.length, 0, 'underpaid -> not activated');
-  payments['501'] = { valid: true, amount: 99 };
+  payments['501'] = { valid: true, amount: 250 };
   r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '501', CustomerID: '42', 'RecurringCustomerItemIDs[0]': '9001' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok');
   assert.equal(db.seo_subscriptions[0].status, 'active');
@@ -139,25 +139,25 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok');
   assert.equal(new Date(db.seo_subscriptions[0].current_period_end).getTime(), end1, 'replaying the same payment id extends nothing');
   // someone else's subscription cannot be extended with a payment that was already consumed
-  db.seo_subscriptions.push({ id: '00000000-0000-4000-8000-0000000000aa', email: 'v@x.co', status: 'pending', amount: 99, current_period_end: null, cancel_at_period_end: false });
+  db.seo_subscriptions.push({ id: '00000000-0000-4000-8000-0000000000aa', email: 'v@x.co', status: 'pending', amount: 250, current_period_end: null, cancel_at_period_end: false });
   r = res(); await subscriptionReturn({ query: { ref: '00000000-0000-4000-8000-0000000000aa', 'OG-PaymentID': '501' } } as any, r);
   assert.equal(db.seo_subscriptions[1].status, 'pending', 'a consumed payment id cannot activate another account');
   db.seo_subscriptions.pop();
 
   // 4b. BINDING to this subscription (payment echoes the ExternalIdentifier we sent = subscription id)
   const OTHER = '00000000-0000-4000-8000-0000000000bb';
-  db.seo_subscriptions.push({ id: OTHER, email: 'w@x.co', status: 'pending', amount: 99, current_period_end: null, cancel_at_period_end: false });
-  payments['510'] = { valid: true, amount: 99, ext: sub.id };            // a valid payment that belongs to ANOTHER checkout
+  db.seo_subscriptions.push({ id: OTHER, email: 'w@x.co', status: 'pending', amount: 250, current_period_end: null, cancel_at_period_end: false });
+  payments['510'] = { valid: true, amount: 250, ext: sub.id };            // a valid payment that belongs to ANOTHER checkout
   r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '510' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review');
   assert.equal(db.seo_subscriptions[1].status, 'pending', 'a valid payment bound to a different subscription activates nothing');
   assert.equal(db.seo_subscription_events.filter(e => e.sumit_payment_id === '510').length, 0, 'and burns no replay-guard slot');
-  payments['511'] = { valid: true, amount: 99, ext: OTHER.toUpperCase() };  // matches (case-insensitive)
+  payments['511'] = { valid: true, amount: 250, ext: OTHER.toUpperCase() };  // matches (case-insensitive)
   r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '511' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok'); assert.equal(db.seo_subscriptions[1].status, 'active');
   // strict mode: a payment with no identifier at all is refused; default mode accepts it (unverifiable)
   db.seo_subscriptions[1].status = 'pending';
-  payments['512'] = { valid: true, amount: 99 };
+  payments['512'] = { valid: true, amount: 250 };
   process.env.SUMIT_REQUIRE_BINDING = 'true';
   r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '512' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review'); assert.equal(db.seo_subscriptions[1].status, 'pending');
@@ -169,7 +169,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   // cross-product: an id that already settled a ONE-TIME payment cannot activate a subscription
   db.seo_subscriptions[1].status = 'pending';
   db.payments.push({ id: 'pay-1', status: 'paid', sumit_payment_id: '513' });
-  payments['513'] = { valid: true, amount: 99, ext: OTHER };
+  payments['513'] = { valid: true, amount: 250, ext: OTHER };
   r = res(); await subscriptionReturn({ query: { ref: OTHER, 'OG-PaymentID': '513' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review'); assert.equal(db.seo_subscriptions[1].status, 'pending');
   assert.equal(db.seo_subscription_events.filter(e => e.sumit_payment_id === '513').length, 0);
@@ -179,7 +179,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
 
   // 5. status + already subscribed
   r = res(); await getStatus(req(), r);
-  assert.equal(r.body.enabled, true); assert.equal(r.body.price, 99); assert.equal(r.body.subscription.status, 'active');
+  assert.equal(r.body.enabled, true); assert.equal(r.body.price, 250); assert.equal(r.body.subscription.status, 'active');
   assert.ok(!('sumit_customer_id' in r.body.subscription) && !('id' in r.body.subscription), 'no internal ids leak');
   r = res(); await start(req(), r);
   assert.equal(r.code, 409); assert.equal(r.body.code, 'already_subscribed');
@@ -196,7 +196,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   process.env.SEO_SUBSCRIPTION_WEBHOOK_SECRET = 'topsecret';
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: sub.id, 'Payment.ID': '999' } } as any, r);
   assert.equal(r.body.applied, 'unverified');
-  payments['600'] = { valid: true, amount: 99 };
+  payments['600'] = { valid: true, amount: 250 };
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: sub.id, 'Payment.ID': '600' } } as any, r);
   assert.equal(r.code, 200); assert.equal(r.body.applied, 'activated');
   const end2 = new Date(db.seo_subscriptions[0].current_period_end).getTime();
@@ -206,12 +206,12 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   assert.equal(r.body.applied, 'failed');
   assert.equal(db.seo_subscriptions[0].status, 'past_due');
   assert.equal((await getEntitlements(EMAIL)).seo_autopilot, true, 'a failed charge does not cut access on day one');
-  payments['602'] = { valid: true, amount: 99 };
+  payments['602'] = { valid: true, amount: 250 };
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: sub.id, 'Payment.ID': '602' } } as any, r);
   assert.equal(db.seo_subscriptions[0].status, 'active', 'a later good charge recovers');
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: 'garbage' } } as any, r);
   assert.equal(r.code, 200); assert.equal(r.body.applied, 'no_ref');
-  payments['603'] = { valid: true, amount: 99, ext: '00000000-0000-4000-8000-0000000000cc' };
+  payments['603'] = { valid: true, amount: 250, ext: '00000000-0000-4000-8000-0000000000cc' };
   r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: sub.id, 'Payment.ID': '603' } } as any, r);
   assert.equal(r.body.applied, 'binding_mismatch', 'webhook: a payment bound to something else is refused');
 
@@ -259,10 +259,91 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   db.user_products.length = 0;
   db.user_products.push({ email: EMAIL, product: 'seo_autopilot', status: 'active', current_period_end: null, source: 'manual' });
   row.status = 'pending'; row.current_period_end = null;
-  payments['700'] = { valid: true, amount: 99 };
+  payments['700'] = { valid: true, amount: 250 };
   r = res(); await subscriptionReturn({ query: { ref: row.id, 'OG-PaymentID': '700' } } as any, r);
   assert.equal(db.user_products[0].source, 'manual');
   assert.equal(db.user_products[0].current_period_end, null);
+
+  // 11. the catalog (read-only) and the annual plans: ONE payment for the year, no standing order, no auto-renew
+  {
+    const cr: any = res(); getPlans({} as any, cr);
+    const prices = Object.fromEntries(cr.body.plans.map((p: any) => [p.id, p.price]));
+    assert.deepEqual(prices, { monthly: 250, monthly_page: 265, annual: 2500, annual_page: 2650 });
+    const saving = Object.fromEntries(cr.body.plans.map((p: any) => [p.id, p.savingVsMonthly]));
+    assert.deepEqual(saving, { monthly: 0, monthly_page: 0, annual: 500, annual_page: 530 }, 'annual = 10 months for 12');
+    assert.equal(cr.body.terms.annualAutoRenew, false); assert.equal(cr.body.terms.annualRefundForRemainingMonths, false);
+    assert.ok(!JSON.stringify(cr.body).match(/secret|key|password/i), 'nothing internal in the public catalog');
+
+    const A = 'annual@x.co';
+    db.user_products.length = 0;
+    r = res(); await start(req({ authEmail: A, body: { plan: 'annual_page' } }), r);
+    assert.equal(r.code, 200);
+    const asub = db.seo_subscriptions.find(x => x.email === A)!;
+    assert.equal(asub.plan_id, 'annual_page'); assert.equal(asub.cycle, 'year'); assert.equal(asub.with_page, true); assert.equal(asub.amount, 2650);
+    const abegin = sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').pop()!.body;
+    assert.equal(abegin.Items[0].UnitPrice, 2650);
+    assert.equal(abegin.Items[0].Duration_Months, undefined, 'annual is not a standing order');
+    assert.equal(abegin.MaximumPayments, 12, 'installments are chosen on SUMIT\'s page');
+    assert.equal(abegin.ExternalIdentifier, asub.id);
+
+    payments['800'] = { valid: true, amount: 250, ext: asub.id };   // the monthly price does not buy a year
+    r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '800' } } as any, r);
+    assert.equal(asub.status, 'pending');
+    payments['801'] = { valid: true, amount: 2650, ext: asub.id };
+    r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '801' } } as any, r);
+    assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok');
+    assert.equal(asub.status, 'active');
+    const months = (new Date(asub.current_period_end).getTime() - Date.now()) / (30.44 * 86400000);
+    assert.ok(months > 11.9 && months < 12.1, `about 12 months, got ${months}`);
+    r = res(); await getStatus(req({ authEmail: A }), r);
+    assert.equal(r.body.subscription.planId, 'annual_page'); assert.equal(r.body.subscription.withPage, true);
+    assert.equal(r.body.subscription.cycle, 'year'); assert.equal(r.body.subscription.renews, false);
+    assert.equal(r.body.catalog.plans.length, 4);
+
+    // cancel: only switches off renewal; nothing to stop at SUMIT, the paid year stays
+    const cancelsBefore = sumitCalls.filter(c => c.path === '/billing/recurring/cancel/').length;
+    r = res(); await cancel(req({ authEmail: A }), r);
+    assert.equal(r.code, 200); assert.equal(r.body.cancelAtPeriodEnd, true); assert.equal(r.body.status, 'active');
+    assert.equal(sumitCalls.filter(c => c.path === '/billing/recurring/cancel/').length, cancelsBefore, 'no SUMIT cancel call for a single payment');
+    assert.equal(asub.needs_manual_cancel, false);
+    assert.equal((await getEntitlements(A)).seo_autopilot, true, 'no refund, access to the end of the year');
+
+    // reminder: once per period, only inside the window, only for annual plans, retried after a failed send
+    const sent: any[] = [];
+    let sendOk = true;
+    const stub = async (p: any) => { sent.push(p); return sendOk; };
+    asub.cancel_at_period_end = false;
+    await sweepSubscriptions(new Date(), stub);
+    assert.equal(sent.length, 0, 'a year away -> no reminder yet');
+    asub.current_period_end = new Date(Date.now() + 10 * 86400000).toISOString();
+    sendOk = false;
+    await sweepSubscriptions(new Date(), stub);
+    assert.equal(sent.length, 1); assert.equal(asub.reminder_for_period_end ?? null, null, 'failed send -> not marked, tried again next sweep');
+    sendOk = true;
+    await sweepSubscriptions(new Date(), stub);
+    assert.equal(sent.length, 2); assert.equal(sent[1].to, A); assert.equal(sent[1].withPage, true);
+    assert.equal(asub.reminder_for_period_end, asub.current_period_end);
+    await sweepSubscriptions(new Date(), stub);
+    assert.equal(sent.length, 2, 'once per period');
+    const monthlyRow = db.seo_subscriptions.find(x => x.email === EMAIL)!;
+    monthlyRow.status = 'active'; monthlyRow.cancel_at_period_end = false; monthlyRow.plan_id = 'monthly'; monthlyRow.cycle = 'month';
+    monthlyRow.current_period_end = new Date(Date.now() + 3 * 86400000).toISOString();
+    await sweepSubscriptions(new Date(), stub);
+    assert.equal(sent.length, 2, 'a monthly standing order is never sent the annual reminder');
+
+    // the year ends: no failed charge, no past_due and no grace; access is over
+    asub.current_period_end = new Date(Date.now() - 86400000).toISOString();
+    assert.equal(await sweepSubscriptions(new Date(), stub), 1);
+    assert.equal(asub.status, 'canceled');
+    assert.equal((await getEntitlements(A)).seo_autopilot, false);
+
+    // buying again after it ended starts a fresh paid year
+    r = res(); await start(req({ authEmail: A, body: { plan: 'annual' } }), r);
+    assert.equal(r.code, 200); assert.equal(asub.status, 'pending'); assert.equal(asub.plan_id, 'annual'); assert.equal(asub.with_page, false); assert.equal(asub.amount, 2500);
+    payments['802'] = { valid: true, amount: 2500, ext: asub.id };
+    r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '802' } } as any, r);
+    assert.equal(asub.status, 'active');
+  }
 
   // 10. migration not run yet: every endpoint degrades, nothing throws
   missingTable = true;

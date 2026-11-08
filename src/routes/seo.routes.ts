@@ -11,7 +11,7 @@ import {
 import { createChildPage, getChildPages, linkPage, removeChildPage } from '../controllers/seoChild.controller';
 import { getPremium } from '../controllers/premiumStatus.controller';
 import { trackExternalEvent, trackPreflight } from '../controllers/seoTrack.controller';
-import { cancel as cancelSub, getStatus as subStatus, start as startSub, subscriptionReturn, subscriptionWebhook } from '../controllers/seoSubscription.controller';
+import { cancel as cancelSub, getPlans as subPlans, getStatus as subStatus, start as startSub, subscriptionReturn, subscriptionWebhook } from '../controllers/seoSubscription.controller';
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
@@ -31,6 +31,7 @@ router.post('/track/:businessId', trackLimiter, trackExternalEvent);
 // public by nature (SUMIT calls them) and trust nothing in the request: every payment is
 // re-read from SUMIT server-to-server first, and a SUMIT payment id can be used once, ever.
 const subLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/plans', subLimiter, subPlans);
 router.get('/subscription', subLimiter, requireAuth, subStatus);
 router.post('/subscription/start', subLimiter, requireAuth, startSub);
 router.post('/subscription/cancel', subLimiter, requireAuth, cancelSub);

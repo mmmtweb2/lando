@@ -50,6 +50,44 @@ export async function beginRecurringRedirect(p: RecurringStartParams): Promise<{
   return { redirectUrl: json.Data.RedirectURL };
 }
 
+export interface SinglePaymentParams {
+  itemName: string;
+  amount: number;              // ₪ for the whole period, VAT included
+  externalIdentifier: string;  // our seo_subscriptions.id — echoed back to us
+  redirectUrl: string;
+  cancelRedirectUrl: string;
+  customerEmail: string;
+  maxInstallments: number;     // the most payments the customer may choose on SUMIT's page
+}
+
+/**
+ * Opens SUMIT's hosted payment page for ONE payment covering a whole year (annual plans): no
+ * standing order, no auto-renewal. The customer may split it into installments on SUMIT's page;
+ * we receive and check the total. Same body as the verified one-time flow plus the customer's
+ * ExternalIdentifier (so the payment binds back to the subscription).
+ * UNVERIFIED: that MaximumPayments > 1 offers installments on the hosted page, and that the
+ * verified Payment.Amount of an installment payment is the TOTAL (we require it to cover the price).
+ */
+export async function beginSinglePaymentRedirect(p: SinglePaymentParams): Promise<{ redirectUrl: string }> {
+  const json = await summitCall<{ RedirectURL?: string }>('/billing/payments/beginredirect/', {
+    Customer: { Name: p.customerEmail, EmailAddress: p.customerEmail, ExternalIdentifier: p.externalIdentifier },
+    Items: [{ Item: { Name: p.itemName }, Quantity: 1, UnitPrice: p.amount, Description: p.itemName }],
+    VATIncluded: true,
+    RedirectURL: p.redirectUrl,
+    CancelRedirectURL: p.cancelRedirectUrl,
+    ExternalIdentifier: p.externalIdentifier,
+    MaximumPayments: Math.max(1, Math.floor(p.maxInstallments)),
+    Language: 'Hebrew',
+    DocumentType: 'InvoiceAndReceipt',
+    DocumentDescription: p.itemName,
+  });
+  if (json.Status !== 0 || !json.Data?.RedirectURL) {
+    console.error('[SUMIT] annual beginredirect failed:', json.Status, json.UserErrorMessage, json.TechnicalErrorDetails);
+    throw new Error(json.UserErrorMessage || 'פתיחת התשלום השנתי נכשלה. נסו שוב.');
+  }
+  return { redirectUrl: json.Data.RedirectURL };
+}
+
 /**
  * Stops future charges of a standing order. Returns true only when SUMIT confirmed it.
  * UNVERIFIED: the request field names (Customer.ID, RecurringCustomerItemID).
