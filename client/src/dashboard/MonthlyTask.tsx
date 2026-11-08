@@ -21,7 +21,7 @@ interface Props {
   reload: () => void;
 }
 
-function Body({ id, requestsSent, reload }: { id: MonthlyId; requestsSent: number; reload: () => void }) {
+export function Body({ id, requestsSent, reload }: { id: MonthlyId; requestsSent: number; reload: () => void }) {
   switch (id) {
     case 'review_requests':
       return (

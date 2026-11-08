@@ -216,7 +216,7 @@ function GoogleLink({ children }: { children: string }) {
   );
 }
 
-function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
+export function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
   id: GuidedId; input: OverviewInput; onSaved: () => void; onScore: (n: number) => void; onAutoDone: () => Promise<void>; onSent: () => void;
 }) {
   switch (id) {
