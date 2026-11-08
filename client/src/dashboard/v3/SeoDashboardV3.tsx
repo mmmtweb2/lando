@@ -15,12 +15,12 @@ import { trackAccount } from '../../lib/journeyClient';
 import FeedbackBox from '../FeedbackBox';
 import Overview, { SetupArchive } from '../Overview';
 import { readSkips, writeSkips } from './skips';
-import { MoreView, ProgressView } from '../AfterSetupViews';
 import { useSeoOverview, type SeoOverview } from '../useSeoOverview';
 import { useMonthly } from '../useMonthly';
 import { GUIDED_COPY, PREMIUM_DETAILS, withSkip, type GuidedId } from '../guided';
 import type { MonthlyId } from '../monthly';
 import { MORE_VIEWS, NAV_AFTER_SETUP, NAV_LABEL_AFTER_SETUP, VIEW_LABEL, VIEW_ORDER, derivePhase, type View } from '../journey';
+import { MoreV3, ProgressV3, ViewFrame } from './Views';
 import { HomeSkeleton, MonthScreen, OverviewV3, SetupScreen, WelcomeV3 } from './Screens';
 import { SETUP_DONE_FLASH, buildMonthTasks, buildSetupTasks, flashText, nextOpenAfter } from './tasks';
 import '../dashboard.css';
@@ -176,34 +176,33 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
           {view === 'overview' && (phase === 'setup' || data.failed) && (
             <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
           )}
-          {view === 'progress' && <ProgressView summary={data.summary} monthly={monthly} go={go} />}
-          {view === 'more' && <MoreView go={go} />}
-          {simpleNav && MORE_VIEWS.includes(view) && (
-            <button type="button" onClick={() => go('more')} className="dv3-linkbtn">חזרה ל״עוד״</button>
+          {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={go} />}
+          {view === 'more' && <MoreV3 go={go} />}
+          {view === 'setup' && (
+            <ViewFrame view="setup" fromMore={simpleNav} go={go}><SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
           )}
-          {view === 'setup' && <SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} />}
           {view === 'profile' && (
-            <div className="flex flex-col gap-4">
+            <ViewFrame view="profile" fromMore={simpleNav} go={go}>
               <GbpCard />
               <BusinessAuditCard />
-            </div>
+            </ViewFrame>
           )}
           {view === 'reviews' && (
-            <div className="flex flex-col gap-4">
+            <ViewFrame view="reviews" fromMore={simpleNav} go={go}>
               <ReviewsCard />
               <ReviewDraftsCard />
               <ReviewRequestsCard />
-            </div>
+            </ViewFrame>
           )}
-          {view === 'content' && <ContentPlanCard />}
+          {view === 'content' && <ViewFrame view="content" fromMore={simpleNav} go={go}><ContentPlanCard /></ViewFrame>}
           {view === 'leads' && (
-            <div className="flex flex-col gap-4">
+            <ViewFrame view="leads" fromMore={simpleNav} go={go}>
               <LeadsTable items={data.items} summary={data.summary} />
               <ExternalSiteCard />
-            </div>
+            </ViewFrame>
           )}
           {view === 'plan' && (
-            <div className="flex flex-col gap-4">
+            <ViewFrame view="plan" fromMore={simpleNav} go={go}>
               <SeoSubscriptionCard />
               {data.input.loaded && data.input.subscriptionStatus === null && (
                 <div className="dv2-card p-5">
@@ -224,7 +223,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
                   <Link to="/create" className="dv2-btn-ghost mt-3">יצירת דף ב-Pagey</Link>
                 </div>
               )}
-            </div>
+            </ViewFrame>
           )}
         </motion.div>
       </AnimatePresence>
