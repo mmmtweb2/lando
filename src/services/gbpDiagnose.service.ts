@@ -14,8 +14,10 @@ export type StepKey = 'config' | 'connection' | 'token' | 'accounts' | 'location
 export interface Step {
   key: StepKey; label: string; ok: boolean; skipped?: boolean;
   httpStatus?: number; googleStatus?: string; message?: string; reasons?: string[]; quota?: string[]; detail?: string; api?: string;
+  /** Google answered fine but the list was empty (no accounts / no cards): not a pass. */
+  empty?: boolean;
 }
-export type Verdict = 'works' | 'quota' | 'api_disabled' | 'permission' | 'reconnect' | 'not_connected' | 'config' | 'unknown';
+export type Verdict = 'works' | 'quota' | 'api_disabled' | 'permission' | 'reconnect' | 'not_connected' | 'config' | 'no_locations' | 'unknown';
 export interface Diagnosis { at: string; email: string; verdict: Verdict; summary: string; steps: Step[]; project: string | null }
 
 const LABEL: Record<StepKey, string> = {
@@ -47,6 +49,14 @@ export function readGoogleError(body: unknown): { googleStatus?: string; message
 export function verdictOf(steps: Step[]): { verdict: Verdict; summary: string } {
   const bad = steps.find((s) => !s.ok && !s.skipped);
   if (!bad) return { verdict: 'works', summary: 'כל השלבים עברו. הגישה ל-Business Profile עובדת עם החשבון הזה.' };
+  if (bad.empty) {
+    return {
+      verdict: 'no_locations',
+      summary: bad.key === 'accounts'
+        ? 'החיבור תקין, אבל בחשבון הגוגל שהתחבר אין שום חשבון Business Profile. מתחברים עם חשבון הגוגל שמנהל את הכרטיס.'
+        : 'החיבור תקין, אבל אף כרטיס לא מופיע ברשימה של חשבון הגוגל שהתחבר. אם זה מנהל ולא בעלים: בעל הכרטיס צריך להוסיף את המייל כמנהל, והמנהל צריך לאשר את ההזמנה (גם במייל וגם בפרופיל העסק בגוגל), ואז לחבר מחדש.',
+    };
+  }
   const txt = `${bad.googleStatus ?? ''} ${bad.reasons?.join(' ') ?? ''} ${bad.message ?? ''}`;
   if (bad.key === 'config') return { verdict: 'config', summary: 'הגדרות החיבור בשרת חסרות או כבויות (GBP_CONNECT_ENABLED, מפתח הצפנה, Client ID/Secret, כתובת חזרה).' };
   if (bad.key === 'connection') return { verdict: 'not_connected', summary: 'החשבון הזה לא מחובר לגוגל. מתחברים מתוך הדשבורד ואז מריצים שוב.' };
@@ -115,17 +125,34 @@ export async function runDiagnosis(email: string, f: Fetch = fetch, now = new Da
   const take = (p: Awaited<ReturnType<typeof probe>>) => { steps.push(p.step); if (p.project) project = p.project; return p; };
 
   const acc = take(await probe('accounts', 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=20', access, f));
-  const accounts = ((acc.body?.accounts ?? []) as { name?: string }[]).map((a) => a.name).filter((n): n is string => !!n && /^accounts\/[\w-]+$/.test(n));
-  if (acc.step.ok) acc.step.detail = `${accounts.length} חשבונות`;
+  // Same walk as the product (listLocations): every account the Google user owns OR manages, first 5.
+  const accountRows = ((acc.body?.accounts ?? []) as { name?: string; type?: string; role?: string }[])
+    .filter((a): a is { name: string; type?: string; role?: string } => !!a.name && /^accounts\/[\w-]+$/.test(a.name)).slice(0, 5);
+  if (acc.step.ok) {
+    // Types and roles are Google enum names (PERSONAL, LOCATION_GROUP, PRIMARY_OWNER, SITE_MANAGER...): no personal data.
+    acc.step.detail = `${accountRows.length} חשבונות` + (accountRows.length ? ` (${accountRows.map((a) => `${clip(a.type ?? '?', 20)}/${clip(a.role ?? '?', 20)}`).join(', ')})` : '');
+    if (!accountRows.length) acc.step.ok = false, acc.step.empty = true;
+  }
   if (!acc.step.ok) { rest(['locations', 'location', 'performance', 'reviews'], 'תלוי בשלב קודם שנכשל'); return finish(); }
-  if (!accounts.length) { steps.push(skipped('locations', 'אין חשבונות בגוגל למשתמש הזה')); rest(['location', 'performance', 'reviews'], 'תלוי בשלב קודם'); return finish(); }
 
-  const loc = take(await probe('locations', `https://mybusinessbusinessinformation.googleapis.com/v1/${accounts[0]}/locations?readMask=name,title,metadata&pageSize=100`, access, f));
-  const locations = ((loc.body?.locations ?? []) as { name?: string }[]).map((l) => l.name).filter((n): n is string => !!n && /^locations\/[\w-]+$/.test(n));
-  if (loc.step.ok) loc.step.detail = `${locations.length} מיקומים בחשבון הראשון`;
-  if (!loc.step.ok) { rest(['location', 'performance', 'reviews'], 'תלוי בשלב קודם שנכשל'); return finish(); }
-  if (!locations.length) { steps.push(skipped('location', 'אין מיקומים בחשבון')); rest(['performance', 'reviews'], 'תלוי בשלב קודם'); return finish(); }
-  const place = conn.location_name && locations.includes(conn.location_name) ? conn.location_name : locations[0];
+  const found: { name: string; account: string }[] = [];
+  const perAccount: number[] = [];
+  let locFail: ReturnType<typeof take> | null = null;
+  for (const a of accountRows) {
+    const loc = await probe('locations', `https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata&pageSize=100`, access, f);
+    if (!loc.step.ok) { locFail = take(loc); break; }
+    const names = ((loc.body?.locations ?? []) as { name?: string }[]).map((l) => l.name).filter((n): n is string => !!n && /^locations\/[\w-]+$/.test(n));
+    perAccount.push(names.length);
+    for (const n of names) found.push({ name: n, account: a.name });
+  }
+  if (locFail) { rest(['location', 'performance', 'reviews'], 'תלוי בשלב קודם שנכשל'); return finish(); }
+  const locStep: Step = { key: 'locations', label: LABEL.locations, ok: found.length > 0, httpStatus: 200, api: API.locations,
+    detail: `${found.length} מיקומים (לפי חשבון: ${perAccount.join(', ')})`, ...(found.length ? {} : { empty: true }) };
+  steps.push(locStep);
+  if (!found.length) { rest(['location', 'performance', 'reviews'], 'תלוי בשלב קודם שנכשל'); return finish(); }
+  const chosen = found.find((l) => l.name === conn.location_name) ?? found[0];
+  const place = chosen.name;
+  const accountOfPlace = chosen.account;
 
   const one = take(await probe('location', `https://mybusinessbusinessinformation.googleapis.com/v1/${place}?readMask=name,title,phoneNumbers,regularHours,categories`, access, f));
   if (one.step.ok) one.step.detail = 'קריאה הצליחה';
@@ -137,7 +164,7 @@ export async function runDiagnosis(email: string, f: Fetch = fetch, now = new Da
   const perf = take(await probe('performance', `https://businessprofileperformance.googleapis.com/v1/${place}:fetchMultiDailyMetricsTimeSeries?${q.toString()}`, access, f));
   if (perf.step.ok) perf.step.detail = 'קריאה הצליחה';
 
-  const rev = take(await probe('reviews', `https://mybusiness.googleapis.com/v4/${accounts[0]}/${place}/reviews?pageSize=1`, access, f));
+  const rev = take(await probe('reviews', `https://mybusiness.googleapis.com/v4/${accountOfPlace}/${place}/reviews?pageSize=1`, access, f));
   if (rev.step.ok) rev.step.detail = `${Array.isArray(rev.body?.reviews) ? rev.body!.reviews.length : 0} ביקורות בדגימה`;
   return finish();
 }
