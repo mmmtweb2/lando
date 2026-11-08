@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from '../config/supabase';
+import { addonPageIds, isAddonPage } from './seoPageAddon.service';
 import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendRenewalReminder, ReminderKind } from './renewal.mailer';
 import { runDraftSweep } from './draftCleanup.service';
@@ -128,7 +129,7 @@ export const RENEWABLE_STATUSES = ['published', 'frozen'] as const;
 
 export interface RenewEligibility {
   ok: boolean;
-  reason?: 'not_found' | 'not_owner' | 'not_renewable';
+  reason?: 'not_found' | 'not_owner' | 'not_renewable' | 'managed_by_subscription';
   status?: string | null;
   businessName?: string | null;
 }
@@ -157,6 +158,9 @@ export async function checkRenewEligibility(email: string, id: string): Promise<
   if (!owner || owner !== email.trim().toLowerCase()) {
     return { ok: false, reason: 'not_owner', status: row.status ?? null };
   }
+  // The page that comes with a "with page" promotion plan lives and freezes with that subscription.
+  // It is not renewed for 99 on its own (seoPageAddon.service.ts).
+  if (await isAddonPage(id)) return { ok: false, reason: 'managed_by_subscription', status: row.status ?? null, businessName: row.business_name ?? null };
   if (!RENEWABLE_STATUSES.includes((row.status ?? '') as (typeof RENEWABLE_STATUSES)[number])) {
     return { ok: false, reason: 'not_renewable', status: row.status ?? null, businessName: row.business_name ?? null };
   }
@@ -298,6 +302,7 @@ interface ReminderRow {
  * sending is recoverable, spamming a customer is not.
  */
 async function sendDueReminders(now: Date): Promise<number> {
+  const addon = await addonPageIds();   // pages that live and freeze with a subscription: not ours to remind, freeze or delete
   let sent = 0;
 
   for (let i = 0; i < REMINDERS.length; i++) {
@@ -326,6 +331,7 @@ async function sendDueReminders(now: Date): Promise<number> {
     }
 
     for (const row of (data ?? []) as ReminderRow[]) {
+      if (addon.has(row.id)) continue;
       const stamp = new Date().toISOString();
       const marks: Record<string, string> = { [column]: stamp };
       // Collapse the already-passed, less urgent thresholds in the same write —
@@ -392,6 +398,7 @@ async function sendDueReminders(now: Date): Promise<number> {
  * same slug, same leads. Nothing here deletes anything.
  */
 async function freezeExpiredPages(now: Date): Promise<number> {
+  const addon = await addonPageIds();   // pages that live and freeze with a subscription: not ours to remind, freeze or delete
   const cutoff = new Date(now.getTime() - GRACE_PERIOD_DAYS * DAY_MS);
 
   const { data, error } = await supabase
@@ -410,6 +417,7 @@ async function freezeExpiredPages(now: Date): Promise<number> {
 
   let frozen = 0;
   for (const row of (data ?? []) as ReminderRow[]) {
+    if (addon.has(row.id)) continue;
     // CAS on status: never freeze a page that was renewed or unpublished between
     // the read and the write.
     const { data: updated, error: updErr } = await supabase
@@ -465,6 +473,7 @@ async function freezeExpiredPages(now: Date): Promise<number> {
  * double-sending is not something to risk.
  */
 async function sendDueFrozenReminders(now: Date): Promise<number> {
+  const addon = await addonPageIds();   // pages that live and freeze with a subscription: not ours to remind, freeze or delete
   let sent = 0;
 
   for (let i = 0; i < FROZEN_REMINDERS.length; i++) {
@@ -491,6 +500,7 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
     }
 
     for (const row of (data ?? []) as ReminderRow[]) {
+      if (addon.has(row.id)) continue;
       const stamp = new Date().toISOString();
       const marks: Record<string, string> = { [column]: stamp };
       for (const c of lessUrgentColumns) {
@@ -550,6 +560,7 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
  * nothing; getting this order wrong costs data integrity.
  */
 async function hardDeleteFrozenPages(now: Date): Promise<number> {
+  const addon = await addonPageIds();   // pages that live and freeze with a subscription: not ours to remind, freeze or delete
   const cutoff = addMonths(now, -FROZEN_RETENTION_MONTHS);
 
   const { data, error } = await supabase
@@ -568,6 +579,7 @@ async function hardDeleteFrozenPages(now: Date): Promise<number> {
 
   let deleted = 0;
   for (const row of (data ?? []) as (ReminderRow & { frozen_at: string | null })[]) {
+    if (addon.has(row.id)) continue;
     // 1. Leads FIRST — the FK has no cascade.
     const leadsErr = await deleteLeadsForPageTree(row.id);
 

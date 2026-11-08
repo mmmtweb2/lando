@@ -10,6 +10,7 @@ import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
 import { SEO_ANNUAL_REMINDER_DAYS, SeoCycle, SeoPlan, SeoPlanId, getSeoPlan, planFor } from '../config/seoCatalog';
 import { isEntitled } from './entitlements.service';
 import { summitConfigured } from './summit.service';
+import { AddonAccess, reconcileAddonPage } from './seoPageAddon.service';
 import { AnnualReminderParams, sendAnnualReminder } from './seoReminder.mailer';
 import { beginRecurringRedirect, beginSinglePaymentRedirect, cancelRecurring } from './sumitRecurring';
 import {
@@ -44,6 +45,25 @@ const COLS = 'id, email, status, amount, sumit_customer_id, sumit_recurring_item
 /** An annual subscription is one payment for the year: nothing renews, so nothing can be "past due". */
 export function autoRenews(r: Pick<SubRow, 'cycle'>): boolean {
   return r.cycle !== 'year';
+}
+
+/** Is the landing-page add-on of this subscription active right now (plan has a page + access, grace included)? */
+export function addonAccessOf(r: Pick<SubRow, 'with_page' | 'status' | 'current_period_end'>, now = new Date()): AddonAccess {
+  return {
+    active: !!r.with_page && isEntitled({ status: r.status, current_period_end: r.current_period_end }, now),
+    periodEnd: r.current_period_end,
+  };
+}
+
+/** Bring the included page in line with the subscription. Never throws: a page hiccup must not fail a payment or the sweep. */
+async function syncAddonPage(email: string): Promise<void> {
+  try {
+    const row = await getSubscription(email);
+    const done = await reconcileAddonPage(email, row ? addonAccessOf(row) : { active: false, periodEnd: null });
+    if (done === 'frozen' || done === 'unfrozen') console.log('[SUBSCRIPTION] included page', done);
+  } catch (e) {
+    console.error('[SUBSCRIPTION] included page sync failed:', e instanceof Error ? e.message : e);
+  }
 }
 
 /** The plan a stored row is on (rows from before migration 046 are monthly without a page). */
@@ -222,6 +242,7 @@ export async function applyVerifiedPayment(
       ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
       ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
     });
+    await syncAddonPage(row.email);   // a frozen included page comes back; a live one gets the new period end
     void logEvent({ event: 'payment_succeeded', email: row.email }); // first verified payment only (unique milestone)
     return 'activated';
   }
@@ -284,10 +305,15 @@ export async function sweepSubscriptions(
     try {
       await saveState(row, next);
       changed += 1;
+      if (row.with_page) await syncAddonPage(row.email);
     } catch (e) {
       console.error('[SUBSCRIPTION] sweep update failed:', row.id, e instanceof Error ? e.message : e);
     }
   }
+  // Self-healing: every account that holds an included page has it re-aligned with its subscription
+  // (canceled and plan-without-page accounts too). A missing table (migration 047 not run) is just empty.
+  const { data: claims, error: clErr } = await supabase.from('seo_addon_pages').select('email').limit(5000);
+  if (!clErr) for (const r of (claims ?? []) as Array<{ email: string }>) await syncAddonPage(r.email);
   return changed;
 }
 

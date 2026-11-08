@@ -9,7 +9,7 @@ import { SubError, getSubscription, sweepSubscriptions } from '../src/services/s
 import { getEntitlements } from '../src/services/entitlements.service';
 
 type Row = Record<string, any>;
-const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [], payments: [] };
+const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_events: [], user_products: [], journey_events: [], payments: [], seo_addon_pages: [], landing_pages: [] };
 const UNIQUE: Record<string, string[]> = { seo_subscriptions: ['email'], seo_subscription_events: ['sumit_payment_id'] };
 let seq = 0;
 let missingTable = false;

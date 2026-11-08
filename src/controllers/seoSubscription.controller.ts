@@ -5,10 +5,11 @@ import crypto from 'crypto';
 import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
 import { SEO_MONTHLY_PRICE, publicSeoCatalog } from '../config/seoCatalog';
 import { getPayment } from '../services/summit.service';
+import { addonPageInfo } from '../services/seoPageAddon.service';
 import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import {
-  SubError, applyVerifiedPayment, autoRenews, cancelSubscription, getSubscription, planOf, startSubscription,
+  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, getSubscription, planOf, startSubscription,
 } from '../services/seoSubscription.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -31,6 +32,13 @@ function fail(res: Response, e: unknown): void {
   res.status(500).json({ error: 'משהו השתבש. נסו שוב.' });
 }
 
+/** The included landing page: whether the plan has one, and which page / what state. */
+async function pageState(row: SubRow) {
+  if (!row.with_page) return { included: false, pageId: null, status: null };
+  const info = await addonPageInfo(row.email);
+  return { included: true, pageId: info.pageId, status: info.status };
+}
+
 /** GET /api/seo/subscription — what the dashboard card shows. Never fails the page. */
 export async function getStatus(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
@@ -48,6 +56,7 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         cycle: planOf(row).cycle,
         withPage: planOf(row).withPage,
         renews: autoRenews(row),   // annual: false, it ends on its date unless a new plan is bought
+        page: await pageState(row),
       };
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
