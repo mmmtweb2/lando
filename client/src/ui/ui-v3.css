@@ -1,0 +1,56 @@
+/* Design v3 ("סגנון מובלט") for the public static screens: legal pages and the 404.
+   Active only when ?ui=v3 is on (ui/flag.ts); every rule lives under .uv3 so nothing else changes. */
+.uv3 {
+  --u-navy: #0E2148; --u-blue: #2E63F6; --u-blue-strong: #2447C8; --u-ink: #1B2A4E; --u-muted: #4F5D7A;
+  --u-line: #DCE4F7; --u-tint: #EEF1FB;
+  --u-grad: linear-gradient(225deg, #0E2148 0%, #2447C8 70%, #4B6DF0 100%);
+  min-height: 100vh; color: var(--u-ink);
+  background-color: var(--u-tint);
+  background-image:
+    radial-gradient(520px 260px at 100% 0, rgba(46, 99, 246, .10), transparent 70%),
+    radial-gradient(460px 240px at 0 0, rgba(124, 97, 240, .10), transparent 70%);
+}
+.uv3-bar { max-width: 768px; margin: 0 auto; padding: 14px 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.uv3-brand { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 800; color: var(--u-navy); }
+.uv3-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--u-blue-strong); text-decoration: underline; text-underline-offset: 4px; }
+.uv3-main { max-width: 768px; margin: 0 auto; padding: 12px 16px 40px; }
+
+.uv3-hero {
+  position: relative; overflow: hidden; color: #fff; background: var(--u-grad); border-radius: 24px;
+  box-shadow: 0 14px 34px rgba(36, 71, 200, .25); padding: 28px 22px;
+}
+.uv3-hero::before { content: ""; position: absolute; top: -70px; left: -50px; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, .26), transparent 68%); pointer-events: none; }
+.uv3-hero::after { content: ""; position: absolute; bottom: -8px; left: 14px; width: 170px; height: 90px; opacity: .55; pointer-events: none; background-image: radial-gradient(rgba(255, 255, 255, .45) 1.2px, transparent 1.5px); background-size: 14px 14px; }
+.uv3-hero > * { position: relative; z-index: 1; }
+.uv3-hero h1 { font-size: 28px; line-height: 1.25; font-weight: 900; }
+.uv3-hero .uv3-sub { margin-top: 6px; font-size: 14px; color: #fff; }
+@media (min-width: 640px) { .uv3-hero { padding: 36px 36px; } .uv3-hero h1 { font-size: 36px; } .uv3-main { padding-top: 20px; } }
+
+.uv3-card { margin-top: 16px; background: #fff; border: 1px solid var(--u-line); border-radius: 24px; box-shadow: 0 10px 28px rgba(14, 33, 72, .08); padding: 22px; }
+@media (min-width: 640px) { .uv3-card { padding: 36px; } }
+.uv3-intro { display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.9; color: var(--u-ink); }
+.uv3-body { margin-top: 24px; }
+.uv3-sec { margin-top: 32px; scroll-margin-top: 24px; }
+.uv3-sec:first-child { margin-top: 0; }
+.uv3-sec h2 { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 800; color: var(--u-navy); }
+.uv3-sec h2::before { content: ""; flex: none; width: 6px; height: 22px; border-radius: 3px; background: var(--u-blue); }
+.uv3-sec-body { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.9; color: var(--u-ink); }
+.uv3-list { display: flex; flex-direction: column; gap: 10px; padding-inline-start: 22px; font-size: 15px; line-height: 1.9; color: var(--u-ink); }
+
+.uv3-nav { margin-top: 22px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.uv3-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--u-line); background: #fff; color: var(--u-navy); font-size: 14px; font-weight: 600; transition: background .15s ease; }
+.uv3-nav a:hover { background: var(--u-tint); }
+.uv3-nav a[aria-current="page"] { background: var(--u-navy); border-color: var(--u-navy); color: #fff; }
+
+/* 404 */
+.uv3-404 { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 24px 16px; }
+.uv3-404 .uv3-hero { text-align: center; padding: 40px 22px; }
+.uv3-404 .uv3-code { font-size: 64px; line-height: 1; font-weight: 900; letter-spacing: 2px; }
+.uv3-404 p { margin-top: 10px; font-size: 15px; line-height: 1.7; color: #fff; }
+.uv3-actions { margin-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.uv3-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: var(--u-blue); color: #fff; font-size: 15px; font-weight: 700; box-shadow: 0 8px 18px rgba(46, 99, 246, .28); transition: background .15s ease; }
+.uv3-btn:hover { background: #2552d0; }
+.uv3-btn-ghost { background: #fff; color: var(--u-ink); border: 1px solid var(--u-line); box-shadow: none; }
+.uv3-btn-ghost:hover { background: var(--u-tint); }
+.uv3 a:focus-visible { outline: 3px solid #2E63F6; outline-offset: 2px; border-radius: 8px; }
+.uv3-404 .uv3-hero::after { display: none; }
