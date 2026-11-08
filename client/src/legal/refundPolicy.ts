@@ -46,7 +46,7 @@
 //
 // Fallback if a regulator/court ever rejected both grounds: the exposure is
 // bounded and small. s.14ה(ב) caps cancellation fees at the LOWER of 5% of the
-// transaction price or ₪100 (₪12.45 on a ₪249 page; ₪100 on a ₪1,490 bundle),
+// transaction price or ₪100 (₪12.50 on a ₪250 page; ₪100 on a ₪1,500 bundle),
 // i.e. worst case Pagey refunds the price minus that cap. That is a
 // per-dispute cost, not a systemic one — it does not change the recommendation.
 //

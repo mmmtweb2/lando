@@ -390,7 +390,7 @@ export async function grantBundle(email: string, bundleKey: string): Promise<boo
 }
 
 /**
- * Grant the single 249₪ page purchase: one page credit + SINGLE_PAGE_AI_CREDITS
+ * Grant the single 250₪ page purchase: one page credit + SINGLE_PAGE_AI_CREDITS
  * (10, as of 2026-09-14 — see config/billing.ts for why this replaced the old
  * 0-AI-credit grant).
  */

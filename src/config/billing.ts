@@ -7,13 +7,13 @@
 // tops up a non-expiring PAGE-PUBLISH BALANCE (`user_profiles.page_credits`).
 // Publishing a page costs exactly one page credit, whichever way it was bought:
 //
-//   • Single page — 249₪, buys 1 page credit + 10 AI credits. UNCHANGED
+//   • Single page — 250₪, buys 1 page credit + 10 AI credits. UNCHANGED
 //     PRICE, deliberately: Moshe wants the core product to stay a one-time
 //     purchase, as differentiation against the subscription-only market. The
 //     AI-credit grant is NEW (2026-09-14) — see SINGLE_PAGE_AI_CREDITS below.
-//   • חבילת 5 דפים  —   990₪  → 5 page credits, 75 AI credits (15/page)
+//   • חבילת 5 דפים  —   1,000₪  → 5 page credits, 75 AI credits (15/page)
 //                              (198₪/page, ~20% off)
-//   • חבילת 10 דפים — 1,490₪  → 10 page credits, 150 AI credits (15/page)
+//   • חבילת 10 דפים — 1,500₪  → 10 page credits, 150 AI credits (15/page)
 //                              (149₪/page, ~40% off)
 //                              + PERMANENT white-label (hide the Pagey badge)
 //   • תוסף מיתוג אישי —  350₪  → PERMANENT white-label on its own, no pages
@@ -47,7 +47,7 @@
 import { CREDIT_COSTS } from './credits';
 
 /** One-time price of publishing a single page, bought on its own. Unchanged. */
-export const SINGLE_PAGE_PRICE = 249;
+export const SINGLE_PAGE_PRICE = 250;
 
 /**
  * AI credits granted alongside a single-page purchase (2026-09-14). Same
@@ -80,9 +80,9 @@ export const CREATION_ALLOWANCE_MULTIPLIER = 2;
  * from the same constant.
  *
  * A renewal is deliberately NOT a page credit. Page credits buy the right to
- * publish a NEW page (249₪ of value); a renewal buys another year for a page
+ * publish a NEW page (250₪ of value); a renewal buys another year for a page
  * that is already the customer's. Charging a renewal against `page_credits`
- * would silently spend 249₪ of balance on a 99₪ product, so `grantRenewal`
+ * would silently spend 250₪ of balance on a 99₪ product, so `grantRenewal`
  * never touches the balance in either direction.
  *
  * NOT a subscription: there is no SUMIT standing order and no auto-charge. The
@@ -203,7 +203,7 @@ export interface BundleDef {
  * in the bundle comes with enough credits to build it with AI images and rewrite
  * all its text once". Anything beyond that is a credit pack, same as today.
  *
- * A single 249₪ page grants NO AI credits, deliberately: new accounts already
+ * A single 250₪ page grants NO AI credits, deliberately: new accounts already
  * start with STARTING_CREDITS (24) and credit packs exist. Bundling credits into
  * the per-page price would quietly reprice the one product Moshe asked to leave
  * exactly as it is.
@@ -225,7 +225,7 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     key: 'bundle5',
     label: 'חבילת 5 דפים',
     pages: 5,
-    price: 990, // 198₪/page — ~20% off the 249₪ single-page price
+    price: 1000, // 200₪/page — 20% off the 250₪ single-page price
     aiCredits: 5 * CREDITS_PER_BUNDLE_PAGE, // 75
     whiteLabel: false,
   },
@@ -233,7 +233,7 @@ export const BUNDLES: Record<BundleKey, BundleDef> = {
     key: 'bundle10',
     label: 'חבילת 10 דפים',
     pages: 10,
-    price: 1490, // 149₪/page — ~40% off the 249₪ single-page price
+    price: 1500, // 150₪/page — 40% off the 250₪ single-page price
     aiCredits: 10 * CREDITS_PER_BUNDLE_PAGE, // 150
     whiteLabel: true, // the 10-bundle's bonus perk (was the old agency tier's)
   },

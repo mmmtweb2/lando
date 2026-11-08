@@ -16,8 +16,8 @@ const SELECT_FIELDS = 'email, affiliate_code, credits, earned_coupons, signup_di
 
 // Credit packs. Prices in ₪.
 export const CREDIT_PACKS: Record<string, { credits: number; price: number }> = {
-  small: { credits: 10, price: 49 },
-  large: { credits: 100, price: 399 },
+  small: { credits: 10, price: 50 },
+  large: { credits: 100, price: 400 },
 };
 
 /**
