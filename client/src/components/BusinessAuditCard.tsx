@@ -7,7 +7,7 @@ import NoProfileGuide from './NoProfileGuide';
 import AuditLeadForm from './AuditLeadForm';
 import ConciergeButton from './ConciergeButton';
 import { SnapshotButton, regionFacts } from './AuditSnapshot';
-import { LEVEL_STYLE, scoreStyle, isNumericValue, type Audit, type AiReadiness, type CategoryCheck } from '../lib/auditShared';
+import { LEVEL_STYLE, scoreStyle, isNumericValue, scoreExplainer, type Audit, type AiReadiness, type CategoryCheck } from '../lib/auditShared';
 import AiReadinessBlock from './AiReadinessBlock';
 import { trackEvent } from '../lib/track';
 import RecommendationsList from './RecommendationsList';
@@ -336,6 +336,16 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
               ? `הציון נמדד מול ${audit.benchmark.count} עסקים דומים באזור (יעד דירוג: ${audit.benchmark.ratingTarget.toFixed(1)}).${regionFacts(audit.benchmark)}${audit.benchmark.reviewsTargetKind ? ` יעד הביקורות שלכם: ${audit.benchmark.reviewsTarget}${audit.benchmark.reviewsTargetKind === 'max' ? ' (הגבוה ביותר באזור)' : ' (החציון באזור)'}.` : ''}`
               : 'לא מצאנו מספיק עסקים דומים באזור להשוואה, ולכן הציון נמדד מול יעדים כלליים.'}
           </p>
+
+          {(() => {
+            const ex = scoreExplainer(audit);
+            return ex && (
+              <div role="note" className={`rounded-lg border px-3 py-2.5 text-xs leading-relaxed ${ex.vsHighest ? 'border-blue-200 bg-blue-50 text-slate-800' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                <p className="mb-0.5 text-sm font-semibold text-slate-900">{ex.title}</p>
+                <p>{ex.text}</p>
+              </div>
+            );
+          })()}
 
           {categoryCheck && (
             <p className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${categoryCheck.status === 'same' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
