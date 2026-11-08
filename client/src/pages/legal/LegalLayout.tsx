@@ -58,9 +58,9 @@ export default function LegalLayout({
         </article>
 
         <nav className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-500">
-          <Link to="/terms" className="hover:text-[#2E63F6] transition">תנאי שימוש</Link>
-          <Link to="/privacy" className="hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
-          <Link to="/accessibility" className="hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+          <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+          <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+          <Link to="/accessibility" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
         </nav>
       </main>
     </div>
