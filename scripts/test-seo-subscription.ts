@@ -4,6 +4,7 @@
 import './_env-seo-subscription';
 import assert from 'node:assert/strict';
 import { supabase } from '../src/config/supabase';
+import { seoTestPrice } from '../src/config/seoPlan';
 import { cancel, getPlans, getStatus, start, subscriptionReturn, subscriptionWebhook } from '../src/controllers/seoSubscription.controller';
 import { SubError, getSubscription, sweepSubscriptions } from '../src/services/seoSubscription.service';
 import { getEntitlements } from '../src/services/entitlements.service';
@@ -343,6 +344,48 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
     payments['802'] = { valid: true, amount: 2500, ext: asub.id };
     r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '802' } } as any, r);
     assert.equal(asub.status, 'active');
+  }
+
+  // 12. payment test mode (closing-session item 1): ONLY listed emails pay the test price; off without BOTH vars
+  {
+    assert.equal(seoTestPrice('t@x.co', {} as any), null, 'off by default');
+    assert.equal(seoTestPrice('t@x.co', { SEO_TEST_PRICE: '1' } as any), null, 'price without a list -> off');
+    assert.equal(seoTestPrice('t@x.co', { SEO_TEST_EMAILS: 't@x.co' } as any), null, 'list without a price -> off');
+    for (const bad of ['0', '-1', 'abc', '', '5000', 'NaN']) {
+      assert.equal(seoTestPrice('t@x.co', { SEO_TEST_PRICE: bad, SEO_TEST_EMAILS: 't@x.co' } as any), null, `invalid price "${bad}" -> off`);
+    }
+    const env = { SEO_TEST_PRICE: '1', SEO_TEST_EMAILS: ' T@x.co , other@x.co ' } as any;
+    assert.equal(seoTestPrice('t@x.co', env), 1); assert.equal(seoTestPrice('  T@X.CO ', env), 1, 'case and spaces ignored');
+    assert.equal(seoTestPrice('someone@x.co', env), null);
+    assert.equal(seoTestPrice('t@x.co.evil.com', env), null, 'exact match only, no partial match');
+
+    process.env.SEO_TEST_PRICE = '1'; process.env.SEO_TEST_EMAILS = 'tester@x.co';
+    try {
+      let pid = 7000;
+      for (const [plan, catalogPrice] of [['monthly', 250], ['annual', 2500], ['annual_page', 2650]] as const) {
+        db.user_products.length = 0;
+        const T = 'tester@x.co';
+        r = res(); await start(req({ authEmail: T, body: { plan } }), r);
+        assert.equal(r.code, 200, plan);
+        const tsub = db.seo_subscriptions.find(x => x.email === T)!;
+        assert.equal(tsub.amount, 1, `${plan}: the listed account is charged the test price`);
+        assert.equal(sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').pop()!.body.Items[0].UnitPrice, 1);
+        assert.equal(tsub.plan_id, plan, 'the plan itself is the real one');
+        const tp = String(++pid); payments[tp] = { valid: true, amount: 1, ext: tsub.id };
+        r = res(); await subscriptionReturn({ query: { ref: tsub.id, 'OG-PaymentID': tp } } as any, r);
+        assert.equal(tsub.status, 'active', `${plan}: the test payment activates it`);
+        tsub.status = 'canceled'; tsub.current_period_end = null;
+        // a different account in the same environment pays the catalog price
+        const O = 'ordinary@x.co';
+        r = res(); await start(req({ authEmail: O, body: { plan } }), r);
+        const osub = db.seo_subscriptions.find(x => x.email === O)!;
+        assert.equal(osub.amount, catalogPrice, `${plan}: everyone else pays the catalog price`);
+        const op = String(++pid); payments[op] = { valid: true, amount: 1, ext: osub.id };
+        r = res(); await subscriptionReturn({ query: { ref: osub.id, 'OG-PaymentID': op } } as any, r);
+        assert.notEqual(osub.status, 'active', `${plan}: the test amount does not activate an ordinary account`);
+        db.seo_subscriptions.splice(db.seo_subscriptions.indexOf(osub), 1);
+      }
+    } finally { delete process.env.SEO_TEST_PRICE; delete process.env.SEO_TEST_EMAILS; }
   }
 
   // 10. migration not run yet: every endpoint degrades, nothing throws

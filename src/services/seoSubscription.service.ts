@@ -6,7 +6,7 @@
 import { withHeartbeat } from './opsMetrics.service';
 import { logEvent } from './journey.service';
 import { supabase } from '../config/supabase';
-import { seoPlanName, seoSubscriptionEnabled } from '../config/seoPlan';
+import { seoPlanName, seoSubscriptionEnabled, seoTestPrice } from '../config/seoPlan';
 import { SEO_ANNUAL_REMINDER_DAYS, SeoCycle, SeoPlan, SeoPlanId, getSeoPlan, planFor } from '../config/seoCatalog';
 import { isEntitled } from './entitlements.service';
 import { summitConfigured } from './summit.service';
@@ -136,7 +136,10 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   if (!seoSubscriptionEnabled() || !summitConfigured()) throw new SubError('disabled');
   const plan = getSeoPlan(planId);
   if (!plan) throw new SubError('bad_plan');
-  const price = plan.price;
+  // Payment test mode (SEO_TEST_PRICE + SEO_TEST_EMAILS): listed accounts pay the test amount on any plan.
+  const testPrice = seoTestPrice(email);
+  const price = testPrice ?? plan.price;
+  if (testPrice !== null) console.warn('[SUBSCRIPTION] payment test mode: charging the test price for a listed account');
 
   // Already has the product some other way (e.g. a manual grant)? Do not bill them for it.
   const { data: prod } = await supabase
