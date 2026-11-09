@@ -22,6 +22,7 @@ import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
 import SeoProductPanel, { ProductSwitch } from '../components/SeoProductPanel';
+import SeoReturnBanner from '../components/SeoReturnBanner';
 import SeoDashboardV2 from '../dashboard/v3/SeoDashboardEntry';   // v2, or v3 with ?dash=v3
 import { dashV2Enabled } from '../dashboard/flag';
 import CouponField, { type CouponQuote } from '../components/CouponField';
@@ -1114,6 +1115,7 @@ export default function Dashboard() {
 
         {/* Content */}
         <main className="flex-1 px-5 sm:px-6 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
+          <SeoReturnBanner />
 
           <JourneyBanner />
 
