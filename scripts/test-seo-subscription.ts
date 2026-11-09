@@ -388,6 +388,45 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
     } finally { delete process.env.SEO_TEST_PRICE; delete process.env.SEO_TEST_EMAILS; }
   }
 
+  // 13. test mode + an account that already holds a manual grant (the owner's admin account), closing-session #36
+  {
+    process.env.SEO_TEST_PRICE = '1'; process.env.SEO_TEST_EMAILS = 'boss@x.co';
+    try {
+      db.user_products.length = 0;
+      const grant = { email: 'boss@x.co', product: 'seo_autopilot', status: 'active', current_period_end: null, source: 'manual' };
+      db.user_products.push({ ...grant });
+      db.user_products.push({ email: 'friend@x.co', product: 'seo_autopilot', status: 'active', current_period_end: null, source: 'manual' });
+      // the flag: true only for the listed account, and only while the mode is on
+      let sr: any = res(); await getStatus(req({ authEmail: 'boss@x.co' }), sr);
+      assert.equal(sr.body.testMode, true, 'listed account sees testMode');
+      sr = res(); await getStatus(req({ authEmail: 'friend@x.co' }), sr);
+      assert.equal(sr.body.testMode, false, 'an unlisted account never sees testMode');
+      // the listed account may start despite its grant, and pays the test price
+      r = res(); await start(req({ authEmail: 'boss@x.co', body: { plan: 'monthly' } }), r);
+      assert.equal(r.code, 200, 'listed account with a grant may pay in test mode');
+      const bsub = db.seo_subscriptions.find(x => x.email === 'boss@x.co')!;
+      assert.equal(bsub.amount, 1);
+      // an unlisted account with a grant is still refused
+      r = res(); await start(req({ authEmail: 'friend@x.co' }), r);
+      assert.equal(r.code, 409); assert.equal(r.body.code, 'already_has_access');
+      // the verified payment activates the subscription but never touches the grant
+      payments['9100'] = { valid: true, amount: 1, ext: bsub.id };
+      r = res(); await subscriptionReturn({ query: { ref: bsub.id, 'OG-PaymentID': '9100' } } as any, r);
+      assert.equal(bsub.status, 'active');
+      const g = db.user_products.find(x => x.email === 'boss@x.co')!;
+      assert.deepEqual({ ...g }, grant, 'the manual grant is exactly as it was');
+      // cancelling and expiring the subscription leaves the grant alone too
+      bsub.status = 'canceled'; bsub.current_period_end = null;
+      assert.deepEqual({ ...db.user_products.find(x => x.email === 'boss@x.co')! }, grant);
+    } finally { delete process.env.SEO_TEST_PRICE; delete process.env.SEO_TEST_EMAILS; }
+    // mode off: nobody sees testMode, and a grant blocks payment again
+    const off: any = res(); await getStatus(req({ authEmail: 'boss@x.co' }), off);
+    assert.equal(off.body.testMode, false, 'off without the env vars');
+    r = res(); await start(req({ authEmail: 'boss@x.co' }), r);
+    assert.equal(r.code, 409, 'with test mode off the grant blocks payment again');
+    db.user_products.length = 0;
+  }
+
   // 10. migration not run yet: every endpoint degrades, nothing throws
   missingTable = true;
   r = res(); await getStatus(req(), r);

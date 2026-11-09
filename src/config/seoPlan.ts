@@ -31,3 +31,8 @@ export function seoTestPrice(email: string, env: NodeJS.ProcessEnv = process.env
   if (!list.length || !list.includes(email.trim().toLowerCase())) return null;
   return Math.round(price * 100) / 100;
 }
+
+/** True when this account is in payment test mode (a valid SEO_TEST_PRICE and the email is listed). */
+export function seoTestMode(email: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return seoTestPrice(email, env) !== null;
+}
