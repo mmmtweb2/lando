@@ -8,6 +8,7 @@ import { getPayment } from '../services/summit.service';
 import { addonPageInfo } from '../services/seoPageAddon.service';
 import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
+import { diagLog, keysOf } from '../services/sumitDiag';
 import {
   SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, getSubscription, planOf, startSubscription,
 } from '../services/seoSubscription.service';
@@ -93,6 +94,7 @@ export async function cancel(req: Request, res: Response): Promise<void> {
 /** Verifies the payment with SUMIT server-to-server, then applies it. Never trusts the caller. */
 async function verifyAndApply(subscriptionId: string, bag: Record<string, unknown>): Promise<string> {
   const sumitPaymentId = pickField(bag, 'OG-PaymentID', 'OGPaymentID', 'PaymentID', 'Payment.ID');
+  diagLog('return/webhook keys', keysOf(bag));   // SUMIT_DIAG=true only; names of the parameters, never values
   if (!sumitPaymentId) return 'no_payment_id';
   const verified = await getPayment(sumitPaymentId);
   if (!verified) return 'unverified';   // fail closed: SUMIT could not confirm it
@@ -108,8 +110,10 @@ async function verifyAndApply(subscriptionId: string, bag: Record<string, unknow
     subscriptionId,
     { sumitPaymentId, valid: verified.valid, amount: verified.amount },
     {
-      sumitCustomerId: pickField(bag, 'CustomerID', 'Customer.ID'),
-      sumitRecurringItemId: pickField(bag, 'RecurringCustomerItemIDs[0]', 'RecurringCustomerItemID', 'RecurringItemID'),
+      // SUMIT's redirect sends OG-CustomerID (its documented return parameters are OG-*); a webhook may send
+      // CustomerID; failing both, the customer id of the verified payment itself.
+      sumitCustomerId: pickField(bag, 'OG-CustomerID', 'CustomerID', 'Customer.ID') ?? verified.customerId,
+      sumitRecurringItemId: pickField(bag, 'RecurringCustomerItemIDs[0]', 'OG-RecurringCustomerItemIDs', 'RecurringCustomerItemID', 'RecurringItemID'),
     },
   );
 }
