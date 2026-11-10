@@ -866,6 +866,21 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       // No user-visible gate was added or changed by this — the pre-existing
       // credit checks are untouched.
 
+      // Reserve the readable subdomain (cafe-dani.pagey.co.il) NOW, not only at
+      // publish: the wizard success screen and dashboard show the page's address
+      // from the first minute, and a random /p/<slug> there looked like the old
+      // product. Bounded (AI naming has a 3.5s timeout, then transliteration) and
+      // best-effort — failure leaves the draft on /p/<slug>; publish retries.
+      try {
+        const created = data as { id?: string; business_name?: string | null };
+        if (created?.id) {
+          const sub = await assignSubdomain(created.id, created.business_name ?? business_name ?? null);
+          if (sub) (data as Record<string, unknown>).subdomain = sub;
+        }
+      } catch (e) {
+        console.error('[LANDING] subdomain at creation failed (non-fatal)', e);
+      }
+
       res.status(201).json(data);
     } catch (error) {
       console.error('=== CRITICAL ERROR ===', error);

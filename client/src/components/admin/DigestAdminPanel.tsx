@@ -21,8 +21,8 @@ export default function DigestAdminPanel({ adminFetch }: { adminFetch: Fetcher }
     setBusy(true); setMsg(null);
     try {
       const r = await adminFetch('/api/admin/digest/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() || undefined }) });
-      const b = await r.json().catch(() => ({})) as { error?: string; to?: string; enabled?: boolean };
-      setMsg(r.ok ? { ok: true, text: `נשלח אליך (${b.to}). ${b.enabled ? '' : 'שימו לב: השליחה האוטומטית לכולם כבויה.'}` } : { ok: false, text: b.error ?? 'השליחה נכשלה.' });
+      const b = await r.json().catch(() => ({})) as { error?: string; detail?: string; to?: string; enabled?: boolean };
+      setMsg(r.ok ? { ok: true, text: `נשלח אליך (${b.to}). ${b.enabled ? '' : 'שימו לב: השליחה האוטומטית לכולם כבויה.'}` } : { ok: false, text: `${b.error ?? 'השליחה נכשלה.'}${b.detail ? ` (סיבה: ${b.detail})` : ''}` });
     } catch { setMsg({ ok: false, text: 'השליחה נכשלה.' }); } finally { setBusy(false); }
   }
 

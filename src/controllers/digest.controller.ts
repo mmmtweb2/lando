@@ -47,5 +47,10 @@ export async function adminTest(req: Request, res: Response): Promise<void> {
     const mail = buildDigest(await gatherStats(target), unsub);
     await realDeps.send({ to: admin, ...mail, subject: `[בדיקה] ${mail.subject}`, unsub });
     res.json({ ok: true, to: admin, enabled: digestEnabled() });
-  } catch (e) { console.error('[DIGEST] test send failed:', e instanceof Error ? e.message : e); res.status(500).json({ error: 'השליחה נכשלה. בדקו RESEND_API_KEY ו-DIGEST_SECRET.' }); }
+  } catch (e) {
+    const detail = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+    console.error('[DIGEST] test send failed:', detail);
+    // Admin-only route: the real reason (Resend's own message, missing key, DB error) is safe to show and saves a log dive.
+    res.status(500).json({ error: 'השליחה נכשלה. בדקו RESEND_API_KEY ו-RESEND_FROM_EMAIL (דומיין מאומת ב-Resend).', detail });
+  }
 }

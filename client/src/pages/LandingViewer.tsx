@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { shareUrl } from '../lib/pageUrl';
+import { isDesignV3 } from '../lib/designChoice';
 import { PRICING, perPage } from '../config/pricing';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
@@ -1128,8 +1129,11 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     || (designParam !== '1'
       && !!page && !page.parent_id
       && (!page.created_at || Date.parse(page.created_at) >= DESIGN_V2_FROM));
-  // ?design=3 renders the new open/editorial design (phase 0: opt-in per link, see README part 90).
-  const designV3 = designParam === '3';
+  // "Pinkas" (v3) is the DEFAULT for every regular page (decided 2026-11-10, same
+  // no-paying-users rationale as v2). ?design=1 / ?design=2 are the opt-outs to
+  // the classic / v2 looks; ?design=3 still forces it. Child (SEO/autopilot)
+  // pages stay on their previous look unless ?design=3 is passed.
+  const designV3 = isDesignV3(designParam, page);
   const reduceMotion = useReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();

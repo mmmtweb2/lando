@@ -194,12 +194,16 @@ export async function getPageBySubdomain(subdomain: string): Promise<{ slug: str
   return data as { slug: string };
 }
 
-/** Sweep stage: published pages that predate this feature get a subdomain. */
+/** Sweep stage: published/draft root pages without a subdomain get one. */
 export async function backfillSubdomains(limit = 40): Promise<number> {
   const { data, error } = await supabase
     .from('landing_pages')
     .select('id, business_name')
-    .eq('status', 'published')
+    // Drafts too: a subdomain is reserved at creation now, and drafts created
+    // before that (or when naming failed) catch up here. Only root pages — a
+    // child (SEO) page lives under its parent's subdomain.
+    .in('status', ['published', 'draft'])
+    .is('parent_id', null)
     .is('subdomain', null)
     .limit(limit);
   if (error) {
