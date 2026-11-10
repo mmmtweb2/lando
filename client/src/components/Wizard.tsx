@@ -5,6 +5,7 @@ import { useUser } from '../context/UserContext';
 import { LandoBot } from './Lando';
 import { authFetch } from '../lib/api';
 import { trackEvent } from '../lib/analytics';
+import { publicPageLabel } from '../lib/pageUrl';
 import { CREDIT_COSTS } from '../config/credits';
 import {
   Building2,
@@ -67,6 +68,8 @@ interface LandingPageRecord {
   id: string;
   slug: string;
   business_name: string;
+  /** Reserved at creation (readable name, e.g. cafe-dani); null if naming failed. */
+  subdomain?: string | null;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -1470,7 +1473,7 @@ export default function Wizard() {
                   <ExternalLink size={16} />
                   פתח את הדף שלי
                 </Link>
-                <p className="text-xs text-slate-400 font-mono">/p/{result.slug}</p>
+                <p className="text-xs text-slate-400 font-mono" dir="ltr">{publicPageLabel(result.slug, result.subdomain)}</p>
               </motion.div>
             ) : (
               <>
@@ -1533,7 +1536,7 @@ export default function Wizard() {
                 <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
               </div>
               <span className="flex-1 text-center text-gray-500 text-[11px] font-medium truncate">
-                {uiMode === 'success' && result ? `pagey.co.il/p/${result.slug}` : 'תצוגה מקדימה בזמן אמת'}
+                {uiMode === 'success' && result ? publicPageLabel(result.slug, result.subdomain) : 'תצוגה מקדימה בזמן אמת'}
               </span>
             </div>
 
