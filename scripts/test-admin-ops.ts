@@ -167,11 +167,12 @@ assert.equal(placesUsageView([]).every((x) => x.calls === 0 && !x.alert), true);
 
 // job heartbeats
 const hb = (job: string, o: object) => ({ job, last_run_at: ago(1), last_ok_at: null, last_error: null, last_error_at: null, runs: 3, ...o });
-let jv = jobsView([hb('digest', { last_ok_at: ago(2) }), hb('review_alerts', { last_ok_at: ago(30) }), hb('subscriptions', { last_ok_at: ago(10), last_error: 'boom', last_error_at: ago(1) })], { setup_reminder: false }, now);
+let jv = jobsView([hb('digest', { last_ok_at: ago(2) }), hb('review_alerts', { last_ok_at: ago(30) }), hb('subscriptions', { last_ok_at: ago(10), last_error: 'boom', last_error_at: ago(1) })], { setup_reminder: false, gbp_posts: false, auto_replies: false }, now);
 assert.deepEqual(jv.map((x) => x.status), ['ok', 'late', 'failing']); assert.equal(jv[2].lastError, 'boom');
-jv = jobsView([], { digest: false, review_alerts: false, setup_reminder: false }, now);
+jv = jobsView([], { digest: false, review_alerts: false, setup_reminder: false, gbp_posts: false, auto_replies: false }, now);
 assert.deepEqual(jv.map((x) => [x.job, x.status]), [['subscriptions', 'never']], 'jobs that are switched off are not reported');
 assert.ok(jobsView([], {}, now).some((x) => x.job === 'setup_reminder' && x.status === 'never'), 'the reminder sweep is listed when switched on');
+assert.ok(jobsView([], {}, now).some((x) => x.job === 'gbp_posts') && jobsView([], {}, now).some((x) => x.job === 'auto_replies'), 'the automatic product\'s sweeps are listed when switched on');
 jv = jobsView([hb('digest', { last_ok_at: ago(1), last_error: 'old', last_error_at: ago(20) })], {}, now);
 assert.equal(jv[0].status, 'ok'); assert.equal(jv[0].lastError, null, 'an old error followed by a success is not shown');
 
