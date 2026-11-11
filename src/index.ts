@@ -9,6 +9,8 @@ import { startSubscriptionSweep } from './services/seoSubscription.service';
 import { startDigestSweep } from './services/digest.service';
 import { startSetupReminderSweep } from './services/setupReminder.service';
 import { startReviewAlertSweep } from './services/reviewAlerts.service';
+import { startPostsSweep } from './services/gbpPosts.service';
+import { startReplySweep } from './services/autoReplies.service';
 import { startHealthAlertSweep } from './services/adminHealth.service';
 import { warnIfAuditSaltMissing } from './services/auditLeads.service';
 
@@ -39,6 +41,9 @@ async function start() {
   // One reminder email to a customer who stopped mid-setup. No-op unless SETUP_REMINDER_ENABLED=true (+ DIGEST_SECRET).
   startSetupReminderSweep();
   startReviewAlertSweep();
+  // The automatic product: weekly Google posts and replies to reviews. No-op unless AUTOPILOT_ENABLED=true.
+  startPostsSweep();
+  startReplySweep();
   startHealthAlertSweep();
 }
 

@@ -72,6 +72,8 @@ export const JOBS: JobSpec[] = [
   { job: 'setup_reminder', label: 'תזכורת הקמה במייל', everyHours: 6 },
   { job: 'review_alerts', label: 'התראות ביקורות', everyHours: 6 },
   { job: 'subscriptions', label: 'מנויים (סליקה)', everyHours: 6 },
+  { job: 'gbp_posts', label: 'פוסטים שבועיים לגוגל', everyHours: 3 },
+  { job: 'auto_replies', label: 'תשובות לביקורות', everyHours: 3 },
 ];
 export type JobStatus = 'ok' | 'late' | 'failing' | 'never';
 export interface JobView { job: string; label: string; status: JobStatus; lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; runs: number }

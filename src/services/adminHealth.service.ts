@@ -7,6 +7,7 @@ import { notifyOwner } from './alerts';
 import { digestEnabled } from './digest.service';
 import { reminderEnabled } from './setupReminder.service';
 import { reviewAlertsEnabled } from './reviewAlerts.service';
+import { autopilotEnabled } from './automation.service';
 import { httpView, jobsView, readHeartbeats, readPlacesUsage, type JobView, type PlacesUsageRow } from './opsMetrics.service';
 import type { AlertItem } from './adminOps';
 
@@ -34,7 +35,7 @@ export async function healthSnapshot(now = new Date()): Promise<HealthSnapshot> 
   const dbMs = Date.now() - t0;
 
   const [places, hb] = await Promise.all([readPlacesUsage(now), readHeartbeats()]);
-  const jobs = jobsView(hb.rows, { digest: digestEnabled(), setup_reminder: reminderEnabled(), review_alerts: reviewAlertsEnabled() }, now);
+  const jobs = jobsView(hb.rows, { digest: digestEnabled(), setup_reminder: reminderEnabled(), review_alerts: reviewAlertsEnabled(), gbp_posts: autopilotEnabled(), auto_replies: autopilotEnabled() }, now);
   const gbpHb = hb.rows.find((r) => r.job === 'gbp_google');
   const sumitHb = hb.rows.find((r) => r.job === 'sumit_webhook');
 
