@@ -4,7 +4,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'assert';
 import { GbpError, LOCATION_DETAIL_MASK, createLocalPost, fetchLocationDetail, localPostBody } from '../src/services/gbpGoogle';
-import { CardInputError, applyEdit, emptyCard, factsText, hoursText, line, mergeFromGoogle, parseLocation, readiness } from '../src/services/businessTruth';
+import { CardInputError, applyEdit, emptyCard, factsText, hoursText, isMobile, landingInputFromCard, line, mergeFromGoogle, parseLocation, readiness } from '../src/services/businessTruth';
 
 const GOOGLE = {
   name: 'locations/123', title: 'אינסטלציה דני',
@@ -102,6 +102,19 @@ const GOOGLE = {
   assert.ok(facts.includes('תיקון נזילות') && facts.includes('בני ברק') && facts.includes('050-1234567'));
   assert.ok(!facts.includes('undefined') && !facts.includes('false'));
   assert.equal(factsText(emptyCard()), '');
+
+  // ── a landing page from the card ──
+  const li = landingInputFromCard(e);
+  assert.equal(li.business_name, 'אינסטלציה דני');
+  assert.equal(li.phone_number, '0501234567');
+  assert.equal(li.cta_type, 'whatsapp', 'a mobile number: WhatsApp');
+  assert.equal(landingInputFromCard(c).cta_type, 'phone', 'a landline: a call button');
+  assert.ok(isMobile('+972-50-123-4567') && !isMobile('03-5551234') && !isMobile(''));
+  assert.equal(li.vibe, 'אינסטלטור, שירותי ביוב');
+  assert.ok(li.user_provided_text.includes('- החלפת ברזים: כולל אספקה') && li.user_provided_text.includes('אזורי שירות: בני ברק'));
+  assert.ok(li.about_business.includes('אינסטלטור מוסמך') && li.about_business.includes('מגיעים תוך שעה'));
+  assert.equal(li.business_hours.split('\n')[0], 'יום ראשון: 08:00–18:30');
+  assert.deepEqual([li.image_source, li.enable_form, li.page_goal], ['stock', 'true', 'lead_gen']);
 
   // ── Google calls (fake fetch) ──
   const calls: Array<{ url: string; init?: any }> = [];

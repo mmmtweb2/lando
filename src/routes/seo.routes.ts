@@ -130,6 +130,12 @@ router.get('/truth', ...autoGated, auto.getCard);
 router.put('/truth', ...autoGated, auto.putCard);
 router.post('/truth/sync', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.syncCard);
 router.post('/truth/approve', ...autoGated, auto.approveCard);
+// A complete draft landing page from the card. Each call can cost an AI generation: tight limit,
+// on top of the monthly creation cap inside the creation code itself.
+const pageFromCardLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: 'יותר מדי בקשות. נסו שוב בעוד שעה.' });
+router.post('/truth/landing', pageFromCardLimiter, requireAuth, requireProduct('seo_autopilot'), auto.createPageFromCard);
+router.get('/truth/phrases', ...autoGated, auto.getPhrases);
+router.post('/truth/phrases', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.createPhrasePage);
 router.get('/automation', ...autoGated, auto.getSettings);
 router.put('/automation', ...autoGated, auto.putSettings);
 router.get('/posts', ...autoGated, auto.getPosts);

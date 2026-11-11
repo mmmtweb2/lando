@@ -262,3 +262,39 @@ export function factsText(c: TruthCard): string {
     c.notes && `מה מיוחד בעסק (מפי בעל העסק): ${c.notes}`,
   ].filter(Boolean).join('\n');
 }
+
+// ── A landing page from the card (docs/mvp-plan.md, C1) ──────────────────────
+
+export interface LandingInput {
+  business_name: string; phone_number: string; vibe: string; image_source: 'stock';
+  address: string; business_hours: string; about_business: string; user_provided_text: string;
+  enable_form: 'true'; cta_type: 'whatsapp' | 'phone'; page_goal: 'lead_gen';
+}
+
+/** An Israeli mobile number (05x…, +9725x…): WhatsApp works on it. A landline gets a call button. */
+export const isMobile = (phone: string): boolean => /^(?:\+?972|0)5\d{8}$/.test(phone.replace(/[^\d+]/g, ''));
+
+/**
+ * The same fields the page wizard collects, filled from the approved card, so that one press
+ * creates a complete draft: the customer only reads it and presses publish. Everything the page
+ * writer may state comes from here; it invents nothing (same rule as the wizard's writer).
+ */
+export function landingInputFromCard(c: TruthCard): LandingInput {
+  const services = c.services.map((s) => (s.description ? `${s.name}: ${s.description}` : s.name));
+  return {
+    business_name: c.name.slice(0, 120),
+    phone_number: c.phone.replace(/[^\d+]/g, '').slice(0, 20),
+    vibe: [c.category, ...c.categories.slice(0, 2)].filter(Boolean).join(', ').slice(0, 200) || c.name,
+    image_source: 'stock',
+    address: c.address,
+    business_hours: DAYS.map((d) => { const h = c.hours.filter((x) => x.day === d).map((x) => `${x.open}–${x.close}`).join(', '); return h ? `יום ${DAY_HE[d]}: ${h}` : ''; }).filter(Boolean).join('\n').slice(0, 500),
+    about_business: [c.description, c.notes].filter(Boolean).join('\n\n').slice(0, 1500),
+    user_provided_text: [
+      services.length ? `השירותים שלנו:\n${services.map((s) => `- ${s}`).join('\n')}` : '',
+      c.areas.length ? `אזורי שירות: ${c.areas.join(', ')}` : '',
+    ].filter(Boolean).join('\n\n').slice(0, 3000),
+    enable_form: 'true',
+    cta_type: isMobile(c.phone) ? 'whatsapp' : 'phone',
+    page_goal: 'lead_gen',
+  };
+}
