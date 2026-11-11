@@ -4,7 +4,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'node:assert/strict';
 import { unsubscribeApply, unsubscribePage } from '../src/controllers/digest.controller';
 import {
-  bounds, buildDigest, digestEnabled, inSendWindow, signUnsub, suggestion, sweepDigests, unsubUrl, verifyUnsub,
+  bounds, buildDigest, didLines, digestEnabled, googleLines, inSendWindow, signUnsub, suggestion, sweepDigests, unsubUrl, verifyUnsub,
   type DigestStats, type Mail, type SweepDeps,
 } from '../src/services/digest.service';
 import { supabase } from '../src/config/supabase';
@@ -45,6 +45,17 @@ assert.ok(m.html.includes('3 בקשות ביקורת') && m.html.includes('3 פ�
 assert.ok(m.html.includes('href="https://x.co/u?t=1"') && m.text.includes('https://x.co/u?t=1'), 'unsubscribe link in html and text');
 assert.ok(!m.html.includes('<נעמי>') && m.html.includes('&lt;נעמי&gt;'), 'business name escaped');
 assert.ok(buildDigest(st({ inquiries: 1 }), 'u').subject.includes('פנייה אחת'));
+// What we did, and how people reached the business: shown only when there is something true to show.
+assert.deepEqual(didLines(st()), []);
+assert.deepEqual(googleLines(st({ google: { calls: 0, directions: 0, website: 0, impressions: 0 } })), []);
+const rich = st({ did: { posts: 4, replies: 1, pages: 0, waiting: 2 }, google: { calls: 12, directions: 1, website: 0, impressions: 1830 } });
+assert.deepEqual(didLines(rich), ['פרסמנו 4 פוסטים בכרטיס העסק שלכם בגוגל.', 'ענינו על ביקורת אחת.', '2 טיוטות תשובה מחכות לאישור שלכם.']);
+assert.equal(googleLines(rich).length, 3, 'zero website clicks is not listed');
+assert.ok(googleLines(rich)[1] === '12 אנשים לחצו על כפתור החיוג.' && googleLines(rich)[2] === 'אדם אחד ביקש הוראות הגעה.');
+const rm = buildDigest(rich, 'u');
+assert.ok(rm.html.includes('מה עשינו בשבילכם') && rm.html.includes('איך הגיעו אליכם') && rm.text.includes('- ענינו על ביקורת אחת.'));
+assert.ok(suggestion(rich).includes('מחכות לאישור'), 'drafts that wait are the next step');
+assert.ok(!buildDigest(st(), 'u').html.includes('מה עשינו בשבילכם'), 'an account without the automatic product gets the old email');
 assert.ok(buildDigest(st({ inquiries: 0, inquiriesBefore: 0 }), 'u').html.includes('0'));
 
 // ── sweep: switch, window, once per month, failure releases the claim ──

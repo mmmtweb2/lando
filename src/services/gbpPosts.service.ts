@@ -44,10 +44,12 @@ export interface SweepDeps {
   write(card: TruthCard, system: string, prompt: string): Promise<string | null>;
   create(row: Pick<PostRow, 'owner_email' | 'location_name' | 'week_key' | 'topic' | 'body' | 'cta' | 'publish_after'>): Promise<PostRow | null>;
   due(email: string, now: Date): Promise<PostRow[]>;
-  claim(id: string): Promise<boolean>;
+  /** scheduled -> publishing, atomically. Returns the row AS IT IS NOW (the owner may have just edited it), or null when it is no longer scheduled. */
+  claim(id: string): Promise<PostRow | null>;
   send(email: string, row: PostRow, website: string): Promise<string | null>;
   finish(id: string, patch: Partial<PostRow> & { google_name?: string | null }): Promise<void>;
-  expire(email: string, before: Date): Promise<void>;
+  /** Housekeeping for one account: see `tidy` below. */
+  tidy(email: string, location: string, keepId: string | null, now: Date): Promise<void>;
   log: typeof logActivity;
 }
 export interface SweepResult { accounts: number; planned: number; published: number; waiting: number; failed: number }
@@ -64,54 +66,74 @@ export async function writePost(card: TruthCard, recent: PostRow[], write: Sweep
   return body ? { topic: topic.key, body } : null;
 }
 
+/**
+ * Records a post Google already accepted. A database hiccup here must NEVER send the post again:
+ * we retry the write, and if it still fails the row stays `publishing`, which no sweep re-sends
+ * (`tidy` later closes it as failed, never as scheduled).
+ */
+async function recordPublished(deps: Pick<SweepDeps, 'finish'>, id: string, name: string | null, now: Date, extra: Partial<PostRow> = {}): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    try { await deps.finish(id, { status: 'published', published_at: now.toISOString(), google_name: name, last_error: null, ...extra }); return; } catch (e) {
+      if (i === 2) console.error('[POSTS] ALERT a post was published but could not be recorded; it will not be sent again', { id, error: e instanceof Error ? e.message.slice(0, 120) : 'unknown' });
+    }
+  }
+}
+
 export async function sweepPosts(now = new Date(), deps: SweepDeps = realDeps): Promise<SweepResult> {
   const out: SweepResult = { accounts: 0, planned: 0, published: 0, waiting: 0, failed: 0 };
   if (!autopilotEnabled()) return out;
-  for (const email of (await deps.accounts(now)).slice(0, MAX_ACCOUNTS_PER_SWEEP)) {
+  const accounts = await deps.accounts(now);
+  if (accounts.length > MAX_ACCOUNTS_PER_SWEEP) console.warn(`[POSTS] ${accounts.length} accounts, only ${MAX_ACCOUNTS_PER_SWEEP} are served per sweep`);
+  for (const email of accounts.slice(0, MAX_ACCOUNTS_PER_SWEEP)) {
     out.accounts++;
     try {
       const ctx = await deps.context(email);
       if (!ctx || ctx.mode === 'off') continue;
-      await deps.expire(email, new Date(now.getTime() - STALE_DAYS * 24 * HOUR));
 
-      // 1. This week's post, once.
+      // 1. This week's post, once. It replaces any older post that is still waiting: there is one
+      //    "post of the week", never a queue that could later go out all at once.
       const wk = weekKey(now);
+      let fresh: string | null = null;
       if (!ctx.recent.some((r) => r.week_key === wk)) {
         const w = await writePost(ctx.card, ctx.recent, deps.write);
         if (w) {
           const row = await deps.create({ owner_email: email, location_name: ctx.location, week_key: wk, topic: w.topic, body: w.body, cta: ctaFor(ctx.card), publish_after: publishAfter(now).toISOString() });
           if (row) {
+            fresh = row.id;
             out.planned++;
             await deps.log(email, 'post_planned', 'כתבנו את הפוסט השבועי לכרטיס העסק שלכם', ctx.mode === 'auto' ? 'הוא יתפרסם בעוד יומיים. עד אז אפשר לקרוא, לערוך או לעצור אותו.' : 'הוא מחכה לאישור שלכם.', `post:${row.id}`);
           }
         }
       }
+      await deps.tidy(email, ctx.location, fresh, now);
 
-      // 2. Publish what is due.
-      for (const p of await deps.due(email, now)) {
-        // Not approved by the owner: only in auto mode, and never at a quiet time. A post the owner
-        // already approved (publish pressed while Google was unavailable) goes out as soon as it can.
-        if (!p.approved && (ctx.mode !== 'auto' || quietNow(now))) { out.waiting++; continue; }
-        if (!(await deps.claim(p.id))) continue;
-        try {
-          const name = await deps.send(email, p, ctx.card.website);
-          await deps.finish(p.id, { status: 'published', published_at: now.toISOString(), google_name: name, last_error: null });
-          out.published++;
-          await deps.log(email, 'post_published', 'פרסמנו פוסט בכרטיס העסק שלכם בגוגל', p.body.slice(0, 160), `published:${p.id}`);
-          void recordHeartbeat('gbp_google', null);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const quota = /http_429/.test(msg);
-          const attempts = p.attempts + (quota ? 0 : 1);
-          const dead = attempts >= MAX_ATTEMPTS || (e instanceof GbpError && e.code === 'revoked');
-          await deps.finish(p.id, {
-            status: dead ? 'failed' : 'scheduled', attempts, last_error: quota ? 'google quota pending' : msg.slice(0, 200),
-            ...(dead ? {} : { publish_after: new Date(now.getTime() + RETRY_HOURS * HOUR).toISOString() }),
-          });
-          if (quota) out.waiting++; else out.failed++;
-          void recordHeartbeat('gbp_google', quota ? 'google quota pending' : msg.slice(0, 120));
-        }
+      // 2. Publish what is due: one post per account per sweep, the newest.
+      const due = (await deps.due(email, now)).filter((p) => p.location_name === ctx.location);
+      const next = due.find((p) => p.approved) ?? due[0];
+      if (!next) continue;
+      // Not approved by the owner: only in auto mode, and never at a quiet time. A post the owner
+      // already approved (publish pressed while Google was unavailable) goes out as soon as it can.
+      if (!next.approved && (ctx.mode !== 'auto' || quietNow(now))) { out.waiting++; continue; }
+      const p = await deps.claim(next.id);
+      if (!p) continue;
+      let name: string | null;
+      try { name = await deps.send(email, p, ctx.card.website); } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const quota = /http_429/.test(msg);
+        const attempts = p.attempts + (quota ? 0 : 1);
+        const dead = attempts >= MAX_ATTEMPTS || (e instanceof GbpError && e.code === 'revoked');
+        await deps.finish(p.id, {
+          status: dead ? 'failed' : 'scheduled', attempts, last_error: quota ? 'google quota pending' : msg.slice(0, 200),
+          ...(dead ? {} : { publish_after: new Date(now.getTime() + RETRY_HOURS * HOUR).toISOString() }),
+        });
+        if (quota) out.waiting++; else out.failed++;
+        void recordHeartbeat('gbp_google', quota ? 'google quota pending' : msg.slice(0, 120));
+        continue;
       }
+      await recordPublished(deps, p.id, name, now);
+      out.published++;
+      await deps.log(email, 'post_published', 'פרסמנו פוסט בכרטיס העסק שלכם בגוגל', p.body.slice(0, 160), `published:${p.id}`);
+      void recordHeartbeat('gbp_google', null);
     } catch (e) {
       out.failed++;
       console.error('[POSTS] one account failed:', e instanceof Error ? e.message.slice(0, 160) : 'unknown');
@@ -180,24 +202,46 @@ const realDeps: SweepDeps = {
     return (data as PostRow | null) ?? null;
   },
   async due(email, now) {
-    const { data, error } = await supabase.from('gbp_posts').select(COLS).eq('owner_email', email).eq('status', 'scheduled').lte('publish_after', now.toISOString()).order('publish_after', { ascending: true }).limit(3);
+    const { data, error } = await supabase.from('gbp_posts').select(COLS).eq('owner_email', email).eq('status', 'scheduled').lte('publish_after', now.toISOString()).order('created_at', { ascending: false }).limit(5);
     if (error) throw new Error(error.message);
     return (data ?? []) as PostRow[];
   },
   async claim(id) {
-    const { data, error } = await supabase.from('gbp_posts').update({ status: 'publishing', updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'scheduled').select('id');
+    const { data, error } = await supabase.from('gbp_posts').update({ status: 'publishing', updated_at: new Date().toISOString() }).eq('id', id).eq('status', 'scheduled').select(COLS);
     if (error) throw new Error(error.message);
-    return (data ?? []).length === 1;
+    return ((data ?? []) as PostRow[])[0] ?? null;
   },
-  send: sendToGoogle,
+  async send(email, row, website) {
+    try { return await sendToGoogle(email, row, website); } catch (e) {
+      if (e instanceof GbpError && e.code === 'revoked') await markNeedsReconnect(email, 'revoked').catch(() => undefined);
+      throw e;
+    }
+  },
   async finish(id, patch) {
     const { error } = await supabase.from('gbp_posts').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw new Error(error.message);
   },
-  async expire(email, before) {
-    const { error } = await supabase.from('gbp_posts').update({ status: 'skipped', last_error: 'not approved in time' })
-      .eq('owner_email', email).eq('status', 'scheduled').lt('publish_after', before.toISOString());
-    if (error && !missing(error)) throw new Error(error.message);
+  /**
+   * Keeps one account's rows honest. Best effort, each step on its own:
+   *   • a row left in `publishing` for over half an hour (a crash between the Google call and the
+   *     database write) is closed as failed. We do not know if Google got it, and a missing post
+   *     is better than the same post twice;
+   *   • waiting posts for a location that is no longer the connected one are dropped;
+   *   • when a new weekly post was just written (`keepId`), older posts still waiting for approval
+   *     are dropped, and so is anything waiting longer than STALE_DAYS. Posts the owner approved stay.
+   */
+  async tidy(email, location, keepId, now) {
+    const iso = now.toISOString();
+    const run = async (label: string, q: PromiseLike<{ error: { message: string; code?: string } | null }>) => {
+      const { error } = await q;
+      if (error && !missing(error)) console.error(`[POSTS] tidy ${label} failed:`, error.message.slice(0, 120));
+    };
+    const mine = () => supabase.from('gbp_posts').update({ status: 'skipped', updated_at: iso }).eq('owner_email', email).eq('status', 'scheduled');
+    await run('stuck', supabase.from('gbp_posts').update({ status: 'failed', last_error: 'interrupted while publishing', updated_at: iso })
+      .eq('owner_email', email).eq('status', 'publishing').lt('updated_at', new Date(now.getTime() - HOUR / 2).toISOString()));
+    await run('location', mine().neq('location_name', location));
+    await run('stale', mine().eq('approved', false).lt('created_at', new Date(now.getTime() - STALE_DAYS * 24 * HOUR).toISOString()));
+    if (keepId) await run('superseded', mine().eq('approved', false).neq('id', keepId));
   },
   log: logActivity,
 };
@@ -263,29 +307,34 @@ export async function skipPost(email: string, id: string): Promise<void> {
   const p = await getOwned(email, id);
   if (p.status === 'skipped') return;
   if (p.status !== 'scheduled') throw new PostError('not_scheduled');
-  const { error } = await supabase.from('gbp_posts').update({ status: 'skipped', updated_at: new Date().toISOString() }).eq('id', id).eq('owner_email', email).eq('status', 'scheduled');
+  const { data, error } = await supabase.from('gbp_posts').update({ status: 'skipped', updated_at: new Date().toISOString() })
+    .eq('id', id).eq('owner_email', email).eq('status', 'scheduled').select('id');
   if (error) throw new Error(error.message);
+  // Nothing changed: the sweep took the post for publishing in the same moment. Say so instead of "stopped".
+  if (!(data ?? []).length) throw new PostError('not_scheduled');
   await logActivity(email, 'post_skipped', 'עצרתם את הפוסט של השבוע', null, `skipped:${id}`);
 }
 
 /** "פרסמו עכשיו": the owner's explicit approval, so no waiting window and no quiet hours. */
 export async function publishNow(email: string, id: string, now = new Date()): Promise<PostView> {
-  const p = await getOwned(email, id);
-  if (p.status === 'published') return toView(p);
-  if (p.status !== 'scheduled') throw new PostError('not_scheduled');
-  if (!(await realDeps.claim(id))) throw new PostError('not_scheduled');
-  try {
-    const name = await sendToGoogle(email, p, (await cardOf(email)).website);
-    await realDeps.finish(id, { status: 'published', approved: true, published_at: now.toISOString(), google_name: name, last_error: null });
-    await logActivity(email, 'post_published', 'פרסמתם פוסט בכרטיס העסק שלכם בגוגל', p.body.slice(0, 160), `published:${id}`);
-    return toView({ ...p, status: 'published', published_at: now.toISOString() });
-  } catch (e) {
+  const seen = await getOwned(email, id);
+  if (seen.status === 'published') return toView(seen);
+  if (seen.status !== 'scheduled') throw new PostError('not_scheduled');
+  // A post written for a business that is no longer the connected one is never sent anywhere.
+  if ((await getConnection(email))?.location_name !== seen.location_name) throw new PostError('not_scheduled');
+  const p = await realDeps.claim(id);   // the row as it is now, including an edit saved a moment ago
+  if (!p || p.owner_email !== email) throw new PostError('not_scheduled');
+  let name: string | null;
+  try { name = await realDeps.send(email, p, (await cardOf(email)).website); } catch (e) {
     const quota = e instanceof GbpError && /http_429/.test(e.message);
-    // Back to scheduled and marked approved: the sweep publishes it as soon as Google lets us.
-    await realDeps.finish(id, { status: 'scheduled', approved: true, last_error: quota ? 'google quota pending' : (e instanceof Error ? e.message.slice(0, 200) : 'unknown') }).catch(() => undefined);
-    if (e instanceof GbpError && e.code === 'revoked') { await markNeedsReconnect(email, 'revoked').catch(() => undefined); throw new PostError('not_connected'); }
+    // Back to scheduled, marked approved and due now: the next sweep publishes it as soon as Google lets us.
+    await realDeps.finish(id, { status: 'scheduled', approved: true, publish_after: now.toISOString(), last_error: quota ? 'google quota pending' : (e instanceof Error ? e.message.slice(0, 200) : 'unknown') }).catch(() => undefined);
+    if (e instanceof GbpError && e.code === 'revoked') throw new PostError('not_connected');
     if (quota) throw new PostError('quota_pending');
     console.error('[POSTS] publish now failed:', e instanceof Error ? e.message.slice(0, 160) : 'unknown');
     throw new PostError('google');
   }
+  await recordPublished(realDeps, id, name, now, { approved: true });
+  await logActivity(email, 'post_published', 'פרסמתם פוסט בכרטיס העסק שלכם בגוגל', p.body.slice(0, 160), `published:${id}`);
+  return toView({ ...p, status: 'published', published_at: now.toISOString() });
 }

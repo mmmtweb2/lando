@@ -96,7 +96,7 @@ export function cleanPost(raw: unknown, c: TruthCard): string | null {
   if (typeof raw !== 'string') return null;
   let t = raw.replace(/```[\s\S]*?```/g, ' ').replace(/[*_#`>]+/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   t = t.replace(/^["'״“”]+|["'״“”]+$/g, '').trim();
-  if (/https?:\/\/|www\.|\S+@\S+\.\S+/i.test(t)) return null;
+  if (/https?:\/\/|www\.|\S+@\S+\.\S+/i.test(t) || BARE_DOMAIN.test(t)) return null;
   if (BANNED.test(t)) return null;
   const digits = (s: string) => s.replace(/\D/g, '');
   const own = digits(c.phone);
@@ -109,6 +109,9 @@ export function cleanPost(raw: unknown, c: TruthCard): string | null {
   }
   return t.length >= MIN_POST_LEN && t.length <= MAX_POST_LEN ? t : null;
 }
+
+/** "example.co.il" with no scheme: still a link once it is on a public profile. */
+export const BARE_DOMAIN = /\b[a-z0-9-]{2,}\.(?:co\.il|org\.il|net\.il|com|net|org|io|il|me|info|biz|app|shop|store|site|online|xyz|link|ly|co)\b/i;
 
 /** Promises and boasts we never put in a customer's mouth ("קידום הוגן"). */
 const BANNED = /הכי (טוב|זול|מקצועי|מהיר)|מספר\s*1\b|מס['׳]?\s*1\b|הטובים? ביותר|הזולים? ביותר|מובטח|באחריות מלאה|ללא תחרות|100\s*%|בלעדי/;
