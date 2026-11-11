@@ -74,9 +74,42 @@ export function bounds(now: Date): Bounds {
 export const inSendWindow = (now: Date) => { const d = bounds(now).dayOfMonth; return d >= SEND_FROM_DAY && d <= SEND_UNTIL_DAY; };
 
 // ─── What goes in the email ─────────────────────────────────────────────────
-export interface DigestStats { businessName: string | null; prevLabel: string; inquiries: number; inquiriesBefore: number; reviewAsks: number }
+export interface DigestStats {
+  businessName: string | null; prevLabel: string; inquiries: number; inquiriesBefore: number; reviewAsks: number;
+  /** What WE did during the month (from the activity log, migration 048). Absent for accounts without the automatic product. */
+  did?: { posts: number; replies: number; pages: number; waiting: number };
+  /** What people did on the Google card in the last 30 days (Google's own numbers). Absent when Google is not connected or not answering. */
+  google?: { calls: number; directions: number; website: number; impressions: number };
+}
+
+const n = (count: number, one: string, many: string) => (count === 1 ? one : `${count} ${many}`);
+
+/** "מה עשינו בשבילכם": one line per kind of work, only what actually happened. */
+export function didLines(s: DigestStats): string[] {
+  const d = s.did;
+  if (!d) return [];
+  const out: string[] = [];
+  if (d.posts) out.push(`פרסמנו ${n(d.posts, 'פוסט אחד', 'פוסטים')} בכרטיס העסק שלכם בגוגל.`);
+  if (d.replies) out.push(`ענינו על ${n(d.replies, 'ביקורת אחת', 'ביקורות')}.`);
+  if (d.pages) out.push(`יצרנו ${n(d.pages, 'דף אחד', 'דפים')} שמכוונים לחיפושים של לקוחות באזור שלכם.`);
+  if (d.waiting) out.push(`${n(d.waiting, 'טיוטת תשובה אחת מחכה', 'טיוטות תשובה מחכות')} לאישור שלכם.`);
+  return out;
+}
+
+/** "איך הגיעו אליכם": what people did on the card, in plain words. Empty when there is nothing to tell. */
+export function googleLines(s: DigestStats): string[] {
+  const g = s.google;
+  if (!g || g.calls + g.directions + g.website + g.impressions === 0) return [];
+  const out: string[] = [];
+  if (g.impressions) out.push(`כרטיס העסק שלכם הוצג ${g.impressions.toLocaleString('he-IL')} פעמים בחיפוש ובמפות.`);
+  if (g.calls) out.push(`${n(g.calls, 'אדם אחד לחץ', 'אנשים לחצו')} על כפתור החיוג.`);
+  if (g.directions) out.push(`${n(g.directions, 'אדם אחד ביקש', 'אנשים ביקשו')} הוראות הגעה.`);
+  if (g.website) out.push(`${n(g.website, 'אדם אחד נכנס', 'אנשים נכנסו')} לאתר מהכרטיס.`);
+  return out;
+}
 
 export function suggestion(s: DigestStats): string {
+  if (s.did?.waiting) return 'יש תשובות לביקורות שמחכות לאישור שלכם בדשבורד. תשובה מהירה לביקורת, גם לא טובה, מראה ללקוחות שאכפת לכם.';
   if (!s.businessName) return 'חברו את העסק בלשונית "הפרופיל שלי", וקבלו בדיקה מול המתחרים באזור.';
   if (s.inquiries === 0) return 'עוד לא נספרו פניות. כדאי לוודא שהמעקב מחובר לאתר ולשתף ללקוחות את הקישור לביקורת.';
   if (s.reviewAsks === 0) return 'בקשו ביקורת מכמה לקוחות, בלשונית "ביקורות". ביקורות חדשות עוזרות ללקוחות להחליט למי לפנות.';
@@ -99,7 +132,10 @@ export function buildDigest(s: DigestStats, unsub: string): { subject: string; h
   const delta = deltaLine(s);
   const asks = s.reviewAsks === 0 ? 'לא נשלחו בקשות ביקורת.' : `נשלחו ${s.reviewAsks === 1 ? 'בקשת ביקורת אחת' : `${s.reviewAsks} בקשות ביקורת`}.`;
   const tip = suggestion(s);
-  const text = `סיכום ${s.prevLabel} ל${name}\n\n${inquiriesLine(s)}. ${delta}\n${asks}\n\nהצעד הבא: ${tip}\n\nלדשבורד: ${APP_URL}/dashboard\n\nלא רוצים לקבל סיכומים והתראות במייל? ${unsub}`;
+  const did = didLines(s), goog = googleLines(s);
+  const extra = `${did.length ? `\nמה עשינו בשבילכם:\n${did.map((l) => `- ${l}`).join('\n')}\n` : ''}${goog.length ? `\nאיך הגיעו אליכם (30 הימים האחרונים, לפי גוגל):\n${goog.map((l) => `- ${l}`).join('\n')}\n` : ''}`;
+  const list = (title: string, lines: string[]) => (lines.length ? `<p style="margin:0 0 4px;font-weight:700">${esc(title)}</p><ul style="margin:0 0 14px;padding:0 18px 0 0">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '');
+  const text = `סיכום ${s.prevLabel} ל${name}\n\n${inquiriesLine(s)}. ${delta}\n${extra}${asks}\n\nהצעד הבא: ${tip}\n\nלדשבורד: ${APP_URL}/dashboard\n\nלא רוצים לקבל סיכומים והתראות במייל? ${unsub}`;
   const html = `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1e293b;line-height:1.6">
   <h2 style="margin:0 0 4px;font-size:20px">סיכום ${esc(s.prevLabel)}: ${esc(name)}</h2>
   <p style="margin:0 0 16px;color:#64748b;font-size:14px">הקידום שלכם בגוגל, בקצרה.</p>
@@ -107,6 +143,7 @@ export function buildDigest(s: DigestStats, unsub: string): { subject: string; h
     <div style="font-size:28px;font-weight:700">${s.inquiries}</div>
     <div>${esc(inquiriesLine(s))}${delta ? `<br><span style="color:#64748b;font-size:14px">${esc(delta)}</span>` : ''}</div>
   </div>
+  ${list('מה עשינו בשבילכם', did)}${list('איך הגיעו אליכם (30 הימים האחרונים, לפי גוגל)', goog)}
   <p style="margin:0 0 12px">${esc(asks)}</p>
   <p style="margin:0 0 16px"><b>הצעד הבא:</b> ${esc(tip)}</p>
   <p style="margin:0 0 24px"><a href="${esc(APP_URL)}/dashboard" style="background:#2E63F6;color:#fff;border-radius:8px;padding:10px 18px;text-decoration:none;font-weight:600;display:inline-block">לדשבורד</a></p>
@@ -135,6 +172,34 @@ async function countInquiries(email: string, fromIso: string, toIso: string): Pr
   return res.reduce((n, r) => n + (r.count ?? 0), 0);
 }
 
+/** Counts of our own work in the month, from the activity log. Null when the account has none (or before migration 048). */
+async function didInMonth(email: string, from: Date, to: Date): Promise<DigestStats['did'] | null> {
+  const [{ data, error }, { count: waiting }] = await Promise.all([
+    supabase.from('seo_activity').select('kind').eq('owner_email', email).gte('created_at', from.toISOString()).lt('created_at', to.toISOString()).limit(2000),
+    supabase.from('review_reply_drafts').select('id', { count: 'exact', head: true }).eq('owner_email', email).eq('status', 'pending'),
+  ]);
+  if (error) return null;
+  const kinds = ((data ?? []) as { kind: string }[]).map((r) => r.kind);
+  const c = (k: string) => kinds.filter((x) => x === k).length;
+  const did = { posts: c('post_published'), replies: c('reply_published'), pages: c('page_created'), waiting: waiting ?? 0 };
+  return did.posts + did.replies + did.pages + did.waiting ? did : null;
+}
+
+/** Google's numbers for the card, best effort: any failure (not connected, quota, network) simply leaves the block out. */
+async function googleTotals(email: string, now: Date): Promise<DigestStats['google'] | null> {
+  try {
+    const { accessFor } = await import('./reviewAlerts.service');
+    const { getConnection } = await import('./gbpStore');
+    const { fetchTotals } = await import('./gbpGoogle');
+    const c = await getConnection(email);
+    if (!c?.location_name || c.status !== 'active') return null;
+    const access = await accessFor(email);
+    if (!access) return null;
+    const { totals } = await fetchTotals(access, c.location_name, now);
+    return { calls: totals.calls, directions: totals.directions, website: totals.website, impressions: totals.impressions };
+  } catch { return null; }
+}
+
 export async function gatherStats(email: string, now = new Date()): Promise<DigestStats> {
   const b = bounds(now);
   const { data: biz } = await supabase.from('seo_businesses').select('name').eq('owner_email', email).order('created_at', { ascending: true }).limit(1);
@@ -143,7 +208,11 @@ export async function gatherStats(email: string, now = new Date()): Promise<Dige
     countInquiries(email, b.beforeStart.toISOString(), b.prevStart.toISOString()),
     supabase.from('review_requests').select('id', { count: 'exact', head: true }).eq('owner_email', email).gte('sent_at', b.prevStart.toISOString()).lt('sent_at', b.prevEnd.toISOString()),
   ]);
-  return { businessName: ((biz ?? []) as { name: string }[])[0]?.name ?? null, prevLabel: b.prevLabel, inquiries: inq, inquiriesBefore: before, reviewAsks: asks.count ?? 0 };
+  const [did, google] = await Promise.all([didInMonth(email, b.prevStart, b.prevEnd), googleTotals(email, now)]);
+  return {
+    businessName: ((biz ?? []) as { name: string }[])[0]?.name ?? null, prevLabel: b.prevLabel, inquiries: inq, inquiriesBefore: before, reviewAsks: asks.count ?? 0,
+    ...(did ? { did } : {}), ...(google ? { google } : {}),
+  };
 }
 
 export async function listRecipients(now = new Date()): Promise<string[]> {
