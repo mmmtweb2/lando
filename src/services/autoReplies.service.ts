@@ -10,9 +10,12 @@
 //   • Idempotent: the (owner_email, review_id) row in review_reply_drafts is claimed BEFORE the
 //     Google call; a review is handled once, ever. If publishing fails the row stays a pending
 //     draft and the owner can publish it from the dashboard.
-//   • The reviewer's text is untrusted input: it goes to the model inside <data>, and whatever the
-//     model returns passes `cleanReply` (no links, no numbers, no promises, short) or is replaced
-//     by a plain thank-you.
+//   • The reviewer's text is untrusted input, written by a stranger. A reply that is published
+//     with no person in between is therefore NEVER written by a model that read it: it is one of
+//     our own thank-you sentences, with the reviewer's first name and, when the review names one
+//     of the business's own services, that service. A model writes only DRAFTS, which the owner
+//     reads before anything is published, and its text still passes `cleanReply`.
+//   • Like posts, nothing is published by us on Shabbat or at night.
 //   • Stores no review text (same rule as migration 038).
 //   • UNVERIFIED against live Google until API access exists: covered by tests with fake responses.
 
@@ -24,6 +27,7 @@ import { accessFor, draftReply, firstName } from './reviewAlerts.service';
 import { isEntitled } from './entitlements.service';
 import { recordHeartbeat, withHeartbeat } from './opsMetrics.service';
 import { type RepliesMode, autopilotEnabled, getAutomation, logActivity, missingTable } from './automation.service';
+import { BARE_DOMAIN, quietNow } from './gbpPosts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -55,23 +59,45 @@ const THANKS = [
   'תודה שלקחתם רגע לכתוב לנו, זה ממש משמח. נשמח לעמוד לשירותכם גם בפעם הבאה.',
   'איזה כיף לקרוא, תודה רבה! שמחנו לתת שירות ומחכים לכם תמיד.',
   'תודה על הפרגון! המילים שלכם נותנות לנו הרבה כוח להמשיך. נתראה בפעם הבאה.',
+  'תודה רבה! משמח מאוד לשמוע שיצאתם מרוצים. אנחנו כאן לכל דבר שתצטרכו.',
+  'תודה על הביקורת! חשוב לנו לדעת שהשירות היה טוב, ונשמח לעזור גם בהמשך.',
+];
+const THANKS_FOR = [
+  'תודה רבה על הביקורת! שמחים לשמוע שהייתם מרוצים מהשירות של {s}, ונשמח לעזור גם בפעם הבאה.',
+  'תודה שכתבתם לנו! משמח לדעת ש{s} אצלנו ענה על הציפיות. אנחנו כאן לכל דבר שתצטרכו.',
+  'איזה כיף לקרוא, תודה! שמחנו לתת לכם שירות של {s}, ומחכים לכם תמיד.',
 ];
 
-/** A plain thank-you that varies from review to review, so a profile is not a wall of one sentence. */
-export function thanks(r: Pick<GbpReview, 'id' | 'reviewer'>, business: string): string {
+/**
+ * The service the reviewer named, if it is one of the business's own (from the approved card).
+ * A plain text match on OUR list: nothing the reviewer wrote is copied into the reply.
+ */
+export function mentionedService(reviewText: string, services: string[]): string | null {
+  const t = reviewText.replace(/\s+/g, ' ');
+  return [...services].sort((a, b) => b.length - a.length).find((s) => s.trim().length >= 3 && t.includes(s.trim())) ?? null;
+}
+
+/**
+ * The reply we publish by ourselves. Built only from our own sentences, the reviewer's first name
+ * and the name of a service from the business's card: no model, and no words of the reviewer's.
+ * It varies from review to review, so a profile is not a wall of one sentence.
+ */
+export function thanks(r: Pick<GbpReview, 'id' | 'reviewer'> & { text?: string }, business: string, services: string[] = []): string {
   let h = 0;
   for (const ch of r.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const who = firstName(r.reviewer);
-  return `${who ? `${who}, ` : ''}${THANKS[h % THANKS.length]} צוות ${business.trim().slice(0, 60) || 'העסק'}`;
+  const svc = mentionedService(r.text ?? '', services);
+  const body = svc ? THANKS_FOR[h % THANKS_FOR.length].replace('{s}', svc) : THANKS[h % THANKS.length];
+  return `${who ? `${who}, ` : ''}${body} צוות ${business.trim().slice(0, 60) || 'העסק'}`;
 }
 
 const BANNED = /https?:\/\/|www\.|@|\d|מובטח|פיצוי|החזר|הנחה|מתנה|בחינם|חינם|קופון/;
 
-/** The model's reply, or null when it must not be published as is. */
+/** A model's DRAFT (the owner reads it before it is published), or null when it must not even be offered. */
 export function cleanReply(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const t = raw.replace(/[*_#`>]+/g, '').replace(/\s+/g, ' ').replace(/^["'״“”]+|["'״“”]+$/g, '').trim();
-  return t.length >= 15 && t.length <= MAX_REPLY && !BANNED.test(t) ? t : null;
+  return t.length >= 15 && t.length <= MAX_REPLY && !BANNED.test(t) && !BARE_DOMAIN.test(t) ? t : null;
 }
 
 export const REPLY_SYSTEM = `You write the business owner's public reply to a Google review, in Hebrew.
@@ -94,7 +120,7 @@ export function replyPrompt(r: GbpReview, business: string): string {
 export interface ReplyDeps {
   accounts(now: Date): Promise<string[]>;
   mode(email: string): Promise<RepliesMode>;
-  reviews(email: string): Promise<{ reviews: GbpReview[]; account: string; location: string; business: string } | null>;
+  reviews(email: string): Promise<{ reviews: GbpReview[]; account: string; location: string; business: string; services: string[] } | null>;
   handled(email: string, ids: string[]): Promise<Set<string>>;
   write(system: string, prompt: string): Promise<string | null>;
   /** Inserts the row; false when another run already has it. */
@@ -105,18 +131,21 @@ export interface ReplyDeps {
 }
 export interface ReplySweepResult { accounts: number; published: number; drafted: number; failed: number }
 
-async function textFor(r: GbpReview, business: string, write: ReplyDeps['write']): Promise<string> {
+/** A draft for the owner to read: the model's when it passes the checks, otherwise our own text. */
+async function draftFor(r: GbpReview, business: string, services: string[], write: ReplyDeps['write']): Promise<string> {
   let t: string | null = null;
   try { t = cleanReply(await write(REPLY_SYSTEM, replyPrompt(r, business))); } catch (e) {
     console.error('[AUTO-REPLIES] writer failed, using the plain text:', e instanceof Error ? e.message.slice(0, 120) : 'unknown');
   }
-  return t ?? (r.rating >= 4 ? thanks(r, business) : draftReply(r.rating, r.reviewer, business));
+  return t ?? (r.rating >= 4 ? thanks(r, business, services) : draftReply(r.rating, r.reviewer, business));
 }
 
 export async function sweepReplies(now = new Date(), deps: ReplyDeps = realDeps): Promise<ReplySweepResult> {
   const out: ReplySweepResult = { accounts: 0, published: 0, drafted: 0, failed: 0 };
   if (!autopilotEnabled()) return out;
-  for (const email of (await deps.accounts(now)).slice(0, MAX_ACCOUNTS_PER_SWEEP)) {
+  const accounts = await deps.accounts(now);
+  if (accounts.length > MAX_ACCOUNTS_PER_SWEEP) console.warn(`[AUTO-REPLIES] ${accounts.length} accounts, only ${MAX_ACCOUNTS_PER_SWEEP} are served per sweep`);
+  for (const email of accounts.slice(0, MAX_ACCOUNTS_PER_SWEEP)) {
     out.accounts++;
     try {
       const mode = await deps.mode(email);
@@ -130,12 +159,14 @@ export async function sweepReplies(now = new Date(), deps: ReplyDeps = realDeps)
         owner_email: email, review_id: r.id, location_name: got.location, rating: r.rating, reviewer_first: firstName(r.reviewer), review_created_at: r.createdAt, draft, auto,
       });
       for (const r of todo.drafts) {
-        if (!(await deps.claim(row(r, await textFor(r, got.business, deps.write), false)))) continue;
+        if (!(await deps.claim(row(r, await draftFor(r, got.business, got.services, deps.write), false)))) continue;
         out.drafted++;
         await deps.log(email, 'reply_drafted', `הכנו טיוטת תשובה לביקורת של ${r.rating} כוכבים`, 'היא מחכה לאישור שלכם לפני שתתפרסם.', `draft:${r.id}`);
       }
-      for (const r of todo.auto) {
-        const text = await textFor(r, got.business, deps.write);
+      // Published by us with nobody in between: our own words only, and never at a quiet time
+      // (the reviews stay untouched and the next sweep answers them).
+      for (const r of quietNow(now) ? [] : todo.auto) {
+        const text = thanks(r, got.business, got.services);
         if (!(await deps.claim(row(r, text, true)))) continue;
         try {
           await deps.send(email, got.account, got.location, r.id, text);
@@ -187,7 +218,9 @@ const realDeps: ReplyDeps = {
     if (!access || !c?.location_name) return null;
     const l = (await listLocations(access)).find((x) => x.name === c.location_name);
     if (!l?.account) return null;
-    return { reviews: await listReviews(access, l.account, l.name), account: l.account, location: l.name, business: l.title };
+    const { data } = await supabase.from('business_truth').select('card').eq('owner_email', email).maybeSingle();
+    const services = (((data as { card?: { services?: { name?: unknown }[] } } | null)?.card?.services) ?? []).map((x) => (typeof x?.name === 'string' ? x.name : '')).filter(Boolean);
+    return { reviews: await listReviews(access, l.account, l.name), account: l.account, location: l.name, business: l.title, services };
   },
   async handled(email, ids) {
     if (!ids.length) return new Set();

@@ -83,94 +83,139 @@ const GOOD = 'נזילה קטנה מתחת לכיור יכולה להפוך תו
   let sendFail: Error | null = null;
   let mode: 'auto' | 'approve' | 'off' = 'auto';
   const sent: string[] = [];
+  const sentBodies: string[] = [];
+  let finishFail = 0;
+  let clock = NOW;
   const deps: SweepDeps = {
     accounts: async () => ['a@x.co'],
     context: async (email) => ({ card, location: 'locations/1', mode, recent: rows.filter((r) => r.owner_email === email).sort((a, b) => b.created_at.localeCompare(a.created_at)) }),
     write: async () => GOOD,
     create: async (r) => {
       if (rows.some((x) => x.owner_email === r.owner_email && x.week_key === r.week_key)) return null;
-      const row: PostRow = { id: `p${rows.length + 1}`, status: 'scheduled', edited: false, approved: false, published_at: null, attempts: 0, last_error: null, created_at: NOW.toISOString(), ...r };
+      const row: PostRow = { id: `p${rows.length + 1}`, status: 'scheduled', edited: false, approved: false, published_at: null, attempts: 0, last_error: null, created_at: clock.toISOString(), ...r };
       rows.push(row); return row;
     },
     due: async (email, now) => rows.filter((r) => r.owner_email === email && r.status === 'scheduled' && r.publish_after <= now.toISOString()),
-    claim: async (id) => { const r = rows.find((x) => x.id === id)!; if (r.status !== 'scheduled') return false; r.status = 'publishing'; return true; },
-    send: async (_e, r) => { if (sendFail) throw sendFail; sent.push(r.id); return `accounts/1/locations/1/localPosts/${r.id}`; },
-    finish: async (id, patch) => { Object.assign(rows.find((x) => x.id === id)!, patch); },
-    expire: async (email, before) => { for (const r of rows) if (r.owner_email === email && r.status === 'scheduled' && r.publish_after < before.toISOString()) r.status = 'skipped'; },
+    claim: async (id) => { const r = rows.find((x) => x.id === id)!; if (r.status !== 'scheduled') return null; r.status = 'publishing'; return { ...r }; },
+    send: async (_e, r) => { if (sendFail) throw sendFail; sent.push(r.id); sentBodies.push(r.body); return `accounts/1/locations/1/localPosts/${r.id}`; },
+    finish: async (id, patch) => { if (finishFail > 0) { finishFail--; throw new Error('db down'); } Object.assign(rows.find((x) => x.id === id)!, patch); },
+    tidy: async (email, location, keepId, now) => {
+      for (const r of rows) {
+        if (r.owner_email !== email || r.status !== 'scheduled') continue;
+        const stale = !r.approved && r.created_at < new Date(now.getTime() - 14 * 86_400_000).toISOString();
+        if (r.location_name !== location || stale || (keepId && !r.approved && r.id !== keepId)) r.status = 'skipped';
+      }
+    },
     log: async (_e, kind) => { log.push(kind); },
   };
 
-  let res = await sweepPosts(NOW, deps);
+  const run = (at: Date | string, d: SweepDeps = deps) => { clock = new Date(at); return sweepPosts(clock, d); };
+  let res = await run(NOW);
   assert.deepEqual(res, { accounts: 1, planned: 1, published: 0, waiting: 0, failed: 0 }, 'the week\'s post is written and waits 48 hours');
   assert.equal(rows[0].publish_after, '2026-11-12T10:00:00.000Z');
   assert.equal(rows[0].cta, 'CALL');
-  res = await sweepPosts(new Date('2026-11-11T10:00:00Z'), deps);
+  res = await run('2026-11-11T10:00:00Z', deps);
   assert.deepEqual([res.planned, res.published], [0, 0], 'same week, not due: nothing happens');
   assert.equal(rows.length, 1);
 
-  res = await sweepPosts(new Date('2026-11-12T10:30:00Z'), deps);
+  res = await run('2026-11-12T10:30:00Z', deps);
   assert.equal(res.published, 1, 'due, auto mode, a weekday at noon: published');
   assert.deepEqual(sent, ['p1']);
   assert.equal(rows[0].status, 'published');
   assert.deepEqual(log, ['post_planned', 'post_published']);
-  res = await sweepPosts(new Date('2026-11-12T13:30:00Z'), deps);
+  res = await run('2026-11-12T13:30:00Z', deps);
   assert.equal(res.published, 0, 'a published post is never sent twice');
   assert.equal(sent.length, 1);
 
   // Shabbat: a post that falls due on Saturday waits for Sunday.
   rows = []; sent.length = 0;
-  await sweepPosts(new Date('2026-11-12T08:00:00Z'), deps);                 // Thursday -> due Saturday 10:00 Israel
-  res = await sweepPosts(new Date('2026-11-14T09:00:00Z'), deps);
+  await run('2026-11-12T08:00:00Z', deps);                 // Thursday -> due Saturday 10:00 Israel
+  res = await run('2026-11-14T09:00:00Z', deps);
   assert.deepEqual([res.published, res.waiting], [0, 1], 'nothing is published by us on Shabbat');
-  res = await sweepPosts(new Date('2026-11-15T07:00:00Z'), deps);           // Sunday 09:00 Israel
+  res = await run('2026-11-15T07:00:00Z', deps);           // Sunday 09:00 Israel
   assert.equal(res.published, 1);
   assert.equal(rows.length, 1, 'still W46: no second post');
 
   // "approve" mode: nothing goes out without the owner.
   rows = []; sent.length = 0; mode = 'approve';
-  await sweepPosts(NOW, deps);
-  res = await sweepPosts(new Date('2026-11-12T10:30:00Z'), deps);
+  await run(NOW, deps);
+  res = await run('2026-11-12T10:30:00Z', deps);
   assert.deepEqual([res.published, res.waiting], [0, 1]);
   rows[0].approved = true;                                                   // the owner pressed publish while Google was unavailable
-  res = await sweepPosts(new Date('2026-11-12T13:30:00Z'), deps);
+  res = await run('2026-11-12T13:30:00Z', deps);
   assert.equal(res.published, 1, 'an owner-approved post goes out on the next sweep');
-  rows = []; await sweepPosts(NOW, deps);
-  await sweepPosts(new Date('2026-11-30T10:30:00Z'), deps);
+  rows = []; await run(NOW, deps);
+  await run('2026-11-30T10:30:00Z', deps);
   assert.equal(rows[0].status, 'skipped', 'a post nobody approved for two weeks stops waiting');
   assert.equal(rows.length, 2, 'and the new week gets its own post');
 
   // "off": nothing is written.
   rows = []; mode = 'off';
-  res = await sweepPosts(NOW, deps);
+  res = await run(NOW, deps);
   assert.deepEqual([res.planned, rows.length], [0, 0]);
 
   // Google quota not open yet: the post stays scheduled, no attempt is counted.
   rows = []; sent.length = 0; mode = 'auto';
-  await sweepPosts(NOW, deps);
+  await run(NOW, deps);
   sendFail = new GbpError('google', 'post:http_429:RESOURCE_EXHAUSTED');
-  res = await sweepPosts(new Date('2026-11-12T10:30:00Z'), deps);
+  res = await run('2026-11-12T10:30:00Z', deps);
   assert.deepEqual([res.waiting, res.failed], [1, 0]);
   assert.deepEqual([rows[0].status, rows[0].attempts, rows[0].last_error], ['scheduled', 0, 'google quota pending']);
   // A real failure: retried, then given up after three attempts.
   sendFail = new GbpError('google', 'post:http_400:INVALID_ARGUMENT');
-  for (const at of ['2026-11-12T16:30:00Z', '2026-11-13T07:00:00Z', '2026-11-15T08:00:00Z']) res = await sweepPosts(new Date(at), deps);
+  for (const at of ['2026-11-12T16:30:00Z', '2026-11-13T07:00:00Z', '2026-11-15T08:00:00Z']) res = await run(at);
   assert.deepEqual([rows[0].status, rows[0].attempts], ['failed', 3]);
   // A revoked connection fails at once (the customer has to reconnect).
-  rows = []; await sweepPosts(NOW, deps);
+  rows = []; await run(NOW, deps);
   sendFail = new GbpError('revoked');
-  await sweepPosts(new Date('2026-11-12T10:30:00Z'), deps);
+  await run('2026-11-12T10:30:00Z', deps);
   assert.equal(rows[0].status, 'failed');
+
+  // Google accepted the post but our database write failed: the post is NOT sent again.
+  rows = []; sendFail = null; sent.length = 0;
+  await run(NOW);
+  finishFail = 5;
+  res = await run('2026-11-12T10:30:00Z');
+  assert.equal(sent.length, 1);
+  assert.equal(rows[0].status, 'publishing', 'left as publishing, which no sweep re-sends');
+  finishFail = 0;
+  await run('2026-11-12T13:30:00Z'); await run('2026-11-15T08:00:00Z');
+  assert.equal(sent.length, 1, 'never a second copy on the customer\'s profile');
+
+  // The quota opens after weeks of waiting: one post goes out, not the whole backlog.
+  rows = []; sent.length = 0; sendFail = new GbpError('google', 'post:http_429:RESOURCE_EXHAUSTED');
+  for (const at of ['2026-11-10T10:00:00Z', '2026-11-12T10:30:00Z', '2026-11-17T10:00:00Z', '2026-11-19T10:30:00Z', '2026-11-24T10:00:00Z']) await run(at);
+  assert.equal(rows.length, 3, 'three weeks, three posts written');
+  assert.deepEqual(rows.map((r) => r.status), ['skipped', 'skipped', 'scheduled'], 'each new weekly post replaces the one still waiting');
+  sendFail = null;
+  res = await run('2026-11-26T10:30:00Z');
+  assert.deepEqual([res.published, sent.length], [1, 1]);
+  assert.equal(sent[0], rows[2].id, 'the newest one');
+
+  // The owner edits just before publishing: the text that goes out is the edited one.
+  rows = []; sent.length = 0; sentBodies.length = 0;
+  await run(NOW);
+  const editing: SweepDeps = { ...deps, due: async (e, n) => { const d = await deps.due(e, n); rows[0].body = 'הנוסח של בעל העסק, אחרי עריכה של הרגע האחרון.'; return d.map((x) => ({ ...x, body: 'OLD' })); } };
+  await run('2026-11-12T10:30:00Z', editing);
+  assert.deepEqual(sentBodies, ['הנוסח של בעל העסק, אחרי עריכה של הרגע האחרון.']);
+
+  // The customer connected a different business: a post written for the old one is dropped, never sent.
+  rows = []; sent.length = 0;
+  await run(NOW);
+  const moved: SweepDeps = { ...deps, context: async (e) => ({ ...(await deps.context(e))!, location: 'locations/2' }) };
+  res = await run('2026-11-12T10:30:00Z', moved);
+  assert.deepEqual([sent.length, rows[0].status], [0, 'skipped']);
 
   // One account crashing does not stop the others.
   rows = []; sendFail = null; sent.length = 0;
   const two: SweepDeps = { ...deps, accounts: async () => ['bad@x.co', 'a@x.co'], context: async (e) => { if (e === 'bad@x.co') throw new Error('db down'); return deps.context(e); } };
-  res = await sweepPosts(NOW, two);
+  res = await run(NOW, two);
   assert.deepEqual([res.accounts, res.failed, res.planned], [2, 1, 1]);
 
   // The operator switch.
   process.env.AUTOPILOT_ENABLED = 'false';
   rows = [];
-  assert.deepEqual(await sweepPosts(NOW, deps), { accounts: 0, planned: 0, published: 0, waiting: 0, failed: 0 });
+  assert.deepEqual(await run(NOW, deps), { accounts: 0, planned: 0, published: 0, waiting: 0, failed: 0 });
   assert.equal(rows.length, 0, 'switched off: nothing is written or published');
 
   console.log('gbp posts: all checks passed');

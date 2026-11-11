@@ -22,6 +22,7 @@ import { decryptToken } from './gbpCrypto';
 import { GbpError, accessTokenFrom, listLocations, listReviews, postReply, type GbpReview } from './gbpGoogle';
 import { getConnection, markNeedsReconnect } from './gbpStore';
 import { listRecipients, unsubUrl } from './digest.service';
+import { autopilotEnabled, getAutomation } from './automation.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 export const MIN_AGE_DAYS = 5;
@@ -88,7 +89,7 @@ export type NewDraft = Omit<DraftRow, 'id' | 'status' | 'notified_at'>;
 export function buildAlertEmail(business: string, count: number, unsub: string): { subject: string; html: string; text: string } {
   const biz = business.trim() || 'העסק שלכם';
   const subject = count === 1 ? `ביקורת אחת ב-${biz} מחכה לתשובה` : `${count} ביקורות ב-${biz} מחכות לתשובה`;
-  const line = count === 1 ? 'יש ביקורת בגוגל שלא נענתה כבר כמה ימים.' : `יש ${count} ביקורות בגוגל שלא נענו כבר כמה ימים.`;
+  const line = count === 1 ? 'יש ביקורת בגוגל שמחכה לתשובה שלכם.' : `יש ${count} ביקורות בגוגל שמחכות לתשובה שלכם.`;
   const body = 'הכנו לכל אחת טיוטת תשובה. אפשר לקרוא, לערוך אם צריך, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.';
   const text = `${line}\n${body}\n\nלתשובות המוכנות: ${APP_URL}/dashboard\n\nלא רוצים לקבל סיכומים והתראות במייל? ${unsub}`;
   const html = `<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1e293b;line-height:1.6">
@@ -104,6 +105,8 @@ export function buildAlertEmail(business: string, count: number, unsub: string):
 // ── Sweep ────────────────────────────────────────────────────────────────────
 
 export interface SweepDeps {
+  /** True when the automatic product answers and drafts this account's reviews (autoReplies.service.ts). Then this sweep only e-mails about drafts that wait; it does not create drafts of its own. */
+  managed?(email: string): Promise<boolean>;
   accounts(now: Date): Promise<string[]>;
   fetchReviews(email: string): Promise<{ reviews: GbpReview[]; location: string; business: string } | null>;
   claim(rows: NewDraft[]): Promise<DraftRow[]>;
@@ -121,8 +124,9 @@ export async function sweepReviewAlerts(now = new Date(), deps: SweepDeps = real
   for (const email of (await deps.accounts(now)).slice(0, MAX_ACCOUNTS_PER_SWEEP)) {
     out.accounts++;
     try {
+      const managed = deps.managed ? await deps.managed(email) : false;
       const got = await deps.fetchReviews(email);
-      if (got) {
+      if (got && !managed) {
         void recordHeartbeat('gbp_google', null);
         const fresh = candidates(got.reviews, now).slice(0, MAX_NEW_DRAFTS_PER_ACCOUNT);
         const claimed = await deps.claim(fresh.map(r => ({
@@ -170,6 +174,11 @@ export async function accessFor(email: string): Promise<string | null> {
 }
 
 const realDeps: SweepDeps = {
+  async managed(email) {
+    if (!autopilotEnabled()) return false;
+    const a = await getAutomation(email);
+    return !!a.consentAt && a.repliesMode !== 'off';
+  },
   async accounts(now) {
     const { data, error } = await supabase.from('gbp_connections').select('email').eq('status', 'active').not('location_name', 'is', null);
     if (error) throw new Error(error.message);
