@@ -22,9 +22,15 @@ import type { MonthlyId } from '../monthly';
 import { MORE_VIEWS, NAV_AFTER_SETUP, NAV_LABEL_AFTER_SETUP, VIEW_LABEL, VIEW_ORDER, derivePhase, type View } from '../journey';
 import { MoreV3, ProgressV3, ViewFrame } from './Views';
 import { HomeSkeleton, MonthScreen, OverviewV3, SetupScreen, WelcomeV3 } from './Screens';
+import BusinessCardScreen from './autopilot/BusinessCardScreen';
+import AutomationScreen from './autopilot/AutomationScreen';
+import { AutoSections, FirstStep } from './autopilot/AutoHome';
+import { useAutopilot } from './autopilot/useAutopilot';
+import type { AutoScreen } from './autopilot/types';
 import { SETUP_DONE_FLASH, buildMonthTasks, buildSetupTasks, flashText, nextOpenAfter } from './tasks';
 import '../dashboard.css';
 import './dashboard-v3.css';
+import './dashboard-v3-autopilot.css';
 
 /**
  * Dashboard v3 ("סגנון מובלט", spec docs/dashboard-v3-spec.md) for the Google-promotion product.
@@ -59,6 +65,12 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
     try { return new URLSearchParams(window.location.search).get('preview') === 'ongoing'; } catch { return false; }
   });
   const phase = previewOngoing ? 'ongoing' : derivePhase(data.input);
+  // The automatic product (docs/mvp-plan.md, part B). In the preview it runs on sample data and
+  // sends nothing. ?screen=card / ?screen=automation open its two screens directly.
+  const auto = useAutopilot(previewOngoing);
+  const [autoScreen, setAutoScreen] = useState<AutoScreen | null>(() => {
+    try { const q = new URLSearchParams(window.location.search).get('screen'); return q === 'card' || q === 'automation' ? q : null; } catch { return null; }
+  });
   const monthly = useMonthly(email, data.input, data.requestsSent, data.pendingReplies);
   const setup = buildSetupTasks(data.input, skips);
   const monthTasks = buildMonthTasks(monthly.view);
@@ -105,6 +117,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
   const go = useCallback((v: View) => {
     setView(v);
     setOpenTask(null);
+    setAutoScreen(null);
     if (v === 'overview') data.reload();   // numbers may have changed in another view
     top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
   }, [data, reduce]);
@@ -119,7 +132,13 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
     ? {}
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18 } };
 
-  if (phase === 'setup' && !fullMenu && !data.failed) {
+  const openAuto = (s: AutoScreen | null) => {
+    setAutoScreen(s);
+    setOpenTask(null);
+    top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+  };
+
+  if (phase === 'setup' && !fullMenu && !data.failed && !autoScreen) {
     return (
       <div className="dv2 dv3" dir="rtl">
         <SetupScreen
@@ -132,6 +151,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
     );
   }
 
+  const showAuto = view === 'overview' ? autoScreen : null;
   const monthTask = openTask ? monthTasks.find((t) => t.id === openTask) ?? null : null;
 
   return (
@@ -149,8 +169,10 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
       </nav>
 
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={view + (openTask ?? '')} {...motionProps}>
-          {view === 'overview' && phase === 'ongoing' && !data.failed && (
+        <motion.div key={view + (openTask ?? '') + (showAuto ?? '')} {...motionProps}>
+          {showAuto === 'card' && <BusinessCardScreen auto={auto} onBack={() => openAuto(null)} onSettings={() => openAuto('automation')} />}
+          {showAuto === 'automation' && <AutomationScreen auto={auto} onBack={() => openAuto(null)} onCard={() => openAuto('card')} />}
+          {!showAuto && view === 'overview' && phase === 'ongoing' && !data.failed && (
             monthTask ? (
               <MonthScreen
                 task={monthTask} tasks={monthTasks} mview={monthly.view} requestsSent={data.requestsSent} flash={flash} reload={data.reload}
@@ -168,12 +190,14 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
                 tasks={monthTasks} summary={data.summary} input={data.input} email={email} flash={flash}
                 pastDue={data.input.subscriptionStatus === 'past_due'} goPlan={() => go('plan')}
                 onOpen={(id) => { setOpenTask(id as MonthlyId); top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }}
-                onRetry={data.reload}
+                onRetry={() => { data.reload(); auto.reload(); }}
+                first={<FirstStep auto={auto} onOpen={openAuto} />}
+                autopilot={<AutoSections auto={auto} onOpen={openAuto} />}
               />
             )
           )}
-          {view === 'overview' && phase === 'welcome' && !data.failed && <WelcomeV3 setTick={data.setTick} />}
-          {view === 'overview' && (phase === 'setup' || data.failed) && (
+          {!showAuto && view === 'overview' && phase === 'welcome' && !data.failed && <WelcomeV3 setTick={data.setTick} />}
+          {!showAuto && view === 'overview' && (phase === 'setup' || data.failed) && (
             <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
           )}
           {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={go} />}

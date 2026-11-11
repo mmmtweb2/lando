@@ -12,8 +12,9 @@ export type NeedKind = 'none' | 'approve' | 'one' | 'need';
 export interface V3Task {
   /** unique over both kinds: "s:connect", "m:tracking" */
   key: string;
-  kind: 'setup' | 'month';
-  id: GuidedId | MonthlyId;
+  /** 'auto' = a task of the automatic product (the business card), built in autopilot/AutoHome.tsx */
+  kind: 'setup' | 'month' | 'auto';
+  id: GuidedId | MonthlyId | 'business_card';
   title: string;
   what: string;
   how: string;

@@ -9,7 +9,7 @@ import { minutesLine, waitingTitle, REST_TEXT, type NeedKind, type Summary, type
 
 const ICONS: Record<string, LucideIcon> = {
   connect: Link2, first_check: BarChart3, profile_details: PencilLine, profile_verified: ShieldCheck, review_link_shared: Star,
-  review_requests: Star, review_replies: MessageSquare, search_phrases: Search, tracking: Inbox,
+  review_requests: Star, review_replies: MessageSquare, search_phrases: Search, tracking: Inbox, business_card: ClipboardCheck,
 };
 export function TaskIcon({ id, size = 20 }: { id: string; size?: number }) {
   const I = ICONS[id] ?? Target;

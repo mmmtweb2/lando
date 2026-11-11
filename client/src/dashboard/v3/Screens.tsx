@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
 import { trackAccount } from '../../lib/journeyClient';
 import { LandoBot } from '../../components/Lando';
@@ -120,9 +120,12 @@ interface OverviewProps {
   goPlan: () => void;
   onOpen: (id: V3Task['id']) => void;
   onRetry: () => void;
+  /** the automatic product: its first step (above everything) and its sections (under the tasks) */
+  first?: ReactNode;
+  autopilot?: ReactNode;
 }
 
-export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPlan, onOpen, onRetry }: OverviewProps) {
+export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPlan, onOpen, onRetry, first, autopilot }: OverviewProps) {
   const [onlyMine, setOnlyMine] = useState(false);
   const s = summarize(tasks);
   const rows = visibleRows(tasks, onlyMine);
@@ -138,6 +141,7 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
           <button type="button" className="dv3-btn" onClick={goPlan}>לפרטי המנוי <ArrowLeft size={16} aria-hidden /></button>
         </section>
       )}
+      {first}
       <SummaryBar s={s} onlyMine={onlyMine} onToggle={() => setOnlyMine((v) => !v)} />
       {tasks.length === 0 ? <RestState /> : rows.length === 0 ? <RestState /> : (
         <section aria-label="משימות החודש">
@@ -145,6 +149,7 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
           <ul className="dv3-rows">{rows.map((t) => <TaskRow key={t.key} task={t} onOpen={() => onOpen(t.id)} />)}</ul>
         </section>
       )}
+      {autopilot}
       <WhatPromotes email={email} />
       <GoogleDraftLink input={input} />
       <section aria-label="פניות החודש" className="dv3-leads">
