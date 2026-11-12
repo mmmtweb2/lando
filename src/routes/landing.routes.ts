@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo, removeImage } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, getIncludedPublish, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo, removeImage } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -88,6 +88,7 @@ router.post('/:slug/event', trackLimiter, trackLeadEvent); // WhatsApp / call cl
 // requireAuth verifies the caller's identity from a real Supabase token;
 // requireOwnPage confirms they own the page (or are an admin). This closes the
 // hole where anyone with a page ID could edit/publish/delete/deface it.
+router.get('/:id/included', requireAuth, requireOwnPage, getIncludedPublish);
 router.post('/:id/publish', requireAuth, requireOwnPage, publishLandingPage);
 router.post('/:id/regenerate-text', requireAuth, requireOwnPage, aiLimiter, regenerateText);
 router.post('/:id/use-ai-edit', requireAuth, requireOwnPage, aiLimiter, useAiEdit);

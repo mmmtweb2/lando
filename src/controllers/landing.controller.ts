@@ -10,7 +10,7 @@ import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
 import { getSubscription, pageAccessFor } from '../services/seoSubscription.service';
-import { canUseAddon, claimAddonPage, reconcileAddonPage, releaseAddonClaim } from '../services/seoPageAddon.service';
+import { canUseAddon, claimAddonPage, reconcileAddonPage, releaseAddonClaim, type AddonAccess } from '../services/seoPageAddon.service';
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
 import { logFunnelEvent } from '../services/funnel.service';
@@ -1015,6 +1015,32 @@ export async function publishPageWithCredit(
 }
 
 /**
+ * Would publishing `id` now be covered by the Google-promotion product (no charge, no credit)?
+ * Returns the access it is covered by, or null. The ONE place that decides it: the publish itself
+ * and the question the page's publish dialog asks before showing a price both come here.
+ */
+export async function includedPageAccess(email: string, id: string): Promise<AddonAccess | null> {
+  const access = await pageAccessFor(email);
+  if (!(await canUseAddon(email, id, access))) return null;
+  const { data: existing } = await supabase.from('landing_pages').select('status, owner_email, parent_id').eq('id', id).maybeSingle();
+  const row = existing as { status?: string; owner_email?: string | null; parent_id?: string | null } | null;
+  if (!row || row.parent_id || (row.owner_email ?? '').trim().toLowerCase() !== email.trim().toLowerCase()) return null;
+  if (row.status === 'published') return null;       // already live: nothing to spend, the normal path says so
+  if (row.status === 'frozen') return null;          // brought back by reconcile when the subscription is active
+  return access;
+}
+
+/** GET /api/landing/:id/included — does the promotion product cover publishing this page? Never fails the dialog. */
+export async function getIncludedPublish(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
+  try { res.json({ included: !!(await includedPageAccess(email, req.params.id)) }); } catch (e) {
+    console.error('[PUBLISH] included check failed:', e instanceof Error ? e.message : e);
+    res.json({ included: false });
+  }
+}
+
+/**
  * Publishes `id` as the account's included page (a "with page" plan, subscription active, slot unused
  * or already this page). Returns the published page, or null when this path does not apply (the
  * caller then continues with the credit flow). The slot is claimed BEFORE publishing so two parallel
@@ -1025,14 +1051,9 @@ export async function publishIncludedPage(email: string, id: string): Promise<Pu
     // Every account that holds the Google-promotion product gets one published page with it
     // (12.11.2026): a paying subscription, or an account set up by hand. Access is read from the
     // same place that decides access to the product itself.
-    const access = await pageAccessFor(email);
-    if (!(await canUseAddon(email, id, access))) return null;
+    const access = await includedPageAccess(email, id);
+    if (!access) return null;
     const sub = await getSubscription(email).catch(() => null);
-    const { data: existing } = await supabase.from('landing_pages').select('status, owner_email, parent_id').eq('id', id).maybeSingle();
-    const row = existing as { status?: string; owner_email?: string | null; parent_id?: string | null } | null;
-    if (!row || row.parent_id || (row.owner_email ?? '').trim().toLowerCase() !== email.trim().toLowerCase()) return null;
-    if (row.status === 'published') return null;       // already live: nothing to spend, the normal path says so
-    if (row.status === 'frozen') return null;          // brought back by reconcile when the subscription is active
     if (!(await claimAddonPage(email, id, sub?.id ?? null))) return null;
     const page = await publishPageById(id);
     if (!page) { await releaseAddonClaim(email, id); return null; }
