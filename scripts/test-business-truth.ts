@@ -3,8 +3,8 @@
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:1';
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'assert';
-import { GbpError, LOCATION_DETAIL_MASK, createLocalPost, fetchLocationDetail, localPostBody } from '../src/services/gbpGoogle';
-import { CardInputError, applyEdit, emptyCard, factsText, hoursText, isMobile, landingInputFromCard, line, mergeFromGoogle, parseLocation, readiness } from '../src/services/businessTruth';
+import { GbpError, LOCATION_DETAIL_MASK, createLocalPost, fetchLocationDetail, localPostBody, patchLocation } from '../src/services/gbpGoogle';
+import { CardInputError, applyEdit, emptyCard, factsText, hoursText, isMobile, landingInputFromCard, line, mergeFromGoogle, parseLocation, readiness, writeBackPlan } from '../src/services/businessTruth';
 
 const GOOGLE = {
   name: 'locations/123', title: 'אינסטלציה דני',
@@ -143,6 +143,25 @@ const GOOGLE = {
   await assert.rejects(createLocalPost('AT', 'x', 'locations/123', { summary: text }, mk(200, {})), /bad_location/);
   await assert.rejects(createLocalPost('AT', 'accounts/1', 'locations/123', { summary: text }, mk(429, { error: { status: 'RESOURCE_EXHAUSTED' } })), /post:http_429:RESOURCE_EXHAUSTED/);
   await assert.rejects(createLocalPost('AT', 'accounts/1', 'locations/123', { summary: text }, mk(401, {})), (err: unknown) => err instanceof GbpError && err.code === 'revoked');
+
+  // ── writing completions back to Google ──
+  assert.equal(writeBackPlan(GOOGLE, c), null, 'nothing was added here: nothing is written');
+  const wb = writeBackPlan(GOOGLE, e)!;
+  assert.deepEqual(wb.mask, ['serviceItems'], 'Google already has a description: it is never replaced');
+  const items = wb.body.serviceItems as any[];
+  assert.deepEqual(items.slice(0, GOOGLE.serviceItems.length), GOOGLE.serviceItems, 'the existing items go back exactly as they were read');
+  assert.deepEqual(items.slice(GOOGLE.serviceItems.length), [{ freeFormServiceItem: { category: 'categories/gcid:plumber', label: { displayName: 'החלפת ברזים', description: 'כולל אספקה', languageCode: 'he' } } }], 'only what the customer added and Google lacks is appended');
+  const noDesc = writeBackPlan({ ...GOOGLE, profile: {} }, { ...c, description: 'אינסטלטור מוסמך בגבעתיים, זמינות גם בערב ובסופי שבוע.' })!;
+  assert.deepEqual(noDesc.mask, ['profile.description']);
+  assert.equal(writeBackPlan({ ...GOOGLE, profile: {} }, { ...c, description: 'קצר' }), null, 'a few words are not a description worth writing');
+  assert.equal(writeBackPlan({ ...GOOGLE, categories: {} }, e), null, 'no category to attach a service to: services are not written');
+  calls.length = 0;
+  await patchLocation('AT', 'locations/123', wb.body, wb.mask, mk(200, {}));
+  assert.equal(calls[0].url, 'https://mybusinessbusinessinformation.googleapis.com/v1/locations/123?updateMask=serviceItems');
+  assert.equal(calls[0].init.method, 'PATCH');
+  await assert.rejects(patchLocation('AT', 'locations/123', { title: 'שם אחר' }, ['title'], mk(200, {})), /bad_mask/, 'we never write the name, address, category, phone or hours');
+  await assert.rejects(patchLocation('AT', 'locations/123', {}, [], mk(200, {})), /bad_mask/);
+  await assert.rejects(patchLocation('AT', 'locations/123', wb.body, wb.mask, mk(403, { error: { status: 'PERMISSION_DENIED' } })), /patch:http_403:PERMISSION_DENIED/);
 
   console.log('business truth: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -8,7 +8,7 @@ import { buildChildContent, generateChildText } from '../services/seoChildPage';
 import { childUrl, getOwnedParentPage, insertChild, listChildren } from '../services/seoChildStore';
 import { underKitLimit } from './seoContent.controller';
 import { logActivity } from '../services/automation.service';
-import { TruthError, approve, getTruth, saveEdit, syncFromGoogle } from '../services/businessTruth.service';
+import { TruthError, approve, getTruth, saveEdit, syncFromGoogle, writeBackToGoogle } from '../services/businessTruth.service';
 import { POSTS_MODES, REPLIES_MODES, autopilotEnabled, getAutomation, listActivity, setAutomation } from '../services/automation.service';
 import { PostError, editPost, listPosts, planPostFor, publishNow, skipPost } from '../services/gbpPosts.service';
 import { EDIT_WINDOW_HOURS } from '../services/gbpPosts';
@@ -83,6 +83,8 @@ export async function approveCard(req: Request, res: Response): Promise<void> {
   try {
     const truth = await approve(req.authEmail);
     // The first post is written at once (best effort, capped), so the customer sees it on the next screen.
+    // What the customer completed here and Google lacks is added to their listing (off unless GBP_WRITEBACK_ENABLED).
+    void writeBackToGoogle(req.authEmail);
     await Promise.race([planPostFor(req.authEmail), new Promise((r) => setTimeout(r, 20_000))]);
     res.json({ truth, automation: await getAutomation(req.authEmail) });
   } catch (e) { fail(res, e); }
