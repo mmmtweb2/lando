@@ -2,8 +2,8 @@
 // the same helper every dashboard call uses) and the preview's in-memory sample.
 import { authFetch } from '../../../lib/api';
 import { GENERIC_ERROR } from '../autopilotCopy';
-import { buildSample, sampleVariant } from './sample';
-import type { Activity, Automation, AutomationPatch, GbpStatus, Post, Truth, TruthPatch } from './types';
+import { buildSample, sampleLanding, sampleVariant } from './sample';
+import type { Activity, Automation, AutomationPatch, GbpStatus, LandingResult, Post, Truth, TruthPatch } from './types';
 
 /** `message` is the server's own Hebrew sentence when it sent one. */
 export class ApiError extends Error {
@@ -24,6 +24,8 @@ export interface AutopilotApi {
   publishPost(id: string): Promise<void>;
   skipPost(id: string): Promise<void>;
   activity(): Promise<Activity[]>;
+  /** Can take about a minute: the page is written on the server before it answers. */
+  createLanding(): Promise<LandingResult>;
 }
 
 async function call<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
@@ -54,6 +56,13 @@ export const serverApi: AutopilotApi = {
   publishPost: async (id) => { await call(postUrl(id, '/publish'), 'POST'); },
   skipPost: async (id) => { await call(postUrl(id, '/skip'), 'POST'); },
   activity: async () => (await call<{ items?: Activity[] }>('/api/seo/activity')).items ?? [],
+  createLanding: async () => {
+    // 201 = the created page itself; 200 = { existing: true, id, slug, status } for an account that already has one.
+    const b = await call<Record<string, unknown>>('/api/seo/truth/landing', 'POST');
+    if (typeof b.slug !== 'string' || !b.slug) throw new ApiError(GENERIC_ERROR);
+    const existing = b.existing === true;
+    return { existing, id: String(b.id ?? ''), slug: b.slug, status: existing && typeof b.status === 'string' ? b.status : 'draft' };
+  },
 };
 
 /** Preview: the same calls over a sample kept in memory. Nothing leaves the browser. */
@@ -92,5 +101,16 @@ export function sampleApi(): AutopilotApi {
     publishPost: async (id) => { const p = find(id); p.status = 'published'; p.publishedAt = now(); log('post_published', `פרסמנו פוסט בכרטיס העסק שלכם בגוגל: ${p.topic}`); },
     skipPost: async (id) => { const p = find(id); p.status = 'skipped'; log('post_skipped', `דילגנו על הפוסט של השבוע: ${p.topic}`); },
     activity: async () => copy(s.activity),
+    createLanding: async () => {
+      const mode = sampleLanding();
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      if (mode === 'error') { await wait(1500); throw new ApiError('אי אפשר ליצור דף עדיין. חסרים פרטי חובה בפרטי העסק.', 'not_ready'); }
+      if (mode === 'existing') { await wait(600); return { existing: true, id: 'sample-page', slug: 'sample-page', status: 'published' }; }
+      if (s.page) { await wait(600); return { ...s.page, existing: true }; }
+      await wait(6000);   // the real call takes about a minute; long enough here to see the waiting state
+      s.page = { existing: false, id: 'sample-page', slug: 'sample-page', status: 'draft' };
+      log('page_created', 'יצרנו לכם דף נחיתה מפרטי העסק');
+      return { ...s.page };
+    },
   };
 }

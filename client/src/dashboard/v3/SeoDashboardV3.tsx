@@ -24,7 +24,10 @@ import { MoreV3, ProgressV3, ViewFrame } from './Views';
 import { HomeSkeleton, MonthScreen, OverviewV3, SetupScreen, WelcomeV3 } from './Screens';
 import BusinessCardScreen from './autopilot/BusinessCardScreen';
 import AutomationScreen from './autopilot/AutomationScreen';
-import { AutoSections, FirstStep } from './autopilot/AutoHome';
+import { AutoMore, AutoWork, FirstStep, HomeHero, Waiting } from './autopilot/AutoHome';
+import { autoAvailable, homeMode } from './autopilot/mode';
+import { samplePendingReplies } from './autopilot/sample';
+import { AUTOMATION, BACK_MORE, CARD } from './autopilotCopy';
 import { useAutopilot } from './autopilot/useAutopilot';
 import type { AutoScreen } from './autopilot/types';
 import { SETUP_DONE_FLASH, buildMonthTasks, buildSetupTasks, flashText, nextOpenAfter } from './tasks';
@@ -71,6 +74,8 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
   const [autoScreen, setAutoScreen] = useState<AutoScreen | null>(() => {
     try { const q = new URLSearchParams(window.location.search).get('screen'); return q === 'card' || q === 'automation' ? q : null; } catch { return null; }
   });
+  // The two automatic screens open from the home or from "עוד"; the way back follows.
+  const [autoFromMore, setAutoFromMore] = useState(false);
   const monthly = useMonthly(email, data.input, data.requestsSent, data.pendingReplies);
   const setup = buildSetupTasks(data.input, skips);
   const monthTasks = buildMonthTasks(monthly.view);
@@ -112,12 +117,17 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
 
   const simpleNav = phase !== 'setup';
   const navViews: View[] = simpleNav ? NAV_AFTER_SETUP : VIEW_ORDER;
-  const navActive = (v: View) => (simpleNav && v === 'more' ? view === 'more' || MORE_VIEWS.includes(view) : v === view);
+  const inAutoFromMore = simpleNav && autoFromMore && autoScreen !== null && view === 'overview';
+  const navActive = (v: View) => {
+    if (simpleNav && v === 'more') return view === 'more' || MORE_VIEWS.includes(view) || inAutoFromMore;
+    return v === view && !inAutoFromMore;
+  };
 
   const go = useCallback((v: View) => {
     setView(v);
     setOpenTask(null);
     setAutoScreen(null);
+    setAutoFromMore(false);
     if (v === 'overview') data.reload();   // numbers may have changed in another view
     top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
   }, [data, reduce]);
@@ -135,8 +145,18 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
   const openAuto = (s: AutoScreen | null) => {
     setAutoScreen(s);
     setOpenTask(null);
+    if (s === null) setAutoFromMore(false);
     top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
   };
+  const openAutoFromMore = (s: AutoScreen) => { setView('overview'); setAutoFromMore(true); openAuto(s); };
+  const backFromAuto = () => (autoFromMore ? go('more') : openAuto(null));
+  const autoBackLabel = autoFromMore ? BACK_MORE : undefined;
+  const moreExtra = autoAvailable(auto) ? [
+    { key: 'card', label: CARD.title, hint: CARD.hint, onClick: () => openAutoFromMore('card') },
+    { key: 'automation', label: AUTOMATION.link, hint: AUTOMATION.linkHint, onClick: () => openAutoFromMore('automation') },
+  ] : [];
+  const mode = homeMode(auto);
+  const pendingReplies = previewOngoing ? samplePendingReplies() : data.pendingReplies ?? 0;
 
   if (phase === 'setup' && !fullMenu && !data.failed && !autoScreen) {
     return (
@@ -170,8 +190,8 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={view + (openTask ?? '') + (showAuto ?? '')} {...motionProps}>
-          {showAuto === 'card' && <BusinessCardScreen auto={auto} onBack={() => openAuto(null)} onSettings={() => openAuto('automation')} />}
-          {showAuto === 'automation' && <AutomationScreen auto={auto} onBack={() => openAuto(null)} onCard={() => openAuto('card')} />}
+          {showAuto === 'card' && <BusinessCardScreen auto={auto} backLabel={autoBackLabel} onBack={backFromAuto} onSettings={() => openAuto('automation')} />}
+          {showAuto === 'automation' && <AutomationScreen auto={auto} backLabel={autoBackLabel} onBack={backFromAuto} onCard={() => openAuto('card')} />}
           {!showAuto && view === 'overview' && phase === 'ongoing' && !data.failed && (
             monthTask ? (
               <MonthScreen
@@ -191,8 +211,15 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
                 pastDue={data.input.subscriptionStatus === 'past_due'} goPlan={() => go('plan')}
                 onOpen={(id) => { setOpenTask(id as MonthlyId); top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }}
                 onRetry={() => { data.reload(); auto.reload(); }}
-                first={<FirstStep auto={auto} onOpen={openAuto} />}
-                autopilot={<AutoSections auto={auto} onOpen={openAuto} />}
+                mode={mode}
+                top={mode === 'approved' ? (
+                  <>
+                    <HomeHero auto={auto} />
+                    <Waiting auto={auto} pendingReplies={pendingReplies} onReviews={() => go('reviews')} onProfile={() => go('profile')} />
+                  </>
+                ) : <FirstStep auto={auto} onOpen={openAuto} />}
+                work={<AutoWork auto={auto} />}
+                more={<AutoMore auto={auto} onOpen={openAuto} />}
               />
             )
           )}
@@ -201,7 +228,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
             <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
           )}
           {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={go} />}
-          {view === 'more' && <MoreV3 go={go} />}
+          {view === 'more' && <MoreV3 go={go} extra={moreExtra} />}
           {view === 'setup' && (
             <ViewFrame view="setup" fromMore={simpleNav} go={go}><SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
           )}

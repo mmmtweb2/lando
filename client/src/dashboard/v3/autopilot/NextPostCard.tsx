@@ -74,7 +74,7 @@ export default function NextPostCard({ auto, approved }: { auto: Autopilot; appr
     <section className="dv3-block dv3-a-post" aria-labelledby="dv3-post">
       <div className="dv3-a-posthead">
         <span className="dv3-row-icon" aria-hidden><Megaphone size={20} /></span>
-        <h3 id="dv3-post">{POST.title}</h3>
+        <h3 id="dv3-post" tabIndex={-1}>{POST.title}</h3>
         {next && <span className="dv3-state">{POST.topic(next.topic)}</span>}
       </div>
       {posts.status === 'loading' && <div aria-busy="true" aria-label="טוען"><Skeleton className="h-40 !rounded-[16px]" /></div>}

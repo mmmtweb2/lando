@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GENERIC_ERROR } from '../autopilotCopy';
 import { ApiError, sampleApi, serverApi, type AutopilotApi } from './api';
-import type { Activity, Automation, AutomationPatch, GbpStatus, Loadable, Post, Truth, TruthPatch } from './types';
+import type { Activity, Automation, AutomationPatch, GbpStatus, LandingState, Loadable, Post, Truth, TruthPatch } from './types';
 
 // One place that loads the automatic product's data for the dashboard: the business card, the
 // Google connection, the automation choices, the posts and the activity log. Each source loads and
@@ -31,6 +31,9 @@ export interface Autopilot {
   editPost: (id: string, text: string) => Promise<string | null>;
   publishPost: (id: string) => Promise<string | null>;
   skipPost: (id: string) => Promise<string | null>;
+  /** "צרו לי דף נחיתה". Kept here, above the screens, so a request in flight survives moving between them. */
+  landing: LandingState;
+  createLanding: () => void;
 }
 
 export function useAutopilot(preview: boolean): Autopilot {
@@ -44,6 +47,8 @@ export function useAutopilot(preview: boolean): Autopilot {
   const [truthVersion, setVersion] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [tick, setTick] = useState(0);
+  const [landing, setLanding] = useState<LandingState>({ phase: 'idle' });
+  const landingBusy = useRef(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -113,5 +118,16 @@ export function useAutopilot(preview: boolean): Autopilot {
   const publishPost = useCallback((id: string) => postAction(() => api.publishPost(id)), [api, postAction]);
   const skipPost = useCallback((id: string) => postAction(() => api.skipPost(id)), [api, postAction]);
 
-  return { preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost };
+  // One request at a time: the ref closes the gap between two fast presses and the next render.
+  const createLanding = useCallback(() => {
+    if (landingBusy.current) return;
+    landingBusy.current = true;
+    setLanding({ phase: 'busy' });
+    api.createLanding().then(
+      (page) => { if (alive.current) { setLanding({ phase: 'done', page }); if (!page.existing) void loadActivity(); } },
+      (e: unknown) => { if (alive.current) setLanding({ phase: 'error', error: msg(e) }); },
+    ).finally(() => { landingBusy.current = false; });
+  }, [api, loadActivity]);
+
+  return { preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost, landing, createLanding };
 }

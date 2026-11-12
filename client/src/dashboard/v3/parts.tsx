@@ -120,24 +120,25 @@ export function RestState() {
 
 /* ---------- TaskRow (overview) ---------- */
 
-export function TaskRow({ task, onOpen }: { task: V3Task; onOpen: () => void }) {
+/** `optional`: an extra the customer may pick up, so the row carries no "open" state and no action chip. */
+export function TaskRow({ task, onOpen, optional = false }: { task: V3Task; onOpen: () => void; optional?: boolean }) {
   return (
     <li className="dv3-row" data-done={task.done}>
       <div className="dv3-row-name">
         <span className="dv3-row-icon"><TaskIcon id={task.id} /></span>
         <div>
           <h3>{task.title}</h3>
-          <span className={`dv3-state ${task.done ? 'is-done' : ''}`}>{task.done ? 'הושלם' : task.skipped ? 'נדחתה לסוף' : 'פתוחה'}</span>
+          <span className={`dv3-state ${task.done ? 'is-done' : ''}`}>{task.done ? 'הושלם' : optional ? 'לא חובה' : task.skipped ? 'נדחתה לסוף' : 'פתוחה'}</span>
         </div>
       </div>
       <p className="dv3-cell dv3-c1" data-h="מה צריך לעשות">{task.what}</p>
       <p className="dv3-cell dv3-c2" data-h="איך אנחנו עושים את זה">{task.how}</p>
       <div className="dv3-cell dv3-c3" data-h="מה אתם צריכים לעשות">
-        <NeedChip kind={task.chip} />
+        {!optional && <NeedChip kind={task.chip} />}
         <p>{task.done ? 'הושלם. אין מה לעשות כאן.' : task.you}</p>
         {!task.done && <p className="dv3-min">{minutesLine(task.minutes)}</p>}
         <button type="button" className="dv3-btn" onClick={onOpen}>
-          {task.done ? 'פרטים' : 'לפעולה'} <ArrowLeft size={16} aria-hidden />
+          {task.done || optional ? 'פרטים' : 'לפעולה'} <ArrowLeft size={16} aria-hidden />
           <span className="sr-only"> {task.title}</span>
         </button>
       </div>

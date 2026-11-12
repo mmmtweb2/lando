@@ -5,6 +5,7 @@ import { ViewShell } from '../Views';
 import { NeedChip, PartBand } from '../parts';
 import { minutesLine } from '../tasks';
 import { BACK_HOME, CARD, RETRY } from '../autopilotCopy';
+import LandingPageCard from './LandingPageCard';
 import CardEditor, { type CardNotice } from './CardEditor';
 import ReadinessList from './ReadinessList';
 import { LoadError, SampleBanner } from './bits';
@@ -13,9 +14,9 @@ import type { Autopilot } from './useAutopilot';
 // "פרטי העסק": the business card everything automatic is written from. One task in the three fixed
 // parts: what has to be right, what we read and checked, and the one approval the customer gives.
 
-interface Props { auto: Autopilot; onBack: () => void; onSettings: () => void }
+interface Props { auto: Autopilot; onBack: () => void; onSettings: () => void; backLabel?: string }
 
-export default function BusinessCardScreen({ auto, onBack, onSettings }: Props) {
+export default function BusinessCardScreen({ auto, onBack, onSettings, backLabel = BACK_HOME }: Props) {
   const { truth, gbp } = auto;
   const [notice, setNotice] = useState<CardNotice>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -64,7 +65,8 @@ export default function BusinessCardScreen({ auto, onBack, onSettings }: Props) 
     const t = truth.data;
     const approved = !!t.approvedAt;
     body = (
-      <div className="dv3-task">
+      <>
+        <div className="dv3-task">
         <PartBand part={1}><p>{CARD.what}</p></PartBand>
         <PartBand part={2}>
           <p>{approved ? CARD.howApproved : CARD.how}</p>
@@ -78,12 +80,14 @@ export default function BusinessCardScreen({ auto, onBack, onSettings }: Props) 
           <p className="dv3-you">{approved ? CARD.youDone : CARD.you}</p>
           <CardEditor key={auto.truthVersion} truth={t} auto={auto} notice={notice} onNotice={setNotice} onSettings={onSettings} />
         </PartBand>
-      </div>
+        </div>
+        <LandingPageCard auto={auto} ready={t.readiness.ready} />
+      </>
     );
   }
 
   return (
-    <ViewShell kicker={CARD.kicker} title={CARD.title} hint={CARD.hint} back={{ label: BACK_HOME, onClick: onBack }}>
+    <ViewShell kicker={CARD.kicker} title={CARD.title} hint={CARD.hint} back={{ label: backLabel, onClick: onBack }}>
       {auto.preview && <SampleBanner />}
       {body}
     </ViewShell>
