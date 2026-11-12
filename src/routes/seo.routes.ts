@@ -15,6 +15,7 @@ import { cancel as cancelSub, getPlans as subPlans, getStatus as subStatus, star
 import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers/seoContent.controller';
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
+import * as auto from '../controllers/autopilot.controller';
 import { sendFeedback } from '../controllers/feedback.controller';
 import { unsubscribeApply, unsubscribePage } from '../controllers/digest.controller';
 import { addRequest, deleteRequest, listRequests, reviewedRequest, sentRequest } from '../controllers/reviewRequests.controller';
@@ -119,5 +120,28 @@ router.get('/gbp/oauth/callback', gbpLimiter, gbp.callback);
 router.post('/gbp/disconnect', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.disconnect);
 router.get('/gbp/stats', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.stats);
 router.put('/gbp/location', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.chooseLocation);
+
+// The automatic product (docs/mvp-plan.md, part A; migration 048): the business card everything is
+// written from, the customer's automation choices, the weekly posts and the activity log.
+// Publishing itself is off unless AUTOPILOT_ENABLED=true; these routes work either way.
+const autoLimiter = rateLimit({ windowMs: 60 * 1000, max: 40, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+const autoGated = [autoLimiter, requireAuth, requireProduct('seo_autopilot')];
+router.get('/truth', ...autoGated, auto.getCard);
+router.put('/truth', ...autoGated, auto.putCard);
+router.post('/truth/sync', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.syncCard);
+router.post('/truth/approve', ...autoGated, auto.approveCard);
+// A complete draft landing page from the card. Each call can cost an AI generation: tight limit,
+// on top of the monthly creation cap inside the creation code itself.
+const pageFromCardLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: 'יותר מדי בקשות. נסו שוב בעוד שעה.' });
+router.post('/truth/landing', pageFromCardLimiter, requireAuth, requireProduct('seo_autopilot'), auto.createPageFromCard);
+router.get('/truth/phrases', ...autoGated, auto.getPhrases);
+router.post('/truth/phrases', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.createPhrasePage);
+router.get('/automation', ...autoGated, auto.getSettings);
+router.put('/automation', ...autoGated, auto.putSettings);
+router.get('/posts', ...autoGated, auto.getPosts);
+router.put('/posts/:id', ...autoGated, auto.putPost);
+router.post('/posts/:id/publish', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.publishPost);
+router.post('/posts/:id/skip', ...autoGated, auto.skipPostNow);
+router.get('/activity', ...autoGated, auto.getActivity);
 
 export default router;

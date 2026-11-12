@@ -183,3 +183,43 @@ export async function postReply(access: string, account: string, location: strin
     throw new GbpError('google', `reply:http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}`);
   }
 }
+
+// ── Location details (Business Information API v1) ──
+// The full profile of ONE location: what the customer wrote in their Google card. Parsed by
+// businessTruth.ts. UNVERIFIED against live Google for every field: covered by tests with fake responses.
+export const LOCATION_DETAIL_MASK = 'name,title,phoneNumbers,categories,storefrontAddress,websiteUri,regularHours,serviceArea,profile,serviceItems,metadata,openInfo';
+
+export async function fetchLocationDetail(access: string, location: string, f: Fetch = fetch): Promise<Record<string, any>> {
+  if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  return getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}?readMask=${LOCATION_DETAIL_MASK}`, access, f, 'location');
+}
+
+// ── Local posts (My Business API v4: the only API that publishes posts to a profile) ──
+export const MAX_POST_LEN = 1500;
+export type PostCta = 'CALL' | 'LEARN_MORE';
+export interface NewLocalPost { summary: string; cta?: PostCta | null; url?: string | null }
+
+/** The request body Google expects. A CALL button uses the profile's phone and must carry no url. */
+export function localPostBody(p: NewLocalPost): Record<string, unknown> {
+  const body: Record<string, unknown> = { languageCode: 'he', topicType: 'STANDARD', summary: p.summary };
+  if (p.cta === 'CALL') body.callToAction = { actionType: 'CALL' };
+  else if (p.cta === 'LEARN_MORE' && p.url && /^https:\/\/[^\s]+$/.test(p.url)) body.callToAction = { actionType: 'LEARN_MORE', url: p.url };
+  return body;
+}
+
+/**
+ * Publishes one post. Returns Google's resource name (accounts/…/locations/…/localPosts/…) and
+ * state. Called only for an account whose owner approved automatic posts, or pressed "publish".
+ */
+export async function createLocalPost(access: string, account: string, location: string, p: NewLocalPost, f: Fetch = fetch): Promise<{ name: string | null; state: string | null }> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  const summary = p.summary.trim();
+  if (summary.length < 20 || summary.length > MAX_POST_LEN) throw new GbpError('google', 'bad_post_text');
+  const r = await f(`https://mybusiness.googleapis.com/v4/${account}/${location}/localPosts`, {
+    method: 'POST', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' }, body: JSON.stringify(localPostBody({ ...p, summary })),
+  });
+  const body = (await r.json().catch(() => ({}))) as Record<string, any>;
+  if (r.status === 401) throw new GbpError('revoked');
+  if (!r.ok) throw new GbpError('google', `post:http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}`);
+  return { name: typeof body.name === 'string' ? body.name : null, state: typeof body.state === 'string' ? body.state : null };
+}
