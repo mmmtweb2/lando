@@ -1027,7 +1027,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // ('limitReached' is gone with the subscription model — there is no live-page
   //  slot ceiling to hit any more, only a balance that is either positive or not.)
   const [checkoutStatus, setCheckoutStatus] =
-    useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'modal' | 'paying' | 'done'>('idle');
+    useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'included' | 'includedPublishing' | 'modal' | 'paying' | 'done'>('idle');
+  // True when the page went live as the one included in the Google-promotion product (no charge, no credit).
+  const [publishedIncluded, setPublishedIncluded] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // Copy-link feedback for the publish-success modal's share nudge.
   const [linkCopied, setLinkCopied] = useState(false);
@@ -1251,6 +1253,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     if (!page) return;
     setCheckoutStatus('loadingPlan');
     setCheckoutError(null);
+    // The Google-promotion product includes one published page. If this page is covered by it,
+    // there is nothing to pay and no credit to spend: say so, and never show a price.
+    try {
+      const inc = await authFetch(`/api/landing/${page.id}/included`);
+      if (inc.ok && ((await inc.json()) as { included?: boolean }).included) { setCheckoutStatus('included'); return; }
+    } catch { /* could not tell: continue to the normal flow, which re-checks on the server before any charge */ }
     try {
       const r = await authFetch('/api/users/plan');
       if (!r.ok) throw new Error('balance fetch failed');
@@ -1299,6 +1307,32 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'הפרסום נכשל. נסו שוב.');
       setCheckoutStatus('confirm');
+    }
+  }
+
+  // "Publish" on the included-page screen. The server decides again; if the page is no longer
+  // covered (the slot was used in another tab), it answers 402 and we show the normal explanation.
+  async function publishIncluded() {
+    if (!page) return;
+    setCheckoutStatus('includedPublishing');
+    setCheckoutError(null);
+    try {
+      const r = await authFetch(`/api/landing/${page.id}/publish`, { method: 'POST' });
+      if (r.ok) {
+        setPublishedIncluded(true);
+        setPage((prev) => (prev ? { ...prev, status: 'published' } : prev));
+        setCheckoutStatus('done');
+        return;
+      }
+      if (r.status !== 402) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? 'הפרסום נכשל. נסו שוב.');
+      }
+      setCheckoutError('הדף הכלול במנוי כבר נוצל לדף אחר, ולכן הפרסום של הדף הזה אינו כלול.');
+      setCheckoutStatus('modal');
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : 'הפרסום נכשל. נסו שוב.');
+      setCheckoutStatus('included');
     }
   }
 
@@ -4537,6 +4571,42 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         </div>
       )}
 
+      {/* ── Publish — the page is the one included in the Google-promotion product:
+          no price, no credit; one explicit click publishes it. ──────────────── */}
+      {(checkoutStatus === 'included' || checkoutStatus === 'includedPublishing') && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="included-publish-title">
+          <div className="relative w-full max-w-sm max-h-[92vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col" dir="rtl">
+            {checkoutStatus !== 'includedPublishing' && (
+              <button
+                onClick={() => setCheckoutStatus('idle')}
+                className="absolute top-4 left-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition text-xl leading-none"
+                aria-label="סגור">×</button>
+            )}
+            <div className="h-1.5 w-full bg-emerald-500 shrink-0" />
+            <div className="p-7 flex flex-col gap-4 overflow-y-auto">
+              <h2 id="included-publish-title" className="text-xl font-extrabold text-slate-900 pl-10">הדף כלול במנוי שלכם</h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                מנוי הקידום בגוגל כולל דף נחיתה אחד באוויר. הפרסום של הדף הזה בלי תשלום נוסף ובלי לנצל קרדיט.
+              </p>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                הדף נשאר באוויר כל עוד המנוי פעיל. אם המנוי ייפסק הדף יוקפא, והתוכן והפניות יישמרו.
+              </p>
+              {checkoutError && <p className="text-sm text-red-600" role="alert">{checkoutError}</p>}
+              <button
+                onClick={publishIncluded}
+                disabled={checkoutStatus === 'includedPublishing'}
+                className="w-full min-h-[48px] rounded-xl text-white font-bold text-base transition disabled:cursor-not-allowed"
+                style={{ backgroundColor: checkoutStatus === 'includedPublishing' ? '#94a3b8' : primary }}>
+                {checkoutStatus === 'includedPublishing' ? 'מפרסמים…' : 'פרסמו את הדף'}
+              </button>
+              {checkoutStatus !== 'includedPublishing' && (
+                <button onClick={() => setCheckoutStatus('idle')} className="w-full min-h-[44px] text-sm text-slate-500 hover:text-slate-700">לא עכשיו</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Publish success — explicit confirmation instead of the modal just
           silently disappearing once the page's status flips to 'published'. */}
       {checkoutStatus === 'done' && (
@@ -4547,7 +4617,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <div className="text-4xl">🎉</div>
               <h2 className="text-xl font-extrabold text-slate-900">הדף פורסם בהצלחה!</h2>
               <p className="text-sm text-slate-500">
-                {planStatus && planStatus.pageCredits > 0
+                {publishedIncluded
+                  ? 'הדף כלול במנוי הקידום שלכם, ולא חויבתם עליו. הדף כעת גלוי לציבור.'
+                  : planStatus && planStatus.pageCredits > 0
                   ? `נוכה דף אחד מיתרת הדפים שלך — נשארו ${planStatus.pageCredits - 1}. הדף כעת גלוי לציבור.`
                   : 'הדף כעת גלוי לציבור.'}
               </p>
