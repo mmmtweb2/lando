@@ -269,20 +269,22 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   {
     const cr: any = res(); getPlans({} as any, cr);
     const prices = Object.fromEntries(cr.body.plans.map((p: any) => [p.id, p.price]));
-    assert.deepEqual(prices, { monthly: 250, monthly_page: 265, annual: 2500, annual_page: 2650 });
+    assert.deepEqual(prices, { monthly: 250, annual: 2500 });
     const saving = Object.fromEntries(cr.body.plans.map((p: any) => [p.id, p.savingVsMonthly]));
-    assert.deepEqual(saving, { monthly: 0, monthly_page: 0, annual: 500, annual_page: 530 }, 'annual = 10 months for 12');
+    assert.deepEqual(saving, { monthly: 0, annual: 500 }, 'annual = 10 months for 12');
     assert.equal(cr.body.terms.annualAutoRenew, false); assert.equal(cr.body.terms.annualRefundForRemainingMonths, false);
     assert.ok(!JSON.stringify(cr.body).match(/secret|key|password/i), 'nothing internal in the public catalog');
 
     const A = 'annual@x.co';
     db.user_products.length = 0;
     r = res(); await start(req({ authEmail: A, body: { plan: 'annual_page' } }), r);
+    assert.equal(r.code, 400, 'the old with-page plans are no longer sold');
+    r = res(); await start(req({ authEmail: A, body: { plan: 'annual' } }), r);
     assert.equal(r.code, 200);
     const asub = db.seo_subscriptions.find(x => x.email === A)!;
-    assert.equal(asub.plan_id, 'annual_page'); assert.equal(asub.cycle, 'year'); assert.equal(asub.with_page, true); assert.equal(asub.amount, 2650);
+    assert.equal(asub.plan_id, 'annual'); assert.equal(asub.cycle, 'year'); assert.equal(asub.with_page, true, 'every plan includes a page'); assert.equal(asub.amount, 2500);
     const abegin = sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').pop()!.body;
-    assert.equal(abegin.Items[0].UnitPrice, 2650);
+    assert.equal(abegin.Items[0].UnitPrice, 2500);
     assert.equal(abegin.Items[0].Duration_Months, undefined, 'annual is not a standing order');
     assert.equal(abegin.MaximumPayments, 12, 'installments are chosen on SUMIT\'s page');
     assert.equal(abegin.ExternalIdentifier, asub.id);
@@ -290,16 +292,16 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
     payments['800'] = { valid: true, amount: 250, ext: asub.id };   // the monthly price does not buy a year
     r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '800' } } as any, r);
     assert.equal(asub.status, 'pending');
-    payments['801'] = { valid: true, amount: 2650, ext: asub.id };
+    payments['801'] = { valid: true, amount: 2500, ext: asub.id };
     r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '801' } } as any, r);
     assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok');
     assert.equal(asub.status, 'active');
     const months = (new Date(asub.current_period_end).getTime() - Date.now()) / (30.44 * 86400000);
     assert.ok(months > 11.9 && months < 12.1, `about 12 months, got ${months}`);
     r = res(); await getStatus(req({ authEmail: A }), r);
-    assert.equal(r.body.subscription.planId, 'annual_page'); assert.equal(r.body.subscription.withPage, true);
+    assert.equal(r.body.subscription.planId, 'annual'); assert.equal(r.body.subscription.withPage, true);
     assert.equal(r.body.subscription.cycle, 'year'); assert.equal(r.body.subscription.renews, false);
-    assert.equal(r.body.catalog.plans.length, 4);
+    assert.equal(r.body.catalog.plans.length, 2, 'two plans are sold: monthly and annual');
 
     // cancel: only switches off renewal; nothing to stop at SUMIT, the paid year stays
     const cancelsBefore = sumitCalls.filter(c => c.path === '/billing/recurring/cancel/').length;
@@ -340,7 +342,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
 
     // buying again after it ended starts a fresh paid year
     r = res(); await start(req({ authEmail: A, body: { plan: 'annual' } }), r);
-    assert.equal(r.code, 200); assert.equal(asub.status, 'pending'); assert.equal(asub.plan_id, 'annual'); assert.equal(asub.with_page, false); assert.equal(asub.amount, 2500);
+    assert.equal(r.code, 200); assert.equal(asub.status, 'pending'); assert.equal(asub.plan_id, 'annual'); assert.equal(asub.with_page, true); assert.equal(asub.amount, 2500);
     payments['802'] = { valid: true, amount: 2500, ext: asub.id };
     r = res(); await subscriptionReturn({ query: { ref: asub.id, 'OG-PaymentID': '802' } } as any, r);
     assert.equal(asub.status, 'active');
@@ -362,7 +364,7 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
     process.env.SEO_TEST_PRICE = '1'; process.env.SEO_TEST_EMAILS = 'tester@x.co';
     try {
       let pid = 7000;
-      for (const [plan, catalogPrice] of [['monthly', 250], ['annual', 2500], ['annual_page', 2650]] as const) {
+      for (const [plan, catalogPrice] of [['monthly', 250], ['annual', 2500]] as const) {
         db.user_products.length = 0;
         const T = 'tester@x.co';
         r = res(); await start(req({ authEmail: T, body: { plan } }), r);

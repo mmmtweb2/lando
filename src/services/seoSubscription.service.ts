@@ -7,12 +7,12 @@ import { withHeartbeat } from './opsMetrics.service';
 import { logEvent } from './journey.service';
 import { supabase } from '../config/supabase';
 import { seoPlanName, seoSubscriptionEnabled, seoTestPrice } from '../config/seoPlan';
-import { SEO_ANNUAL_REMINDER_DAYS, SeoCycle, SeoPlan, SeoPlanId, getSeoPlan, planFor } from '../config/seoCatalog';
+import { SEO_ANNUAL_REMINDER_DAYS, SeoCycle, SeoPlan, SeoPlanId, getSeoPlan, planFor, isSellable } from '../config/seoCatalog';
 import { isEntitled } from './entitlements.service';
 import { summitConfigured } from './summit.service';
 import { AddonAccess, reconcileAddonPage } from './seoPageAddon.service';
 import { AnnualReminderParams, sendAnnualReminder } from './seoReminder.mailer';
-import { beginRecurringRedirect, beginSinglePaymentRedirect, cancelRecurring } from './sumitRecurring';
+import { beginRecurringRedirect, beginSinglePaymentRedirect, cancelRecurring, createStandingOrder, standingOrderAfterPayment } from './sumitRecurring';
 import {
   SubState, SubStatus, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow,
 } from './subscriptionState';
@@ -47,19 +47,36 @@ export function autoRenews(r: Pick<SubRow, 'cycle'>): boolean {
   return r.cycle !== 'year';
 }
 
-/** Is the landing-page add-on of this subscription active right now (plan has a page + access, grace included)? */
-export function addonAccessOf(r: Pick<SubRow, 'with_page' | 'status' | 'current_period_end'>, now = new Date()): AddonAccess {
+/**
+ * Is this subscription's included landing page active right now? Every plan includes one page
+ * (12.11.2026), so this is simply "does the subscription give access" (grace included), whatever
+ * the stored with_page says: customers who bought before the change get the page too.
+ */
+export function addonAccessOf(r: Pick<SubRow, 'status' | 'current_period_end'> & { with_page?: boolean }, now = new Date()): AddonAccess {
   return {
-    active: !!r.with_page && isEntitled({ status: r.status, current_period_end: r.current_period_end }, now),
+    active: isEntitled({ status: r.status, current_period_end: r.current_period_end }, now),
     periodEnd: r.current_period_end,
   };
 }
 
-/** Bring the included page in line with the subscription. Never throws: a page hiccup must not fail a payment or the sweep. */
+/**
+ * Does this ACCOUNT have the product right now, and until when? Read from user_products, which is
+ * where access is decided for everyone: a SUMIT subscription is mirrored into it, and an account
+ * Moshe set up by hand (billed outside the system, a beta, a pilot) has only this row. So the
+ * included page follows the same rule as the product itself, however the customer pays.
+ */
+export async function pageAccessFor(email: string, now = new Date()): Promise<AddonAccess> {
+  const { data, error } = await supabase.from('user_products').select('status, current_period_end')
+    .eq('email', email.trim().toLowerCase()).eq('product', 'seo_autopilot').maybeSingle();
+  if (error) throw dbError(error);
+  const r = data as { status: string; current_period_end: string | null } | null;
+  return { active: !!r && isEntitled(r, now), periodEnd: r?.current_period_end ?? null };
+}
+
+/** Bring the included page in line with the account's access. Never throws: a page hiccup must not fail a payment or the sweep. */
 async function syncAddonPage(email: string): Promise<void> {
   try {
-    const row = await getSubscription(email);
-    const done = await reconcileAddonPage(email, row ? addonAccessOf(row) : { active: false, periodEnd: null });
+    const done = await reconcileAddonPage(email, await pageAccessFor(email));
     if (done === 'frozen' || done === 'unfrozen') console.log('[SUBSCRIPTION] included page', done);
   } catch (e) {
     console.error('[SUBSCRIPTION] included page sync failed:', e instanceof Error ? e.message : e);
@@ -134,7 +151,7 @@ async function mirrorEntitlement(email: string, s: SubState): Promise<void> {
 
 export async function startSubscription(email: string, planId: unknown = 'monthly'): Promise<{ redirectUrl: string }> {
   if (!seoSubscriptionEnabled() || !summitConfigured()) throw new SubError('disabled');
-  const plan = getSeoPlan(planId);
+  const plan = isSellable(planId) ? getSeoPlan(planId) : null;
   if (!plan) throw new SubError('bad_plan');
   // Payment test mode (SEO_TEST_PRICE + SEO_TEST_EMAILS): listed accounts pay the test amount on any plan.
   const testPrice = seoTestPrice(email);
@@ -179,7 +196,7 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   }
 
   const common = {
-    itemName: plan.withPage ? `${seoPlanName()} + דף נחיתה` : seoPlanName(),
+    itemName: seoPlanName(),
     amount: price,
     externalIdentifier: subId,
     redirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}`,
@@ -249,7 +266,21 @@ export async function applyVerifiedPayment(
     });
     // A monthly plan is only a subscription if SUMIT holds a standing order. Without its id nothing will charge
     // next month and we cannot cancel it automatically: say so loudly (task #39), the customer still got the month they paid for.
-    if (planOf(row).cycle === 'month' && !extra.sumitRecurringItemId && !row.sumit_recurring_item_id) {
+    const customerId = extra.sumitCustomerId ?? row.sumit_customer_id;
+    let standingOrderId: string | null = extra.sumitRecurringItemId ?? row.sumit_recurring_item_id;
+    // The standing order, created by SUMIT's recurring API on the card the customer just used
+    // (sumitRecurring.ts). Once per subscription: this code runs only for the FIRST time a payment
+    // id is seen (replay guard above), and only while no standing order is on record. It starts
+    // charging at the end of the period that was just paid. Off unless SUMIT_STANDING_ORDER=after_payment.
+    if (planOf(row).cycle === 'month' && !standingOrderId && customerId && state.currentPeriodEnd && standingOrderAfterPayment()) {
+      const so = await createStandingOrder({ customerId, itemName: 'קידום העסק בגוגל – מנוי חודשי', amount: Number(row.amount), firstCharge: state.currentPeriodEnd }, now);
+      if (so.recurringItemId) {
+        standingOrderId = so.recurringItemId;
+        const { error: soErr } = await supabase.from('seo_subscriptions').update({ sumit_recurring_item_id: so.recurringItemId }).eq('id', row.id);
+        if (soErr) console.error('[SUBSCRIPTION] ALERT standing order created in SUMIT but not saved here — cancel will need a human', { id: row.id, recurringItemId: so.recurringItemId });
+      }
+    }
+    if (planOf(row).cycle === 'month' && !standingOrderId) {
       console.error('[SUBSCRIPTION] ALERT monthly payment verified but SUMIT returned NO standing order id — check the SUMIT dashboard; this account will not renew by itself', { id: row.id, payment: payment.sumitPaymentId });
     }
     await syncAddonPage(row.email);   // a frozen included page comes back; a live one gets the new period end
@@ -315,7 +346,7 @@ export async function sweepSubscriptions(
     try {
       await saveState(row, next);
       changed += 1;
-      if (row.with_page) await syncAddonPage(row.email);
+      await syncAddonPage(row.email);
     } catch (e) {
       console.error('[SUBSCRIPTION] sweep update failed:', row.id, e instanceof Error ? e.message : e);
     }
@@ -338,7 +369,7 @@ async function maybeRemindAnnual(row: SubRow, now: Date, send: (p: AnnualReminde
   const daysLeft = (end - now.getTime()) / (24 * 60 * 60 * 1000);
   if (daysLeft <= 0 || daysLeft > SEO_ANNUAL_REMINDER_DAYS) return;
   if (row.reminder_for_period_end && new Date(row.reminder_for_period_end).getTime() === end) return;
-  const ok = await send({ to: row.email, periodEnd: row.current_period_end, withPage: !!row.with_page });
+  const ok = await send({ to: row.email, periodEnd: row.current_period_end, withPage: true });
   if (!ok) return;
   const { error } = await supabase.from('seo_subscriptions')
     .update({ reminder_for_period_end: row.current_period_end }).eq('id', row.id);

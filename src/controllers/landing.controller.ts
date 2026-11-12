@@ -9,7 +9,7 @@ import { ensureUserProfile, type MinimalProfile } from '../services/profile.serv
 import {
   canPublishFromBalance, consumeMonthlyCreate, consumePageCredit, getAccountStatus, refundPageCredit,
 } from '../services/billing.service';
-import { addonAccessOf, getSubscription } from '../services/seoSubscription.service';
+import { getSubscription, pageAccessFor } from '../services/seoSubscription.service';
 import { canUseAddon, claimAddonPage, reconcileAddonPage, releaseAddonClaim } from '../services/seoPageAddon.service';
 import { grantReferralBonusOnFirstPublish } from '../services/referral.service';
 import { trackPageView, trackPageCtaClick } from '../services/analytics.service';
@@ -1022,16 +1022,18 @@ export async function publishPageWithCredit(
  */
 export async function publishIncludedPage(email: string, id: string): Promise<PublishedPage | null> {
   try {
-    const sub = await getSubscription(email);
-    if (!sub || !sub.with_page) return null;
-    const access = addonAccessOf(sub);
+    // Every account that holds the Google-promotion product gets one published page with it
+    // (12.11.2026): a paying subscription, or an account set up by hand. Access is read from the
+    // same place that decides access to the product itself.
+    const access = await pageAccessFor(email);
     if (!(await canUseAddon(email, id, access))) return null;
+    const sub = await getSubscription(email).catch(() => null);
     const { data: existing } = await supabase.from('landing_pages').select('status, owner_email, parent_id').eq('id', id).maybeSingle();
     const row = existing as { status?: string; owner_email?: string | null; parent_id?: string | null } | null;
     if (!row || row.parent_id || (row.owner_email ?? '').trim().toLowerCase() !== email.trim().toLowerCase()) return null;
     if (row.status === 'published') return null;       // already live: nothing to spend, the normal path says so
     if (row.status === 'frozen') return null;          // brought back by reconcile when the subscription is active
-    if (!(await claimAddonPage(email, id, sub.id))) return null;
+    if (!(await claimAddonPage(email, id, sub?.id ?? null))) return null;
     const page = await publishPageById(id);
     if (!page) { await releaseAddonClaim(email, id); return null; }
     await reconcileAddonPage(email, access);           // expires_at = end of the paid period

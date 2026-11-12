@@ -79,7 +79,7 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
 (async () => {
   process.env.SEO_SUBSCRIPTION_ENABLED = 'true';
 
-  // 1. no subscription / plan without a page -> the included-page path does not apply
+  // 1. no product -> the included-page path does not apply; any paid plan -> the first page is published without a credit
   page(P1); page(P2);
   assert.equal(await publishIncludedPage(E, P1), null, 'no subscription');
   let r: any = res(); await start(req({ body: { plan: 'monthly' } }), r);
@@ -87,15 +87,11 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
   payments['1'] = { valid: true, amount: 250, ext: sub.id };
   await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '1' } } as any, res());
   assert.equal(sub.status, 'active');
-  assert.equal(await publishIncludedPage(E, P1), null, 'plan without a page');
+  assert.equal(sub.with_page, true, 'every plan includes a page'); assert.equal(sub.amount, 250);
+  r = res(); await start(req({ authEmail: 'other@x.co', body: { plan: 'monthly_page' } }), r);
+  assert.equal(r.code, 400, 'the old with-page plans are no longer sold');
 
-  // 2. switch to a plan with a page, pay -> the first page is published without a credit
-  sub.status = 'canceled'; sub.current_period_end = null;
-  r = res(); await start(req({ body: { plan: 'monthly_page' } }), r);
-  assert.equal(sub.with_page, true); assert.equal(sub.amount, 265);
-  payments['2'] = { valid: true, amount: 265, ext: sub.id };
-  await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '2' } } as any, res());
-  assert.equal(sub.status, 'active');
+  // 2. the basic monthly plan publishes the first page without a credit
   const pub = await publishIncludedPage(E, P1);
   assert.ok(pub, 'published through the subscription');
   const p1 = db.landing_pages.find(x => x.id === P1)!;
@@ -116,7 +112,7 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
 
   // 4. renewing the subscription extends the page; the page is not sold a 99 renewal
   const before = sub.current_period_end;
-  payments['3'] = { valid: true, amount: 265, ext: sub.id };
+  payments['3'] = { valid: true, amount: 250, ext: sub.id };
   await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '3' } } as any, res());
   assert.notEqual(sub.current_period_end, before);
   assert.equal(p1.expires_at, sub.current_period_end);
@@ -137,24 +133,39 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
   assert.equal(await publishIncludedPage(E, P1), null, 'frozen pages come back through the subscription, not the publish path');
 
   // 7. buying a plan with a page again brings it back
-  r = res(); await start(req({ body: { plan: 'annual_page' } }), r);
-  payments['4'] = { valid: true, amount: 2650, ext: sub.id };
+  r = res(); await start(req({ body: { plan: 'annual' } }), r);
+  payments['4'] = { valid: true, amount: 2500, ext: sub.id };
   await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '4' } } as any, res());
   assert.equal(sub.status, 'active');
   assert.equal(p1.status, 'published'); assert.equal(p1.frozen_at, null);
   assert.equal(p1.expires_at, sub.current_period_end);
 
-  // 8. a plan WITHOUT a page freezes it too (the add-on is gone) and a past_due account keeps it through the grace
+  // 8. a row written before the change (with_page false) keeps its page: the page follows access, not the old flag.
+  //    A past_due account keeps it through the grace.
   sub.with_page = false;
   await sweepSubscriptions(new Date(), async () => true);
-  assert.equal(p1.status, 'frozen');
-  sub.with_page = true; sub.status = 'past_due'; sub.cycle = 'month'; sub.plan_id = 'monthly_page';
+  assert.equal(p1.status, 'published');
+  sub.status = 'past_due'; sub.cycle = 'month'; sub.plan_id = 'monthly';
   sub.current_period_end = new Date(Date.now() - 2 * 86400000).toISOString();
   await sweepSubscriptions(new Date(), async () => true);
   assert.equal(p1.status, 'published', 'inside the grace window the page stays up');
   sub.current_period_end = new Date(Date.now() - 9 * 86400000).toISOString();
   await sweepSubscriptions(new Date(), async () => true);
   assert.equal(sub.status, 'canceled'); assert.equal(p1.status, 'frozen');
+
+  // 8b. an account Moshe set up by hand (billed outside the system): it holds the product with no
+  //     subscription row, and gets its included page all the same; when the grant ends the page is not free any more.
+  {
+    const M = 'manual@x.co', PM = '99999999-9999-4999-8999-999999999999';
+    db.landing_pages.push({ id: PM, owner_email: M, status: 'draft', parent_id: null, slug: 'manual-page', expires_at: null, frozen_at: null });
+    assert.equal(await publishIncludedPage(M, PM), null, 'no product: not free');
+    db.user_products.push({ email: M, product: 'seo_autopilot', status: 'active', current_period_end: null, source: 'manual' });
+    assert.ok(await publishIncludedPage(M, PM), 'a manual grant publishes the first page without payment');
+    assert.equal(db.landing_pages.find(x => x.id === PM)!.status, 'published');
+    db.user_products.find(x => x.email === M)!.status = 'canceled';
+    await sweepSubscriptions(new Date(), async () => true);
+    assert.equal(db.landing_pages.find(x => x.id === PM)!.status, 'frozen', 'the grant ended: the page is frozen, never deleted');
+  }
 
   // 9. a deleted included page frees the slot
   db.landing_pages.splice(db.landing_pages.findIndex(x => x.id === P1), 1);

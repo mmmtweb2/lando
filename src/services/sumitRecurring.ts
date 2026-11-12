@@ -136,6 +136,87 @@ export async function cancelRecurring(customerId: string | null, recurringItemId
   }
 }
 
+// ── Standing order through /billing/recurring/charge/ (12.11.2026) ───────────
+//
+// The hosted payment page (beginredirect) takes ONE payment; in the first real test it created no
+// standing order, whatever Duration_Months said. SUMIT's own way to create one is
+// /billing/recurring/charge/. So the monthly flow becomes two steps, and the customer still types
+// the card only on SUMIT's page:
+//   1. the first month is paid on the hosted page, exactly as before. SUMIT saves the card on the
+//      customer it creates and returns the customer's id (OG-CustomerID);
+//   2. once that payment is verified, we ask SUMIT for a standing order on that saved card, whose
+//      FIRST charge is one period later (Date_Start).
+//
+// OFF unless SUMIT_STANDING_ORDER=after_payment. UNVERIFIED against live SUMIT (field names are
+// from two third-party descriptions of its published schema, not from a call we made):
+//   • that /billing/recurring/charge/ accepts a customer by ID and uses the card saved on it;
+//   • that Date_Start postpones the first charge. If it does NOT, SUMIT charges at once and the
+//     response carries a Payment: we then log an ALERT with the amount, and report `chargedNow`.
+//     This is why the first run must be the 1-shekel test (SEO_TEST_PRICE), never a real customer.
+
+export const standingOrderAfterPayment = (env: NodeJS.ProcessEnv = process.env): boolean => env.SUMIT_STANDING_ORDER === 'after_payment';
+
+export interface StandingOrderParams { customerId: string; itemName: string; amount: number; firstCharge: Date }
+
+/** YYYY-MM-DD in Israel, the day SUMIT should make the first charge. */
+export function sumitDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
+/** The request body. Throws on anything that could create a wrong order (bad id, bad amount, a start in the past). */
+export function standingOrderBody(p: StandingOrderParams, now = new Date()): Record<string, unknown> {
+  const id = Number(p.customerId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('standing order: bad customer id');
+  if (!(p.amount > 0) || p.amount > 100_000) throw new Error('standing order: bad amount');
+  if (!(p.firstCharge.getTime() > now.getTime() + 24 * 60 * 60 * 1000)) throw new Error('standing order: first charge must be at least a day ahead');
+  return {
+    Customer: { ID: id, SearchMode: 1 },   // 1 = None: use exactly this customer, never search or create another
+    Items: [{
+      Item: { Name: p.itemName, Duration_Months: 1 },
+      Quantity: 1,
+      UnitPrice: p.amount,
+      Duration_Months: 1,
+      Recurrence: 0,                        // 0 = until cancelled
+      Date_Start: sumitDate(p.firstCharge),
+      Description: p.itemName,
+    }],
+    VATIncluded: true,
+  };
+}
+
+export interface StandingOrderResult { ok: boolean; recurringItemId: string | null; chargedNow: { paymentId: string | null; amount: number | null } | null; error: string | null }
+
+/** Reads SUMIT's answer. A Payment in it means SUMIT charged the card now, which we did not ask for. */
+export function readStandingOrder(json: { Status?: number; UserErrorMessage?: string | null; TechnicalErrorDetails?: string | null; Data?: any }): StandingOrderResult {
+  if (json.Status !== 0) return { ok: false, recurringItemId: null, chargedNow: null, error: String(json.UserErrorMessage || json.TechnicalErrorDetails || `status ${json.Status}`).slice(0, 200) };
+  const d = json.Data ?? {};
+  const ids = d.RecurringCustomerItemIDs ?? d.Payment?.RecurringCustomerItemIDs;
+  const first = Array.isArray(ids) ? ids[0] : ids;
+  const pay = d.Payment;
+  const charged = pay && (pay.ValidPayment === true || Number(pay.Amount) > 0) ? { paymentId: pay.ID != null ? String(pay.ID) : null, amount: Number.isFinite(Number(pay.Amount)) ? Number(pay.Amount) : null } : null;
+  return { ok: first != null, recurringItemId: first != null ? String(first) : null, chargedNow: charged, error: first != null ? null : 'no standing order id in the answer' };
+}
+
+type Call = typeof summitCall;
+
+/** Asks SUMIT for the standing order. Never throws: the caller already gave the customer what they paid for. */
+export async function createStandingOrder(p: StandingOrderParams, now = new Date(), call: Call = summitCall): Promise<StandingOrderResult> {
+  try {
+    const body = standingOrderBody(p, now);
+    const json = await call('/billing/recurring/charge/', body);
+    diagLog('recurring/charge request', shapeOf(body));
+    diagLog('recurring/charge response', { status: json.Status, data: shapeOf(json.Data) });
+    const r = readStandingOrder(json as never);
+    if (!r.ok) console.error('[SUMIT] ALERT standing order was NOT created:', r.error);
+    if (r.chargedNow) console.error('[SUMIT] ALERT SUMIT charged the card NOW while creating the standing order (Date_Start did not postpone it) — check for a double charge', r.chargedNow);
+    return r;
+  } catch (e) {
+    const error = e instanceof Error ? e.message.slice(0, 200) : 'unknown';
+    console.error('[SUMIT] ALERT standing order request failed:', error);
+    return { ok: false, recurringItemId: null, chargedNow: null, error };
+  }
+}
+
 /** Case/separator-insensitive lookup in a flat key-value bag (query string, form body, JSON). */
 export function pickField(bag: Record<string, unknown>, ...names: string[]): string | undefined {
   const wanted = new Set(names.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, '')));

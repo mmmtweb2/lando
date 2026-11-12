@@ -28,12 +28,20 @@ export const SEO_PAGE_ADDON_ANNUAL = 150;
 /** Days before an annual period ends that the "your year is ending" reminder goes out. */
 export const SEO_ANNUAL_REMINDER_DAYS = 14;
 
+// Since 12.11.2026 (Moshe's decision) the landing page and the search-phrase pages are part of
+// the product itself: every plan includes one published page, and there is no page add-on to buy.
+// Two plans are sold, monthly and annual. The two "_page" ids stay only so that rows written
+// before the change still resolve to a plan; they cannot be bought any more.
 export const SEO_PLANS: Record<SeoPlanId, SeoPlan> = {
-  monthly:      { id: 'monthly',      cycle: 'month', withPage: false, price: SEO_MONTHLY_PRICE,                           months: 1 },
-  monthly_page: { id: 'monthly_page', cycle: 'month', withPage: true,  price: SEO_MONTHLY_PRICE + SEO_PAGE_ADDON_MONTHLY,  months: 1 },
-  annual:       { id: 'annual',       cycle: 'year',  withPage: false, price: SEO_ANNUAL_PRICE,                            months: 12 },
-  annual_page:  { id: 'annual_page',  cycle: 'year',  withPage: true,  price: SEO_ANNUAL_PRICE + SEO_PAGE_ADDON_ANNUAL,    months: 12 },
+  monthly:      { id: 'monthly',      cycle: 'month', withPage: true, price: SEO_MONTHLY_PRICE,                           months: 1 },
+  monthly_page: { id: 'monthly_page', cycle: 'month', withPage: true, price: SEO_MONTHLY_PRICE + SEO_PAGE_ADDON_MONTHLY,  months: 1 },
+  annual:       { id: 'annual',       cycle: 'year',  withPage: true, price: SEO_ANNUAL_PRICE,                            months: 12 },
+  annual_page:  { id: 'annual_page',  cycle: 'year',  withPage: true, price: SEO_ANNUAL_PRICE + SEO_PAGE_ADDON_ANNUAL,    months: 12 },
 };
+
+/** The plans a customer can buy today. */
+export const SEO_SELLABLE_IDS: SeoPlanId[] = ['monthly', 'annual'];
+export const isSellable = (id: unknown): id is SeoPlanId => SEO_SELLABLE_IDS.includes(id as SeoPlanId);
 
 export const SEO_PLAN_IDS = Object.keys(SEO_PLANS) as SeoPlanId[];
 
@@ -45,15 +53,14 @@ export function getSeoPlan(id: unknown): SeoPlan | null {
   return isSeoPlanId(id) ? SEO_PLANS[id] : null;
 }
 
-/** The plan matching a stored (cycle, with_page) pair; used for rows written before plan ids existed. */
-export function planFor(cycle: SeoCycle, withPage: boolean): SeoPlan {
-  return SEO_PLANS[cycle === 'year' ? (withPage ? 'annual_page' : 'annual') : (withPage ? 'monthly_page' : 'monthly')];
+/** The plan of a stored row that has no plan id (rows from before plan ids existed): by its cycle. */
+export function planFor(cycle: SeoCycle, _withPage?: boolean): SeoPlan {
+  return SEO_PLANS[cycle === 'year' ? 'annual' : 'monthly'];
 }
 
 /** What a year costs paid monthly vs. as a single annual payment (derived, never typed). */
-export function annualSaving(withPage: boolean): number {
-  const monthly = SEO_PLANS[withPage ? 'monthly_page' : 'monthly'].price * 12;
-  return monthly - SEO_PLANS[withPage ? 'annual_page' : 'annual'].price;
+export function annualSaving(_withPage?: boolean): number {
+  return SEO_PLANS.monthly.price * 12 - SEO_PLANS.annual.price;
 }
 
 /** The read-only shape the client receives. Prices only: no switches, no secrets. */
@@ -61,7 +68,7 @@ export function publicSeoCatalog() {
   return {
     currency: 'ILS',
     vatIncluded: true,
-    plans: SEO_PLAN_IDS.map(id => {
+    plans: SEO_SELLABLE_IDS.map(id => {
       const p = SEO_PLANS[id];
       return {
         id: p.id, cycle: p.cycle, withPage: p.withPage, price: p.price, months: p.months,
@@ -70,7 +77,8 @@ export function publicSeoCatalog() {
         savingVsMonthly: p.cycle === 'year' ? annualSaving(p.withPage) : 0,
       };
     }),
-    pageAddon: { monthly: SEO_PAGE_ADDON_MONTHLY, annual: SEO_PAGE_ADDON_ANNUAL },
+    // No add-on is sold any more; the field stays (as zero) for clients built before the change.
+    pageAddon: { monthly: 0, annual: 0 },
     // The cancellation terms that must be shown before payment (spec §1).
     terms: {
       annualSinglePayment: true,

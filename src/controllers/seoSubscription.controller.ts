@@ -35,7 +35,6 @@ function fail(res: Response, e: unknown): void {
 
 /** The included landing page: whether the plan has one, and which page / what state. */
 async function pageState(row: SubRow) {
-  if (!row.with_page) return { included: false, pageId: null, status: null };
   const info = await addonPageInfo(row.email);
   return { included: true, pageId: info.pageId, status: info.status };
 }
