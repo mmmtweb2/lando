@@ -2,12 +2,12 @@
 // The pure rules live in businessTruth.ts.
 
 import { supabase } from '../config/supabase';
-import { GbpError, fetchLocationDetail, listLocations, pickLocation } from './gbpGoogle';
+import { GbpError, fetchLocationDetail, listLocations, patchLocation, pickLocation } from './gbpGoogle';
 import { getConnection, markNeedsReconnect, setLocation } from './gbpStore';
 import { listBusinesses } from './seoBusinesses.service';
 import { accessFor } from './reviewAlerts.service';
 import { logActivity, missingTable, setAutomation } from './automation.service';
-import { type Readiness, type TruthCard, applyEdit, emptyCard, mergeFromGoogle, parseLocation, readiness } from './businessTruth';
+import { type Readiness, type TruthCard, applyEdit, emptyCard, mergeFromGoogle, parseLocation, readiness, writeBackPlan } from './businessTruth';
 
 export class TruthError extends Error {
   constructor(public readonly code: 'not_connected' | 'no_location' | 'not_migrated' | 'not_found' | 'not_ready' | 'quota_pending' | 'google', message = code) { super(message); }
@@ -110,4 +110,40 @@ export async function approve(email: string, now = new Date()): Promise<TruthVie
   await setAutomation(email, { consent: true }, now);
   if (!prev.approved_at) await logActivity(email, 'card_approved', 'אישרתם את פרטי העסק, ואנחנו מתחילים לעבוד', null, 'approved');
   return view(row);
+}
+
+/** Off unless GBP_WRITEBACK_ENABLED=true: writing to a customer's Google listing is unverified against live Google. */
+export const writeBackEnabled = (): boolean => process.env.GBP_WRITEBACK_ENABLED === 'true';
+
+export interface WriteBackDeps extends SyncDeps { patch(access: string, location: string, body: Record<string, unknown>, mask: string[]): Promise<void>; card(email: string): Promise<{ card: TruthCard; approved: boolean; location: string | null } | null>; log: typeof logActivity }
+const realWriteBack: WriteBackDeps = {
+  ...realSync,
+  patch: (access, location, body, mask) => patchLocation(access, location, body, mask),
+  async card(email) { const r = await getRow(email); return r ? { card: { ...emptyCard(), ...r.card }, approved: !!r.approved_at, location: r.location_name } : null; },
+  log: logActivity,
+};
+
+/**
+ * After approval: adds to the customer's Google listing what they completed here and Google lacks
+ * (see writeBackPlan). Never throws and never blocks the approval; returns what happened.
+ * Only for an approved card, and only for the location the card was read from.
+ */
+export async function writeBackToGoogle(email: string, deps: WriteBackDeps = realWriteBack): Promise<'off' | 'nothing' | 'written' | 'failed'> {
+  if (!writeBackEnabled()) return 'off';
+  try {
+    const mine = await deps.card(email);
+    if (!mine?.approved || !mine.location) return 'nothing';
+    const access = await deps.access(email);
+    if (!access) return 'failed';
+    const location = await deps.location(email, access);
+    if (location !== mine.location) return 'nothing';
+    const plan = writeBackPlan(await deps.detail(access, location), mine.card);   // a fresh read: the list we append to is the one Google holds now
+    if (!plan) return 'nothing';
+    await deps.patch(access, location, plan.body, plan.mask);
+    await deps.log(email, 'card_synced', 'הוספנו לכרטיס העסק שלכם בגוגל את מה שהשלמתם', plan.summary.join(', '), `writeback:${new Date().toISOString().slice(0, 10)}`);
+    return 'written';
+  } catch (e) {
+    console.error('[TRUTH] write-back failed:', e instanceof Error ? e.message.slice(0, 160) : 'unknown');
+    return 'failed';
+  }
 }

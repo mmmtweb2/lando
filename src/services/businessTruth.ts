@@ -298,3 +298,36 @@ export function landingInputFromCard(c: TruthCard): LandingInput {
     page_goal: 'lead_gen',
   };
 }
+
+// ── Writing the completions back to Google (docs/mvp-plan.md, A5) ────────────
+
+export interface WriteBack { mask: string[]; body: Record<string, unknown>; summary: string[] }
+
+/**
+ * What to write to the customer's Google listing after they approved their details: ONLY what
+ * they added here and Google does not have.
+ *   • the description, when Google has none (we never replace a description that is already there);
+ *   • services the customer added, appended to the list Google already holds. The API replaces the
+ *     whole list on update, so the existing items are sent back exactly as they were read (`raw`),
+ *     with the new ones after them; nothing existing is removed or reworded.
+ * `raw` must be a FRESH read of the location. Returns null when there is nothing to write.
+ */
+export function writeBackPlan(raw: any, c: TruthCard): WriteBack | null {
+  const mask: string[] = [], body: Record<string, unknown> = {}, summary: string[] = [];
+  const current = para(raw?.profile?.description, MAX_DESCRIPTION);
+  if (!current && c.description.length >= 30) {
+    mask.push('profile.description'); body.profile = { description: c.description }; summary.push('תיאור העסק');
+  }
+  const category = typeof raw?.categories?.primaryCategory?.name === 'string' ? raw.categories.primaryCategory.name : '';
+  const existing = Array.isArray(raw?.serviceItems) ? raw.serviceItems : [];
+  const have = new Set(parseLocation(raw).services.map((s) => s.name.toLowerCase()));
+  const added = c.services.filter((s) => s.source === 'customer' && !have.has(s.name.toLowerCase()));
+  if (category && added.length && existing.length + added.length <= 100) {
+    mask.push('serviceItems');
+    body.serviceItems = [...existing, ...added.map((s) => ({
+      freeFormServiceItem: { category, label: { displayName: s.name, ...(s.description ? { description: s.description } : {}), languageCode: 'he' } },
+    }))];
+    summary.push(added.length === 1 ? `השירות "${added[0].name}"` : `${added.length} שירותים`);
+  }
+  return mask.length ? { mask, body, summary } : null;
+}

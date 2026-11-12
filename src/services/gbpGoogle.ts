@@ -223,3 +223,24 @@ export async function createLocalPost(access: string, account: string, location:
   if (!r.ok) throw new GbpError('google', `post:http_${r.status}${body?.error?.status ? ':' + body.error.status : ''}`);
   return { name: typeof body.name === 'string' ? body.name : null, state: typeof body.state === 'string' ? body.state : null };
 }
+
+// ── Updating a location (Business Information API v1) ──
+/** The only fields we ever write to a customer's listing. Anything else in a mask is refused here. */
+export const WRITABLE_MASKS = ['profile.description', 'serviceItems'] as const;
+
+/**
+ * PATCHes the customer's listing. Called only after the customer approved their business details,
+ * and only for the fields in WRITABLE_MASKS. UNVERIFIED against live Google.
+ */
+export async function patchLocation(access: string, location: string, body: Record<string, unknown>, mask: string[], f: Fetch = fetch): Promise<void> {
+  if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  if (!mask.length || mask.some((m) => !(WRITABLE_MASKS as readonly string[]).includes(m))) throw new GbpError('google', 'bad_mask');
+  const r = await f(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}?updateMask=${mask.join(',')}`, {
+    method: 'PATCH', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (r.status === 401) throw new GbpError('revoked');
+  if (!r.ok) {
+    const b = (await r.json().catch(() => ({}))) as Record<string, any>;
+    throw new GbpError('google', `patch:http_${r.status}${b?.error?.status ? ':' + b.error.status : ''}`);
+  }
+}
