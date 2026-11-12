@@ -247,6 +247,11 @@ export async function applyVerifiedPayment(
       ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
       ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
     });
+    // A monthly plan is only a subscription if SUMIT holds a standing order. Without its id nothing will charge
+    // next month and we cannot cancel it automatically: say so loudly (task #39), the customer still got the month they paid for.
+    if (planOf(row).cycle === 'month' && !extra.sumitRecurringItemId && !row.sumit_recurring_item_id) {
+      console.error('[SUBSCRIPTION] ALERT monthly payment verified but SUMIT returned NO standing order id — check the SUMIT dashboard; this account will not renew by itself', { id: row.id, payment: payment.sumitPaymentId });
+    }
     await syncAddonPage(row.email);   // a frozen included page comes back; a live one gets the new period end
     void logEvent({ event: 'payment_succeeded', email: row.email }); // first verified payment only (unique milestone)
     return 'activated';

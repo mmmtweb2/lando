@@ -4,6 +4,7 @@
 // API key lives only here (server), never in the browser.
 
 import { extractExternalIdentifiers } from './paymentBinding';
+import { diagLog, shapeOf } from './sumitDiag';
 
 const BASE = process.env.SUMIT_API_BASE || 'https://api.sumit.co.il';
 const COMPANY_ID = process.env.SUMIT_COMPANY_ID;
@@ -99,6 +100,7 @@ export async function getPayment(paymentId: number | string): Promise<VerifiedPa
       return null;
     }
     const pay = json.Data.Payment;
+    diagLog('payments/get response', shapeOf(json.Data));   // SUMIT_DIAG=true only; shape, no personal data
     return {
       valid: Boolean(pay.ValidPayment),
       amount: pay.Amount ?? 0,

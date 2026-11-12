@@ -50,7 +50,7 @@ let missingTable = false;
 
 // ── fake SUMIT ──
 const sumitCalls: Array<{ path: string; body: any }> = [];
-const payments: Record<string, { valid: boolean; amount: number; ext?: unknown }> = {};
+const payments: Record<string, { valid: boolean; amount: number; ext?: unknown; cust?: number }> = {};
 let beginFails = false;
 let cancelOk = true;
 (globalThis as any).fetch = async (url: string, init: any) => {
@@ -63,7 +63,7 @@ let cancelOk = true;
   }
   if (path === '/billing/payments/get/') {
     const p = payments[String(body.PaymentID)];
-    return p ? json({ Status: 0, Data: { Payment: { ValidPayment: p.valid, Amount: p.amount, Status: p.valid ? '000' : '1', ...(p.ext !== undefined ? { ExternalIdentifier: p.ext } : {}) } } }) : json({ Status: 1, UserErrorMessage: 'not found' });
+    return p ? json({ Status: 0, Data: { Payment: { ValidPayment: p.valid, Amount: p.amount, Status: p.valid ? '000' : '1', ...(p.ext !== undefined ? { ExternalIdentifier: p.ext } : {}), ...(p.cust !== undefined ? { CustomerID: p.cust } : {}) } } }) : json({ Status: 1, UserErrorMessage: 'not found' });
   }
   if (path === '/billing/recurring/cancel/') return json(cancelOk ? { Status: 0 } : { Status: 1, UserErrorMessage: 'nope' });
   throw new Error('unexpected SUMIT call ' + path);
@@ -424,6 +424,54 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
     assert.equal(off.body.testMode, false, 'off without the env vars');
     r = res(); await start(req({ authEmail: 'boss@x.co' }), r);
     assert.equal(r.code, 409, 'with test mode off the grant blocks payment again');
+    db.user_products.length = 0;
+  }
+
+  // 14. task #39: the first real charge left sumit_customer_id / sumit_recurring_item_id empty
+  {
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...a: unknown[]) => { errors.push(a.map(String).join(' ')); };
+    try {
+      const begin = () => sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').pop()!.body;
+      let pid = 9200;
+      const pay = async (email: string, query: Row, cust?: number) => {
+        db.user_products.length = 0;
+        r = res(); await start(req({ authEmail: email, body: { plan: 'monthly' } }), r);
+        assert.equal(r.code, 200);
+        const sub = db.seo_subscriptions.find(x => x.email === email)!;
+        const id = String(++pid); payments[id] = { valid: true, amount: 250, ext: sub.id, ...(cust !== undefined ? { cust } : {}) };
+        errors.length = 0;
+        r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': id, ...query } } as any, r);
+        assert.equal(sub.status, 'active');
+        return sub;
+      };
+      // SUMIT's documented return parameter is OG-CustomerID
+      let sub = await pay('c1@x.co', { 'OG-CustomerID': '4242' });
+      assert.equal(sub.sumit_customer_id, '4242', 'customer id taken from OG-CustomerID');
+      // not in the redirect: fall back to the customer id of the verified payment
+      sub = await pay('c2@x.co', {}, 5151);
+      assert.equal(sub.sumit_customer_id, '5151', 'customer id taken from the verified payment');
+      // a monthly plan with no standing order id is flagged loudly; with one it is not
+      assert.ok(errors.some(e => e.includes('ALERT monthly payment verified but SUMIT returned NO standing order id')), 'alert when no standing order id');
+      sub = await pay('c3@x.co', { 'OG-CustomerID': '1', 'RecurringCustomerItemIDs[0]': '777' });
+      assert.equal(sub.sumit_recurring_item_id, '777');
+      assert.ok(!errors.some(e => e.includes('NO standing order id')), 'no alert when SUMIT returned the standing order id');
+
+      // the request: Duration_Months only by default; the experiments appear only when configured
+      r = res(); await start(req({ authEmail: 'c4@x.co', body: { plan: 'monthly' } }), r);
+      assert.equal(begin().Items[0].Recurrence, undefined); assert.equal(begin().Items[0].Item.ID, undefined);
+      process.env.SUMIT_RECURRENCE = '12'; process.env.SUMIT_RECURRING_ITEM_ID = '345';
+      try {
+        db.seo_subscriptions.splice(db.seo_subscriptions.findIndex(x => x.email === 'c4@x.co'), 1);
+        r = res(); await start(req({ authEmail: 'c4@x.co', body: { plan: 'monthly' } }), r);
+        assert.equal(begin().Items[0].Recurrence, 12); assert.equal(begin().Items[0].Item.ID, 345);
+        assert.equal(begin().Items[0].Duration_Months, 1, 'the base fields are unchanged');
+      } finally { delete process.env.SUMIT_RECURRENCE; delete process.env.SUMIT_RECURRING_ITEM_ID; }
+      // the annual (single payment) request never carries recurring fields
+      r = res(); await start(req({ authEmail: 'c5@x.co', body: { plan: 'annual' } }), r);
+      assert.equal(begin().Items[0].Recurrence, undefined); assert.equal(begin().Items[0].Duration_Months, undefined);
+    } finally { console.error = origErr; }
     db.user_products.length = 0;
   }
 
