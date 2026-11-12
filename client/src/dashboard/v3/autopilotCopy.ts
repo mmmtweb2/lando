@@ -8,7 +8,8 @@ import type { ActivityKind, PostsMode, RepliesMode } from './autopilot/types';
 export const GENERIC_ERROR = 'משהו השתבש. נסו שוב.';
 export const SAMPLE_NOTE = 'תצוגה לדוגמה. הנתונים כאן אינם של עסק אמיתי, ושום דבר לא נשמר.';
 export const RETRY = 'ניסיון חוזר';
-export const BACK_HOME = 'חזרה לסקירה';
+export const BACK_HOME = 'חזרה לבית';
+export const NO_NEED = 'אין צורך להתערב';
 
 /** The business card as a task, in the three fixed parts. */
 export const CARD = {
@@ -60,6 +61,15 @@ export const CARD = {
   ],
   consentEnd: 'לא מפרסמים בשבת ובלילה. את הכול אפשר לשנות ב',
   consentLink: 'הגדרות הפרסום',
+  /** the short consent of the approval step: three lines, the rest behind "פירוט" */
+  consentShortLead: 'באישור אתם מסכימים שנפרסם בשמכם:',
+  consentShort: [
+    'פוסט שבועי בכרטיס העסק שלכם בגוגל, 48 שעות אחרי שהוא מופיע כאן.',
+    'תשובת תודה לביקורות של 4-5 כוכבים.',
+    'תשובה לביקורת של 1-3 כוכבים תמיד מחכה לאישור שלכם.',
+  ],
+  consentMore: 'פירוט',
+  consentMoreLabel: 'פירוט מלא של מה מתפרסם לבד',
   approvedTitle: 'הפרטים אושרו',
   approvedOn: (date: string) => `אישרתם את הפרטים ב-${date}. אפשר לעדכן אותם בכל רגע.`,
   nextTitle: 'מה קורה עכשיו',
@@ -72,9 +82,31 @@ export const CARD = {
     'עד אז שום דבר לא מתפרסם. אפשר להמשיך לעדכן את הפרטים ולבחור הגדרות.',
   ],
   toSettings: 'להגדרות הפרסום',
+  toProfile: 'החיבור לגוגל ובדיקה מול מתחרים',
 };
 
 export const FIRST_LABEL = 'הצעד הראשון';
+
+/** "פרטי העסק" in three steps. */
+export const STEPS = {
+  label: 'שלבי אישור הפרטים',
+  names: ['מה מצאנו', 'השלימו את החסר', 'אישור'],
+  foundLead: 'קראנו את הפרטים מכרטיס העסק שלכם בגוגל ובדקנו מה מלא ומה חסר.',
+  foundAllOk: 'כל הפרטים מלאים. אפשר לעבור לאישור.',
+  okLine: (n: number) => (n === 1 ? 'פרט אחד מלא:' : `${n} פרטים מלאים:`),
+  toFix: 'להשלמת החסר',
+  toApprove: 'להמשך לאישור',
+  fixLead: 'אלה הפרטים שחסרים או דלים. מה שתכתבו כאן הוא מה שנכתוב ממנו.',
+  fixNone: 'לא חסר כלום. אפשר לעדכן פרטים, או להמשיך לאישור.',
+  inGoogle: 'את אלה מעדכנים בגוגל עצמה:',
+  inGoogleAfter: 'אחרי העדכון לחצו על ״קראו שוב מגוגל״.',
+  allFields: 'עריכת כל הפרטים',
+  saveNext: 'שמירה והמשך',
+  back: 'חזרה',
+  approveLead: 'מהפרטים האלה נכתוב את הפוסטים, את התשובות לביקורות ואת הדפים.',
+  summary: (services: number, areas: number) => `${services} שירותים, ${areas} אזורי שירות.`,
+  unsaved: 'יש שינויים שלא נשמרו. הם יישמרו עם האישור.',
+};
 
 export const ACTIVITY = {
   title: 'מה עשינו בשבילכם',
@@ -110,7 +142,9 @@ export const POST = {
   youAuto: 'כלום. אם תרצו, אפשר לערוך, לפרסם כבר עכשיו או לדלג השבוע.',
   youApprove: 'לקרוא את הפוסט ולאשר את הפרסום.',
   youNone: 'כלום כרגע.',
-  edit: 'עריכה', publish: 'פרסמו עכשיו', skip: 'דלגו השבוע',
+  edit: 'עריכה', publish: 'פרסמו עכשיו', skip: 'דלגו', skipLabel: 'דלגו על הפוסט של השבוע',
+  showAll: 'הצגת הכול', showLess: 'הצגה מקוצרת',
+
   editLabel: 'הטקסט של הפוסט', saveEdit: 'שמירת הטקסט', cancel: 'ביטול',
   savedEdit: 'הטקסט נשמר.', published: 'הפוסט פורסם.', skipped: 'דילגנו על הפוסט של השבוע.',
   noneTitle: 'אין כרגע פוסט שמחכה',
@@ -132,13 +166,18 @@ export const AUTOMATION = {
   postsLegend: 'פוסט שבועי בכרטיס העסק שלכם בגוגל',
   repliesLegend: 'תשובות לביקורות',
   always: 'תשובה לביקורת של 1-3 כוכבים אף פעם לא מתפרסמת בלי אישור שלכם, בכל אחת מהאפשרויות.',
-  quiet: 'לא מפרסמים בשבת ובלילה.',
   saved: 'הבחירה נשמרה.',
   saving: 'שומרים…',
   noConsent: 'הבחירות ייכנסו לפעולה אחרי שתאשרו את פרטי העסק.',
   notLive: 'הפרסום עצמו יתחיל אחרי שנפעיל אותו בחשבון שלכם. הבחירות שלכם נשמרות כבר עכשיו.',
   error: 'לא הצלחנו לטעון את ההגדרות.',
   toCard: 'לפרטי העסק',
+  detailsTitle: 'עוד כמה דברים שכדאי לדעת',
+  details: [
+    'פוסט מתפרסם לבד 48 שעות אחרי שאפשר לקרוא אותו כאן. עד אז אפשר לערוך אותו או לדלג.',
+    'תשובת תודה נשלחת גם לביקורות של 4-5 כוכבים מ-30 הימים האחרונים שעוד לא נענו.',
+    'לא מפרסמים בשבת ובלילה.',
+  ],
 };
 
 export const POSTS_OPTIONS: { value: PostsMode; label: string; hint: string }[] = [
@@ -158,7 +197,24 @@ export const BACK_MORE = 'חזרה ל״עוד״';
 /** The home once the product works by itself: what we do first, what the owner may do last. */
 export const HOME = {
   heroTitle: 'אנחנו עובדים בשבילכם',
-  heroSince: (date: string) => `מאז ${date}. כותבים ומפרסמים מפרטי העסק שאישרתם.`,
+  heroSince: (date: string) => `מאז ${date}`,
+  heroNumber: 'פניות החודש',
+  heroNumberNone: 'עדיין אין פניות החודש',
+  /** the first step, alone on the home until the details are approved */
+  firstBody: 'קראנו את הפרטים מכרטיס העסק שלכם בגוגל. עברו עליהם, השלימו מה שחסר ואשרו פעם אחת. מאותו רגע אנחנו כותבים ומפרסמים בשבילכם.',
+  firstBodyBefore: 'נקרא את הפרטים מכרטיס העסק שלכם בגוגל. תעברו עליהם, תשלימו מה שחסר ותאשרו פעם אחת. מאותו רגע אנחנו כותבים ומפרסמים בשבילכם.',
+  firstTime: 'כ-5 דקות מכם',
+  firstNote: 'עד האישור שום דבר לא מתפרסם.',
+  resultsTitle: 'מה עשינו ומה זה הביא',
+  resultsDid: 'הפעולות האחרונות שלנו',
+  resultsGot: 'מה הגיע החודש',
+  resultsAll: 'לכל הפעולות והפוסטים',
+  resultsEmpty: 'עוד אין פעולות. הראשונות יופיעו כאן בימים הקרובים.',
+  numCalls: 'שיחות', numWhatsapp: 'וואטסאפ', numForms: 'טפסים', numDirections: 'הוראות הגעה', numEmail: 'אימייל',
+  numbersNote: 'שיחות מכרטיס העסק שלכם בגוגל והוראות הגעה: נתוני גוגל ל-30 הימים האחרונים. השאר נספר דרך הקישורים שלכם, מתחילת החודש.',
+  numbersNoteOwn: 'נספר דרך הקישורים שלכם, מתחילת החודש.',
+  extrasLink: 'רוצים לעשות עוד בעצמכם?',
+  refresh: 'רענון הנתונים',
   waitingTitle: 'מה מחכה לכם',
   nothing: 'אין שום דבר שמחכה לכם',
   nothingSub: 'כשנצטרך אתכם, זה יופיע כאן.',
@@ -201,4 +257,70 @@ export const LANDING = {
   newTab: '(נפתח בלשונית חדשה)',
   notReady: 'כדי ליצור דף צריך קודם להשלים את פרטי החובה שלמעלה.',
   sampleLink: 'בתצוגה לדוגמה אין דף אמיתי לפתוח.',
+};
+
+/** "הדף והחיפושים שלכם": the landing page that comes with the subscription, and the search-phrase pages. */
+export const SITE = {
+  title: 'הדף והחיפושים שלכם',
+  hint: 'דף הנחיתה של העסק, ודפים קצרים לחיפושים של שירות ואזור.',
+  pageTitle: 'דף הנחיתה שלכם',
+  included: 'כלול במנוי',
+  includedLine: 'הדף כלול במנוי הקידום. הפרסום שלו בלי תשלום נוסף.',
+  noneTitle: 'עוד אין לכם דף נחיתה',
+  noneBody: 'דף אחד שמסביר מה אתם עושים ונותן ללקוח דרך פשוטה לפנות אליכם. אנחנו כותבים אותו מפרטי העסק, בערך בדקה.',
+  create: 'צרו לי דף נחיתה',
+  needApproval: 'קודם מאשרים את פרטי העסק, כי מהם אנחנו כותבים את הדף.',
+  needDetails: 'כדי ליצור דף צריך קודם להשלים את פרטי החובה בפרטי העסק.',
+  toBusiness: 'לפרטי העסק',
+  busyTitle: 'כותבים את הדף שלכם',
+  busyBody: 'זה לוקח בערך דקה. אפשר להמשיך לעבוד בינתיים.',
+  draftTitle: 'הדף מוכן, כטיוטה',
+  draftBody: 'קראו אותו ותקנו מה שצריך. הוא עולה לאוויר כשתפרסמו אותו מהדף עצמו.',
+  openDraft: 'לפתיחת הטיוטה',
+  liveTitle: 'הדף שלכם באוויר',
+  liveBody: 'לקוחות יכולים להגיע אליו מכרטיס העסק שלכם בגוגל ומכל קישור שתשלחו.',
+  openLive: 'לצפייה בדף',
+  frozenTitle: 'הדף מוקפא',
+  frozenBody: 'הוא לא מוצג כרגע כי המנוי לא פעיל. התוכן והפניות נשמרו, והדף חוזר לאוויר כשהמנוי פעיל שוב.',
+  toPlan: 'לפרטי המנוי',
+  otherTitle: 'יש לכם דף נחיתה',
+  newTab: '(נפתח בלשונית חדשה)',
+  sampleLink: 'בתצוגה לדוגמה אין דף אמיתי לפתוח.',
+  phrasesTitle: 'דפים לחיפושים',
+  phrasesWhy: 'כל דף כזה עונה על חיפוש אחד של שירות ואזור, למשל ״אינסטלטור בנס ציונה״. אנחנו מציעים רק כמה, כי דפים שחוזרים על עצמם מזיקים לקידום ולא עוזרים לו.',
+  phrasesNoPage: 'דפי החיפוש נבנים על דף הנחיתה שלכם. צרו אותו קודם, והם יוצעו כאן.',
+  phrasesError: 'לא הצלחנו לטעון את דפי החיפוש.',
+  existing: 'הדפים שיש לכם',
+  ideas: 'דפים שאפשר ליצור',
+  left: (n: number) => (n === 1 ? 'אפשר ליצור עוד דף אחד.' : `אפשר ליצור עוד ${n} דפים.`),
+  limit: 'הגעתם למספר הדפים שמתאים לעסק שלכם. הוספת שירותים או אזורים בפרטי העסק פותחת דפים נוספים.',
+  noIdeas: 'אין כרגע דפים להציע. הוספת שירותים או אזורים בפרטי העסק פותחת הצעות חדשות.',
+  noPagesYet: 'עוד לא יצרתם דפי חיפוש.',
+  createPhrase: 'צרו דף',
+  creating: 'כותבים…',
+  creatingNote: (phrase: string) => `כותבים את הדף ״${phrase}״. זה לוקח עד חצי דקה.`,
+  created: (phrase: string) => `הדף ״${phrase}״ נוצר.`,
+  createdWaits: 'הוא יעלה לאוויר יחד עם דף הנחיתה שלכם.',
+  waitsForParent: 'יעלה לאוויר עם דף הנחיתה',
+  view: 'לצפייה',
+  live: 'באוויר',
+  ideaFor: (service: string, area: string) => `${service}, ${area}`,
+  morePages: 'רוצים דפי נחיתה נוספים?',
+  morePagesSub: 'דפים נוספים נרכשים בנפרד, אחד אחד.',
+};
+
+/** The screen behind "רוצים לעשות עוד בעצמכם?": optional tasks and the older screens. */
+export const EXTRAS = {
+  title: 'רוצים לעשות עוד בעצמכם?',
+  hint: 'לא חובה. אנחנו ממשיכים לעבוד גם בלי זה.',
+  tasks: 'פעולות שרק אתם יכולים לעשות',
+  open: 'לפרטים',
+  done: 'הושלם',
+  more: 'עוד מסכים',
+  back: 'חזרה',
+};
+
+export const ACTIVITY_SCREEN = {
+  title: 'מה עשינו בשבילכם',
+  hint: 'כל פעולה שלנו נרשמת כאן, מהחדשה לישנה.',
 };

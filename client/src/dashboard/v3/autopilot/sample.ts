@@ -3,13 +3,15 @@
 // in-memory copy only. `&sample=approved` shows the state after the customer approved the card (with
 // one review reply waiting for them), `&sample=quiet` the same with nothing waiting.
 // `&landing=existing` / `&landing=error` choose what "צרו לי דף נחיתה" answers; without it a draft is
-// "created" after a few seconds.
-import type { Activity, Automation, GbpStatus, LandingResult, Post, Truth } from './types';
+// "created" after a few seconds. `&page=draft|live|frozen` starts with the included landing page already
+// there in that state (without it: no page yet), so "הדף והחיפושים שלכם" can be seen in every state.
+import type { LeadsSummary } from '../../../components/LeadsTable';
+import type { Activity, Automation, GbpStatus, LandingResult, Phrases, Post, Truth } from './types';
 
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 const ahead = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
 
-export interface SampleState { truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[]; page: LandingResult | null }
+export interface SampleState { truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[]; page: LandingResult | null; phrases: Phrases }
 export type SampleVariant = 'pending' | 'approved' | 'quiet';
 
 export function sampleVariant(): SampleVariant {
@@ -18,6 +20,33 @@ export function sampleVariant(): SampleVariant {
 
 export function sampleLanding(): 'create' | 'existing' | 'error' {
   try { const q = new URLSearchParams(window.location.search).get('landing'); return q === 'existing' || q === 'error' ? q : 'create'; } catch { return 'create'; }
+}
+
+/** The included landing page the sample starts with: none, or one in the asked state. */
+export function samplePage(): LandingResult | null {
+  let q: string | null = null;
+  try { q = new URLSearchParams(window.location.search).get('page'); } catch { /* none */ }
+  const status = q === 'live' ? 'published' : q === 'draft' || q === 'frozen' ? q : null;
+  return status ? { existing: true, id: 'sample-page', slug: 'sample-page', status } : null;
+}
+
+/** This month's inquiries in the sample (the real ones come from the account's own pages). */
+export function sampleSummary(): LeadsSummary {
+  return sampleVariant() === 'pending'
+    ? { month_total: 0, month_whatsapp: 0, month_call: 0, month_form: 0, month_email: 0, month_link: 0 }
+    : { month_total: 14, month_whatsapp: 6, month_call: 5, month_form: 2, month_email: 1, month_link: 0 };
+}
+
+/** Never on Shabbat or at night, like the server: the next weekday morning when the time falls there. */
+function openTime(iso: string): string {
+  const d = new Date(iso);
+  for (let i = 0; i < 80; i++) {
+    const day = d.getDay(), h = d.getHours();
+    const closed = h < 8 || h >= 20 || (day === 5 && h >= 14) || day === 6;
+    if (!closed) break;
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+  }
+  return d.toISOString();
 }
 
 /** Review reply drafts that wait for the owner in the sample: the one the sample's activity log mentions. */
@@ -63,7 +92,7 @@ export function buildSample(variant: SampleVariant): SampleState {
     },
   };
   const posts: Post[] = approved ? [
-    { id: 'sample-3', topic: 'החלפת דוד שמש', status: 'scheduled', edited: false, publishAfter: ahead(31), publishedAt: null, createdAt: ago(17), problem: null,
+    { id: 'sample-3', topic: 'החלפת דוד שמש', status: 'scheduled', edited: false, publishAfter: ahead(31), expectedAt: openTime(ahead(31)), publishedAt: null, createdAt: ago(17), problem: null,
       body: 'הדוד מטפטף או שהמים כבר לא מתחממים כמו פעם? אנחנו מחליפים דודי שמש ברחובות, בנס ציונה וביבנה, כולל פינוי הדוד הישן.\n\nלפני שמתחילים תקבלו הצעת מחיר מסודרת. אפשר להתקשר ולתאם ביקור.' },
     { id: 'sample-2', topic: 'פתיחת סתימות', status: 'published', edited: true, publishAfter: ago(140), publishedAt: ago(139), createdAt: ago(190), problem: null,
       body: 'כיור שמתרוקן לאט הוא סימן שכדאי לטפל בו לפני שהוא נסתם לגמרי. אנחנו פותחים סתימות בכיורים, באמבטיות ובקווי ביוב ברחובות והסביבה.' },
@@ -82,8 +111,18 @@ export function buildSample(variant: SampleVariant): SampleState {
   ] : [
     { id: 'a0', kind: 'card_synced', title: 'קראנו את פרטי העסק מכרטיס העסק שלכם בגוגל', detail: null, createdAt: ago(30) },
   ];
+  const page = samplePage();
+  const phrases: Phrases = {
+    hasPage: page !== null, parentPublished: page?.status === 'published', cap: 5, left: 4,
+    pages: page ? [{ id: 'sample-phrase-0', phrase: 'אינסטלטור בנס ציונה', title: 'אינסטלטור בנס ציונה', url: '' }] : [],
+    ideas: [
+      { phrase: 'החלפת דוד שמש ברחובות', service: 'החלפת דוד שמש', area: 'רחובות' },
+      { phrase: 'פתיחת סתימות ביבנה', service: 'פתיחת סתימות', area: 'יבנה' },
+      { phrase: 'תיקון נזילות בגדרה', service: 'תיקון נזילות', area: 'גדרה' },
+    ],
+  };
   return {
-    truth, posts, page: null,
+    truth, posts, page, phrases,
     activity: variant === 'quiet' ? activity.filter((a) => a.kind !== 'reply_drafted') : activity,
     gbp: { enabled: true, connected: true, needsReconnect: false },
     automation: { postsMode: 'auto', repliesMode: 'auto_positive', consentAt: approved ? ago(380) : null, live: approved, editWindowHours: 48 },

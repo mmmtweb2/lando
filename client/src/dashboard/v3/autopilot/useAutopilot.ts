@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GENERIC_ERROR } from '../autopilotCopy';
 import { ApiError, sampleApi, serverApi, type AutopilotApi } from './api';
-import type { Activity, Automation, AutomationPatch, GbpStatus, LandingState, Loadable, Post, Truth, TruthPatch } from './types';
+import type { Activity, Automation, AutomationPatch, GbpStatus, GoogleNumbers, LandingState, Loadable, Phrases, Post, Truth, TruthPatch } from './types';
 
 // One place that loads the automatic product's data for the dashboard: the business card, the
 // Google connection, the automation choices, the posts and the activity log. Each source loads and
@@ -34,6 +34,25 @@ export interface Autopilot {
   /** "צרו לי דף נחיתה". Kept here, above the screens, so a request in flight survives moving between them. */
   landing: LandingState;
   createLanding: () => void;
+  /** Search-phrase pages. Loaded when "הדף והחיפושים שלכם" asks for them, not with every dashboard load. */
+  phrases: Loadable<Phrases> | null;
+  loadPhrases: () => void;
+  /** the phrase whose page is being written right now (one at a time) */
+  phraseBusy: string | null;
+  /** null = created; a sentence = it failed; false = ignored, because another page is being written */
+  createPhrase: (phrase: string) => Promise<string | null | false>;
+  /** calls and direction requests from the Google listing, last 30 days; null when there are none to show */
+  numbers: GoogleNumbers | null;
+}
+
+// Google's numbers change once a day, and every read costs a call to Google: keep them for the visit.
+const NUM_KEY = 'pagey_gnum';
+const NUM_TTL = 30 * 60_000;
+function cachedNumbers(): GoogleNumbers | null {
+  try {
+    const v = JSON.parse(window.sessionStorage.getItem(NUM_KEY) ?? 'null') as { at?: number; n?: GoogleNumbers } | null;
+    return v && typeof v.at === 'number' && Date.now() - v.at < NUM_TTL && v.n ? v.n : null;
+  } catch { return null; }
 }
 
 export function useAutopilot(preview: boolean): Autopilot {
@@ -49,6 +68,10 @@ export function useAutopilot(preview: boolean): Autopilot {
   const [tick, setTick] = useState(0);
   const [landing, setLanding] = useState<LandingState>({ phase: 'idle' });
   const landingBusy = useRef(false);
+  const [phrases, setPhrases] = useState<Loadable<Phrases> | null>(null);
+  const [phraseBusy, setPhraseBusy] = useState<string | null>(null);
+  const phraseLock = useRef(false);
+  const [numbers, setNumbers] = useState<GoogleNumbers | null>(null);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -76,12 +99,21 @@ export function useAutopilot(preview: boolean): Autopilot {
       ]);
       if (cancelled) return;
       setGbp(g);
+      if (g.enabled && g.connected && !g.needsReconnect) {
+        const had = preview ? null : cachedNumbers();
+        if (had) setNumbers(had);
+        else void api.googleNumbers().then((n) => {
+          if (cancelled) return;
+          setNumbers(n);
+          if (n && !preview) { try { window.sessionStorage.setItem(NUM_KEY, JSON.stringify({ at: Date.now(), n })); } catch { /* not kept */ } }
+        });
+      }
       if (t.ok) { setNotReady(t.v.notReady); gotTruth(t.v.truth); } else setTruth({ status: 'error', error: t.error });
     })();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- these only set state after their request settles
     void loadAutomation(); void loadPosts(); void loadActivity();
     return () => { cancelled = true; };
-  }, [api, tick, gotTruth, loadAutomation, loadPosts, loadActivity]);
+  }, [api, preview, tick, gotTruth, loadAutomation, loadPosts, loadActivity]);
 
   const reload = useCallback(() => {
     setTruth(LOADING); setAuto(LOADING); setPosts(LOADING); setActivity(LOADING); setTick((n) => n + 1);
@@ -124,10 +156,37 @@ export function useAutopilot(preview: boolean): Autopilot {
     landingBusy.current = true;
     setLanding({ phase: 'busy' });
     api.createLanding().then(
-      (page) => { if (alive.current) { setLanding({ phase: 'done', page }); if (!page.existing) void loadActivity(); } },
+      (page) => { if (alive.current) { setLanding({ phase: 'done', page }); setPhrases(null); if (!page.existing) void loadActivity(); } },
       (e: unknown) => { if (alive.current) setLanding({ phase: 'error', error: msg(e) }); },
     ).finally(() => { landingBusy.current = false; });
   }, [api, loadActivity]);
 
-  return { preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost, landing, createLanding };
+  const loadPhrases = useCallback(() => {
+    setPhrases((p) => (p && p.status === 'ok' ? p : LOADING));
+    api.phrases().then(
+      (data) => { if (alive.current) setPhrases({ status: 'ok', data }); },
+      (e: unknown) => { if (alive.current) setPhrases({ status: 'error', error: msg(e) }); },
+    );
+  }, [api]);
+
+  // One page at a time, and a second press while one is being written does nothing.
+  const createPhrase = useCallback(async (phrase: string) => {
+    if (phraseLock.current) return false;
+    phraseLock.current = true;
+    setPhraseBusy(phrase);
+    try {
+      await api.createPhrase(phrase);
+      loadPhrases(); void loadActivity();
+      return null;
+    } catch (e) {
+      // "exists", "too similar", "limit": the list we show is stale, so read it again
+      if (e instanceof ApiError && e.code && e.code !== 'no_page') loadPhrases();
+      return msg(e);
+    } finally {
+      phraseLock.current = false;
+      if (alive.current) setPhraseBusy(null);
+    }
+  }, [api, loadPhrases, loadActivity]);
+
+  return { phrases, loadPhrases, phraseBusy, createPhrase, numbers, preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost, landing, createLanding };
 }

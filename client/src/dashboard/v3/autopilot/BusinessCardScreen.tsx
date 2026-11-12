@@ -2,23 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import GbpCard from '../../../components/GbpCard';
 import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
-import { NeedChip, PartBand } from '../parts';
-import { minutesLine } from '../tasks';
-import { BACK_HOME, CARD, RETRY } from '../autopilotCopy';
-import LandingPageCard from './LandingPageCard';
-import CardEditor, { type CardNotice } from './CardEditor';
-import ReadinessList from './ReadinessList';
+import { CARD, RETRY } from '../autopilotCopy';
+import CardSteps, { type CardNotice, type Step } from './CardSteps';
 import { LoadError, SampleBanner } from './bits';
 import type { Autopilot } from './useAutopilot';
 
-// "פרטי העסק": the business card everything automatic is written from. One task in the three fixed
-// parts: what has to be right, what we read and checked, and the one approval the customer gives.
+// "פרטי העסק": the business card everything automatic is written from, in three steps (CardSteps):
+// what we found, filling in the gaps, and the one approval the customer gives.
 
-interface Props { auto: Autopilot; onBack: () => void; onSettings: () => void; backLabel?: string }
+interface Props { auto: Autopilot; onSettings: () => void; onProfile: () => void }
 
-export default function BusinessCardScreen({ auto, onBack, onSettings, backLabel = BACK_HOME }: Props) {
+export default function BusinessCardScreen({ auto, onSettings, onProfile }: Props) {
   const { truth, gbp } = auto;
   const [notice, setNotice] = useState<CardNotice>(null);
+  // An account that already approved comes here to update details; a new one starts from what we found.
+  const [step, setStep] = useState<Step | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const tried = useRef(false);
   const empty = truth.status === 'ok' && truth.data === null && !auto.notReady;
@@ -63,31 +61,20 @@ export default function BusinessCardScreen({ auto, onBack, onSettings, backLabel
     );
   } else {
     const t = truth.data;
-    const approved = !!t.approvedAt;
+    const cur: Step = step ?? (t.approvedAt ? 2 : 1);
     body = (
       <>
-        <div className="dv3-task">
-        <PartBand part={1}><p>{CARD.what}</p></PartBand>
-        <PartBand part={2}>
-          <p>{approved ? CARD.howApproved : CARD.how}</p>
-          <ReadinessList readiness={t.readiness} />
-        </PartBand>
-        <PartBand part={3}>
-          <div className="dv3-need-row">
-            <NeedChip kind={approved ? 'none' : 'approve'} />
-            {!approved && <span className="dv3-min">{minutesLine(CARD.minutes)}</span>}
-          </div>
-          <p className="dv3-you">{approved ? CARD.youDone : CARD.you}</p>
-          <CardEditor key={auto.truthVersion} truth={t} auto={auto} notice={notice} onNotice={setNotice} onSettings={onSettings} />
-        </PartBand>
-        </div>
-        <LandingPageCard auto={auto} ready={t.readiness.ready} />
+        <CardSteps
+          key={auto.truthVersion} truth={t} auto={auto} step={cur} notice={notice} onNotice={setNotice} onSettings={onSettings}
+          onStep={(n) => { setStep(n); if (n !== cur) setNotice((x) => (x?.kind === 'ok' ? x : null)); }}
+        />
+        <button type="button" className="dv3-linkbtn" onClick={onProfile}>{CARD.toProfile}</button>
       </>
     );
   }
 
   return (
-    <ViewShell kicker={CARD.kicker} title={CARD.title} hint={CARD.hint} back={{ label: backLabel, onClick: onBack }}>
+    <ViewShell title={CARD.title} hint={CARD.hint}>
       {auto.preview && <SampleBanner />}
       {body}
     </ViewShell>

@@ -1,54 +1,54 @@
-import { Check, ChevronLeft, FileCheck, Link2Off, MessageSquare, Sparkles, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, FileCheck, Link2Off, MessageSquare, type LucideIcon } from 'lucide-react';
+import type { LeadsSummary } from '../../../components/LeadsTable';
 import { Skeleton } from '../../ui';
-import { TaskRow } from '../parts';
-import type { V3Task } from '../tasks';
-import { AUTOMATION, CARD, FIRST_LABEL, HOME } from '../autopilotCopy';
-import ActivityFeed from './ActivityFeed';
-import LandingPageCard from './LandingPageCard';
+import { CARD, HOME } from '../autopilotCopy';
+import { ActivityLines } from './ActivityFeed';
 import NextPostCard from './NextPostCard';
-import { LoadError, SampleBanner } from './bits';
+import { LoadError } from './bits';
 import { shortDate } from './format';
 import { autoAvailable, isApproved } from './mode';
+import { homeNumbers, type HomeNumbers } from './numbers';
 import type { Autopilot } from './useAutopilot';
-import type { AutoScreen } from './types';
 
-// What the automatic product puts on the home. Order (docs/mvp-plan.md): we work for you, what
-// truly waits for you, the next post, what we did. Until the business details are approved, the
-// one first step stands alone at the top.
+// The promotion home (docs/dashboard-v4-spec.md, part B). Four things and nothing else:
+//   1. we are working for you, since when, and the month's one number
+//   2. what waits for you (only what truly needs the owner; otherwise one calm line)
+//   3. the next post, compact
+//   4. what we did and what came in, in one block
+// Until the business details are approved the home is ONE step, and nothing competes with it.
 
-function cardTask(read: boolean): V3Task {
-  return {
-    key: 'a:card', kind: 'auto', id: 'business_card', title: CARD.rowTitle,
-    what: CARD.what, how: read ? CARD.how : CARD.howBefore, you: CARD.you,
-    chip: 'approve', minutes: CARD.minutes, done: false, skipped: false, cta: CARD.cta, confirmQ: '', skippable: false,
-  };
-}
-
-/** Top of the overview while the business details are not approved: the one thing that starts everything. */
-export function FirstStep({ auto, onOpen }: { auto: Autopilot; onOpen: (s: AutoScreen) => void }) {
+/** The first step, alone: approve the business details so we can start. */
+export function FirstStep({ auto, onOpen }: { auto: Autopilot; onOpen: () => void }) {
   if (!autoAvailable(auto)) return null;
   const { truth } = auto;
-  if (truth.status === 'loading') return <Skeleton className="h-32 !rounded-[24px]" />;
+  if (truth.status === 'loading') return <Skeleton className="h-56 !rounded-[24px]" />;
   if (truth.status === 'error') return <LoadError text={CARD.loadError} onRetry={auto.reload} />;
   if (truth.data?.approvedAt) return null;
   return (
-    <section className="dv3-first" aria-label={FIRST_LABEL}>
-      <p className="dv3-first-label">{FIRST_LABEL}</p>
-      <ul className="dv3-rows"><TaskRow task={cardTask(truth.data !== null)} onOpen={() => onOpen('card')} /></ul>
+    <section className="dv4-first" aria-labelledby="dv4-first">
+      <h2 id="dv4-first">{CARD.rowTitle}</h2>
+      <p>{truth.data !== null ? HOME.firstBody : HOME.firstBodyBefore}</p>
+      <div className="dv4-first-foot">
+        <button type="button" className="dv3-btn" onClick={onOpen}>{CARD.cta} <ArrowLeft size={18} aria-hidden /></button>
+        <span>{HOME.firstTime}. {HOME.firstNote}</span>
+      </div>
     </section>
   );
 }
 
-/** Top of the approved home: we are working, and since when. No counter and nothing to do. */
-export function HomeHero({ auto }: { auto: Autopilot }) {
+/** We are working, since when, and the month's one number. */
+export function HomeHero({ auto, numbers }: { auto: Autopilot; numbers: HomeNumbers }) {
   const at = auto.truth.status === 'ok' ? auto.truth.data?.approvedAt ?? null : null;
   return (
-    <section className="dv3-summary dv3-a-homehero" aria-labelledby="dv3-homehero">
-      <span className="dv3-a-homehero-mark" aria-hidden><Sparkles size={24} /></span>
-      <div className="dv3-summary-text">
-        <h2 id="dv3-homehero">{HOME.heroTitle}</h2>
+    <section className="dv4-hero" aria-labelledby="dv4-hero">
+      <div className="dv4-hero-text">
+        <h2 id="dv4-hero"><span className="dv4-pulse" aria-hidden />{HOME.heroTitle}</h2>
         {at && <p>{HOME.heroSince(shortDate(at))}</p>}
       </div>
+      <p className="dv4-hero-num">
+        <strong className="tabular-nums">{numbers.total}</strong>
+        <span>{HOME.heroNumber}</span>
+      </p>
     </section>
   );
 }
@@ -58,7 +58,7 @@ function toPost() {
   if (!el) return;
   let reduce = false;
   try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* keep the default */ }
-  el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+  el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
   el.focus({ preventScroll: true });
 }
 
@@ -83,20 +83,20 @@ export function Waiting({ auto, pendingReplies, onReviews, onProfile }: WaitingP
 
   if (items.length === 0) {
     return (
-      <p className="dv3-a-calm" role="status">
-        <span className="dv3-a-calm-mark" aria-hidden><Check size={16} strokeWidth={3} /></span>
+      <p className="dv4-calm" role="status">
+        <span className="dv4-calm-mark" aria-hidden><Check size={14} strokeWidth={3} /></span>
         <span><strong>{HOME.nothing}.</strong> {HOME.nothingSub}</span>
       </p>
     );
   }
   return (
-    <section className="dv3-block dv3-a-waiting" aria-labelledby="dv3-waiting">
-      <h3 id="dv3-waiting">{HOME.waitingTitle}</h3>
+    <section className="dv4-card dv4-waiting" aria-labelledby="dv3-waiting">
+      <div className="dv4-card-head"><h3 id="dv3-waiting">{HOME.waitingTitle}</h3></div>
       <ul>
         {items.map(({ key, Icon, title, sub, cta, onClick }) => (
           <li key={key}>
-            <span className="dv3-row-icon" aria-hidden><Icon size={20} /></span>
-            <div className="dv3-a-waiting-text"><strong>{title}</strong><small>{sub}</small></div>
+            <span className="dv4-icon" aria-hidden><Icon size={20} /></span>
+            <div className="dv4-waiting-text"><strong>{title}</strong><small>{sub}</small></div>
             <button type="button" className="dv3-btn dv3-a-small" onClick={onClick}>{cta} <ChevronLeft size={16} aria-hidden /></button>
           </li>
         ))}
@@ -105,36 +105,53 @@ export function Waiting({ auto, pendingReplies, onReviews, onProfile }: WaitingP
   );
 }
 
-/** "הפוסט הבא" and "מה עשינו בשבילכם". */
-export function AutoWork({ auto }: { auto: Autopilot }) {
+/** "מה עשינו ומה זה הביא": our last three actions next to what came in this month. */
+export function Results({ auto, numbers, onAll }: { auto: Autopilot; numbers: HomeNumbers; onAll: () => void }) {
   return (
-    <>
-      {auto.preview && <SampleBanner />}
-      <NextPostCard auto={auto} approved={isApproved(auto)} />
-      <ActivityFeed activity={auto.activity} onRetry={auto.reload} />
-    </>
+    <section className="dv4-card dv4-results" aria-labelledby="dv4-results">
+      <div className="dv4-card-head"><h3 id="dv4-results">{HOME.resultsTitle}</h3></div>
+      <div className="dv4-results-grid">
+        <div>
+          <h4>{HOME.resultsDid}</h4>
+          <ActivityLines activity={auto.activity} limit={3} onRetry={auto.reload} empty={HOME.resultsEmpty} />
+        </div>
+        <div>
+          <h4>{HOME.resultsGot}</h4>
+          <dl className="dv4-nums">
+            {numbers.tiles.map(({ key, label, value, Icon }) => (
+              <div key={key}>
+                <dt><Icon size={16} aria-hidden />{label}</dt>
+                <dd className="tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="dv4-fine">{numbers.note}</p>
+        </div>
+      </div>
+      <button type="button" className="dv4-more" onClick={onAll}>{HOME.resultsAll} <ChevronLeft size={16} aria-hidden /></button>
+    </section>
   );
 }
 
-/** Under the numbers: the landing page offer (once the details are approved) and the way to the two screens. */
-export function AutoMore({ auto, onOpen }: { auto: Autopilot; onOpen: (s: AutoScreen) => void }) {
+interface HomeProps extends WaitingProps {
+  summary: LeadsSummary;
+  onActivity: () => void;
+  onExtras: () => void;
+  onRefresh: () => void;
+}
+
+export function AutoHome({ auto, summary, pendingReplies, onReviews, onProfile, onActivity, onExtras, onRefresh }: HomeProps) {
+  const numbers = homeNumbers(summary, auto.numbers);
   return (
     <>
-      {isApproved(auto) && <LandingPageCard auto={auto} />}
-      <ul className="dv3-more" aria-label="הגדרות ופרטים">
-        <li>
-          <button type="button" onClick={() => onOpen('automation')}>
-            <span><strong>{AUTOMATION.link}</strong><small>{AUTOMATION.linkHint}</small></span>
-            <ChevronLeft size={18} aria-hidden />
-          </button>
-        </li>
-        <li>
-          <button type="button" onClick={() => onOpen('card')}>
-            <span><strong>{CARD.title}</strong><small>{CARD.hint}</small></span>
-            <ChevronLeft size={18} aria-hidden />
-          </button>
-        </li>
-      </ul>
+      <HomeHero auto={auto} numbers={numbers} />
+      <Waiting auto={auto} pendingReplies={pendingReplies} onReviews={onReviews} onProfile={onProfile} />
+      <NextPostCard auto={auto} approved={isApproved(auto)} />
+      <Results auto={auto} numbers={numbers} onAll={onActivity} />
+      <div className="dv4-homefoot">
+        <button type="button" className="dv3-linkbtn" onClick={onExtras}>{HOME.extrasLink}</button>
+        <button type="button" className="dv3-linkbtn" onClick={onRefresh}>{HOME.refresh}</button>
+      </div>
     </>
   );
 }

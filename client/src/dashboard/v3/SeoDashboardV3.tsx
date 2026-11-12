@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import BusinessAuditCard from '../../components/BusinessAuditCard';
 import ReviewsCard from '../../components/ReviewsCard';
@@ -7,7 +6,6 @@ import ReviewRequestsCard from '../../components/ReviewRequestsCard';
 import ReviewDraftsCard from '../../components/ReviewDraftsCard';
 import ContentPlanCard from '../../components/ContentPlanCard';
 import ExternalSiteCard from '../../components/ExternalSiteCard';
-import SeoSubscriptionCard from '../../components/SeoSubscriptionCard';
 import GbpCard from '../../components/GbpCard';
 import LeadsTable from '../../components/LeadsTable';
 import { useAuth } from '../../context/AuthContext';
@@ -19,48 +17,72 @@ import { useSeoOverview, type SeoOverview } from '../useSeoOverview';
 import { useMonthly } from '../useMonthly';
 import { GUIDED_COPY, PREMIUM_DETAILS, withSkip, type GuidedId } from '../guided';
 import type { MonthlyId } from '../monthly';
-import { MORE_VIEWS, NAV_AFTER_SETUP, NAV_LABEL_AFTER_SETUP, VIEW_LABEL, VIEW_ORDER, derivePhase, type View } from '../journey';
-import { MoreV3, ProgressV3, ViewFrame } from './Views';
-import { HomeSkeleton, MonthScreen, OverviewV3, SetupScreen, WelcomeV3 } from './Screens';
+import { derivePhase, type View } from '../journey';
+import { MoreV3, ProgressV3, ViewFrame, ViewShell } from './Views';
+import { ExtrasScreen, HomeSkeleton, MonthScreen, OverviewV3, SetupScreen, WelcomeV3 } from './Screens';
 import BusinessCardScreen from './autopilot/BusinessCardScreen';
 import AutomationScreen from './autopilot/AutomationScreen';
-import { AutoMore, AutoWork, FirstStep, HomeHero, Waiting } from './autopilot/AutoHome';
-import { autoAvailable, homeMode } from './autopilot/mode';
-import { samplePendingReplies } from './autopilot/sample';
-import { AUTOMATION, BACK_MORE, CARD } from './autopilotCopy';
+import SiteScreen from './autopilot/SiteScreen';
+import ActivityFeed from './autopilot/ActivityFeed';
+import { PostHistory } from './autopilot/NextPostCard';
+import { AutoHome, FirstStep } from './autopilot/AutoHome';
+import { SampleBanner } from './autopilot/bits';
+import { homeMode } from './autopilot/mode';
+import { samplePendingReplies, sampleSummary } from './autopilot/sample';
+import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS } from './autopilotCopy';
 import { useAutopilot } from './autopilot/useAutopilot';
-import type { AutoScreen } from './autopilot/types';
+import type { AreaId, PromoArea, PromoMode } from '../shell/areas';
+import type { PromoBridge } from '../shell/bridge';
 import { SETUP_DONE_FLASH, buildMonthTasks, buildSetupTasks, flashText, nextOpenAfter } from './tasks';
 import '../dashboard.css';
 import './dashboard-v3.css';
 import './dashboard-v3-autopilot.css';
+import './dashboard-v4.css';
 
 /**
- * Dashboard v3 ("סגנון מובלט", spec docs/dashboard-v3-spec.md) for the Google-promotion product.
- * Built next to SeoDashboardV2 and reuses its data and logic as they are: same hooks, same
- * derivations, same cards. Only the layout and the look of the home and task screens are new.
- * Behind ?dash=v3 (see flag.ts).
+ * The Google-promotion product's screens ("סגנון מובלט", docs/dashboard-v3-spec.md), inside the
+ * dashboard's one navigation (docs/dashboard-v4-spec.md): the sidebar chooses the screen through
+ * `bridge.area`, and this component reports back what the product looks like in this account
+ * (automatic / not open yet / still in setup), so the sidebar lists the right entries.
+ * The data and the logic are the ones SeoDashboardV2 uses: same hooks, same derivations, same cards.
  */
-export default function SeoDashboardV3({ showPageUpsell = false }: { showPageUpsell?: boolean }) {
+export default function SeoDashboardV3({ showPageUpsell = false, bridge }: { showPageUpsell?: boolean; bridge?: PromoBridge }) {
   const data = useSeoOverview();
-  if (!data.input.loaded) return <div className="dv2 dv3" dir="rtl"><HomeSkeleton /></div>;
-  return <Loaded data={data} showPageUpsell={showPageUpsell} />;
+  // Used without the frame (nothing does today): the screen keeps its own area.
+  const [own, setOwn] = useState<PromoArea>('home');
+  const fallback: PromoBridge = {
+    area: own, onMode: () => undefined, page: null, morePagesLink: showPageUpsell,
+    go: (a) => setOwn(a === 'settings' || a === 'pages' || a === 'leads' || a === 'credits' ? 'home' : a),
+  };
+  if (!data.input.loaded) return <div className="dv2 dv3 dv4" dir="rtl"><HomeSkeleton /></div>;
+  return <Loaded data={data} bridge={bridge ?? fallback} />;
 }
 
 const split = (s: string) => (s ? s.split(',') : []);
 
-function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: boolean }) {
+/** The older views by the area that shows them. */
+const AREA_VIEW: Partial<Record<PromoArea, View>> = {
+  home: 'overview', reviews: 'reviews', progress: 'progress', more: 'more', profile: 'profile', content: 'content', inquiries: 'leads', setup: 'setup',
+};
+const VIEW_AREA: Record<View, AreaId> = {
+  overview: 'home', reviews: 'reviews', progress: 'progress', more: 'more', profile: 'profile', content: 'content', leads: 'inquiries', setup: 'setup', plan: 'settings',
+};
+/** The screens that exist only in the automatic product. */
+const AUTO_ONLY: PromoArea[] = ['site', 'business', 'automation', 'activity', 'extras'];
+const EXTRA_VIEWS: View[] = ['content', 'leads', 'progress', 'profile', 'setup'];
+
+function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
   const { user } = useAuth();
   const email = user?.email ?? 'anonymous';
   const reduce = useReducedMotion();
-  const top = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<View>(() => {
-    try { return new URLSearchParams(window.location.search).has('gbp') ? 'profile' : 'overview'; } catch { return 'overview'; }
-  });
   const [fullMenu, setFullMenu] = useState<boolean>(() => {
     try { return new URLSearchParams(window.location.search).has('gbp'); } catch { return false; }
   });
-  const [openTask, setOpenTask] = useState<MonthlyId | null>(null);
+  const asked = bridge.area;
+  // The open task belongs to the area it was opened in: moving to another area closes it.
+  const [task, setTask] = useState<{ id: MonthlyId; area: PromoArea } | null>(null);
+  const openTask = task && task.area === asked ? task.id : null;
+  const setOpenTask = (id: MonthlyId | null) => setTask(id ? { id, area: asked } : null);
   const [skips, setSkips] = useState<GuidedId[]>(() => readSkips(email));
   // Preview only: ?preview=ongoing shows the monthly screens on an account that has not finished the
   // setup. Read once per page load, nothing is saved, no tick is written; it only picks which view shows.
@@ -68,14 +90,8 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
     try { return new URLSearchParams(window.location.search).get('preview') === 'ongoing'; } catch { return false; }
   });
   const phase = previewOngoing ? 'ongoing' : derivePhase(data.input);
-  // The automatic product (docs/mvp-plan.md, part B). In the preview it runs on sample data and
-  // sends nothing. ?screen=card / ?screen=automation open its two screens directly.
+  // The automatic product (docs/mvp-plan.md, part B). In the preview it runs on sample data and sends nothing.
   const auto = useAutopilot(previewOngoing);
-  const [autoScreen, setAutoScreen] = useState<AutoScreen | null>(() => {
-    try { const q = new URLSearchParams(window.location.search).get('screen'); return q === 'card' || q === 'automation' ? q : null; } catch { return null; }
-  });
-  // The two automatic screens open from the home or from "עוד"; the way back follows.
-  const [autoFromMore, setAutoFromMore] = useState(false);
   const monthly = useMonthly(email, data.input, data.requestsSent, data.pendingReplies);
   const setup = buildSetupTasks(data.input, skips);
   const monthTasks = buildMonthTasks(monthly.view);
@@ -115,22 +131,27 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
   }, [setupKey, monthKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  const simpleNav = phase !== 'setup';
-  const navViews: View[] = simpleNav ? NAV_AFTER_SETUP : VIEW_ORDER;
-  const inAutoFromMore = simpleNav && autoFromMore && autoScreen !== null && view === 'overview';
-  const navActive = (v: View) => {
-    if (simpleNav && v === 'more') return view === 'more' || MORE_VIEWS.includes(view) || inAutoFromMore;
-    return v === view && !inAutoFromMore;
-  };
+  const hmode = homeMode(auto);
+  const isAuto = hmode === 'pending' || hmode === 'approved';
+  // The focused setup screen: one task at a time, until the setup is done (or the full menu was asked for).
+  const inSetup = phase === 'setup' && !fullMenu && !data.failed && !(isAuto && (asked === 'business' || asked === 'automation'));
+  const mode: PromoMode = inSetup ? 'setup' : hmode === 'loading' ? 'unknown' : isAuto ? 'auto' : 'legacy';
+  const { onMode, go: goArea } = bridge;
+  useEffect(() => { onMode(mode); }, [mode, onMode]);
 
-  const go = useCallback((v: View) => {
-    setView(v);
-    setOpenTask(null);
-    setAutoScreen(null);
-    setAutoFromMore(false);
-    if (v === 'overview') data.reload();   // numbers may have changed in another view
-    top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
-  }, [data, reduce]);
+  // An area this account does not have falls back to the nearest one it does.
+  const area: PromoArea = mode === 'auto'
+    ? (asked === 'more' ? 'extras' : asked)
+    : AUTO_ONLY.includes(asked) ? (asked === 'business' && mode === 'legacy' ? 'profile' : 'home') : asked;
+  const view: View | null = AREA_VIEW[area] ?? null;
+
+  const { reload } = data;
+  const go = useCallback((a: AreaId) => {
+    setTask(null);
+    if (a === 'home') reload();   // numbers may have changed in another view
+    goArea(a);
+  }, [reload, goArea]);
+  const goView = useCallback((v: View) => go(VIEW_AREA[v]), [go]);
 
   const skipStep = (id: GuidedId) => {
     const next = withSkip(skips, id, true);
@@ -140,27 +161,15 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
 
   const motionProps = reduce
     ? {}
-    : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.18 } };
+    : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.12 } };
 
-  const openAuto = (s: AutoScreen | null) => {
-    setAutoScreen(s);
-    setOpenTask(null);
-    if (s === null) setAutoFromMore(false);
-    top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
-  };
-  const openAutoFromMore = (s: AutoScreen) => { setView('overview'); setAutoFromMore(true); openAuto(s); };
-  const backFromAuto = () => (autoFromMore ? go('more') : openAuto(null));
-  const autoBackLabel = autoFromMore ? BACK_MORE : undefined;
-  const moreExtra = autoAvailable(auto) ? [
-    { key: 'card', label: CARD.title, hint: CARD.hint, onClick: () => openAutoFromMore('card') },
-    { key: 'automation', label: AUTOMATION.link, hint: AUTOMATION.linkHint, onClick: () => openAutoFromMore('automation') },
-  ] : [];
-  const mode = homeMode(auto);
   const pendingReplies = previewOngoing ? samplePendingReplies() : data.pendingReplies ?? 0;
+  const summary = previewOngoing ? sampleSummary() : data.summary;
+  const pastDue = data.input.subscriptionStatus === 'past_due';
 
-  if (phase === 'setup' && !fullMenu && !data.failed && !autoScreen) {
+  if (inSetup) {
     return (
-      <div className="dv2 dv3" dir="rtl">
+      <div className="dv2 dv3 dv4" dir="rtl">
         <SetupScreen
           input={data.input} email={email} ticksOnServer={data.ticksOnServer} tasks={setup.tasks} view={setup.view}
           currentKey={setup.currentKey} flash={flash} setTick={data.setTick} reload={data.reload}
@@ -171,114 +180,102 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
     );
   }
 
-  const showAuto = view === 'overview' ? autoScreen : null;
   const monthTask = openTask ? monthTasks.find((t) => t.id === openTask) ?? null : null;
+  const fromMore = phase !== 'setup';
+  const backLabel = mode === 'auto' ? EXTRAS.back : undefined;
+  const taskScreen = monthTask && (
+    <MonthScreen
+      task={monthTask} tasks={monthTasks} mview={monthly.view} requestsSent={data.requestsSent} flash={flash} reload={data.reload}
+      onDone={(id) => monthly.done(id as MonthlyId)}
+      onLater={(id) => {
+        monthly.skip(id as MonthlyId);
+        trackAccount('step_skipped', { step_id: `month_${id}` });
+        const next = nextOpenAfter(monthTasks, `m:${id}`);
+        setOpenTask((next?.id as MonthlyId | undefined) ?? null);
+      }}
+      onBack={() => { setOpenTask(null); data.reload(); }}
+      backLabel={backLabel}
+    />
+  );
 
   return (
-    <div className="dv2 dv3" dir="rtl">
-      <div ref={top} className="scroll-mt-4" />
-      <nav aria-label="תצוגות הקידום" className="dv3-nav dv2-nav">
-        {navViews.map((v) => {
-          const active = navActive(v);
-          return (
-            <button key={v} type="button" onClick={() => go(v)} aria-current={active ? 'page' : undefined} data-active={active}>
-              {simpleNav ? (NAV_LABEL_AFTER_SETUP[v] ?? VIEW_LABEL[v]) : VIEW_LABEL[v]}
-            </button>
-          );
-        })}
-      </nav>
-
+    <div className="dv2 dv3 dv4" dir="rtl">
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={view + (openTask ?? '') + (showAuto ?? '')} {...motionProps}>
-          {showAuto === 'card' && <BusinessCardScreen auto={auto} backLabel={autoBackLabel} onBack={backFromAuto} onSettings={() => openAuto('automation')} />}
-          {showAuto === 'automation' && <AutomationScreen auto={auto} backLabel={autoBackLabel} onBack={backFromAuto} onCard={() => openAuto('card')} />}
-          {!showAuto && view === 'overview' && phase === 'ongoing' && !data.failed && (
-            monthTask ? (
-              <MonthScreen
-                task={monthTask} tasks={monthTasks} mview={monthly.view} requestsSent={data.requestsSent} flash={flash} reload={data.reload}
-                onDone={(id) => monthly.done(id as MonthlyId)}
-                onLater={(id) => {
-                  monthly.skip(id as MonthlyId);
-                  trackAccount('step_skipped', { step_id: `month_${id}` });
-                  const next = nextOpenAfter(monthTasks, `m:${id}`);
-                  setOpenTask((next?.id as MonthlyId | undefined) ?? null);
-                }}
-                onBack={() => { setOpenTask(null); data.reload(); }}
-              />
-            ) : (
+        <motion.div key={area + (openTask ?? '')} {...motionProps}>
+          {area === 'business' && <BusinessCardScreen auto={auto} onSettings={() => go('automation')} onProfile={() => go('profile')} />}
+          {area === 'automation' && <AutomationScreen auto={auto} onCard={() => go('business')} />}
+          {area === 'site' && <SiteScreen auto={auto} page={bridge.page} onBusiness={() => go('business')} onPlan={() => go('settings')} morePagesLink={bridge.morePagesLink} />}
+          {area === 'activity' && (
+            <ViewShell title={ACTIVITY_SCREEN.title} hint={ACTIVITY_SCREEN.hint} back={{ label: BACK_HOME, onClick: () => go('home') }}>
+              {auto.preview && <SampleBanner />}
+              <ActivityFeed activity={auto.activity} onRetry={auto.reload} />
+              <PostHistory auto={auto} />
+            </ViewShell>
+          )}
+          {area === 'extras' && (taskScreen || (
+            <ExtrasScreen
+              tasks={monthTasks} email={email} views={EXTRA_VIEWS}
+              onOpen={(id) => setOpenTask(id as MonthlyId)} onView={goView} onBack={() => go('home')}
+            />
+          ))}
+          {area === 'home' && phase === 'ongoing' && !data.failed && (
+            taskScreen || (
               <OverviewV3
                 tasks={monthTasks} summary={data.summary} input={data.input} email={email} flash={flash}
-                pastDue={data.input.subscriptionStatus === 'past_due'} goPlan={() => go('plan')}
-                onOpen={(id) => { setOpenTask(id as MonthlyId); top.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); }}
+                pastDue={pastDue} goPlan={() => go('settings')}
+                onOpen={(id) => setOpenTask(id as MonthlyId)}
                 onRetry={() => { data.reload(); auto.reload(); }}
-                mode={mode}
-                top={mode === 'approved' ? (
+                mode={hmode}
+                home={hmode === 'approved' ? (
                   <>
-                    <HomeHero auto={auto} />
-                    <Waiting auto={auto} pendingReplies={pendingReplies} onReviews={() => go('reviews')} onProfile={() => go('profile')} />
+                    {auto.preview && <SampleBanner />}
+                    <AutoHome
+                      auto={auto} summary={summary} pendingReplies={pendingReplies}
+                      onReviews={() => go('reviews')} onProfile={() => go('profile')} onActivity={() => go('activity')} onExtras={() => go('extras')}
+                      onRefresh={() => { data.reload(); auto.reload(); }}
+                    />
                   </>
-                ) : <FirstStep auto={auto} onOpen={openAuto} />}
-                work={<AutoWork auto={auto} />}
-                more={<AutoMore auto={auto} onOpen={openAuto} />}
+                ) : (
+                  <>
+                    {auto.preview && <SampleBanner />}
+                    <FirstStep auto={auto} onOpen={() => go('business')} />
+                  </>
+                )}
               />
             )
           )}
-          {!showAuto && view === 'overview' && phase === 'welcome' && !data.failed && <WelcomeV3 setTick={data.setTick} />}
-          {!showAuto && view === 'overview' && (phase === 'setup' || data.failed) && (
-            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={go} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
+          {area === 'home' && phase === 'welcome' && !data.failed && <WelcomeV3 setTick={data.setTick} />}
+          {area === 'home' && (phase === 'setup' || data.failed) && (
+            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={goView} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
           )}
-          {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={go} />}
-          {view === 'more' && <MoreV3 go={go} extra={moreExtra} />}
+          {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={goView} />}
+          {view === 'more' && <MoreV3 go={goView} />}
           {view === 'setup' && (
-            <ViewFrame view="setup" fromMore={simpleNav} go={go}><SetupArchive input={data.input} go={go} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
+            <ViewFrame view="setup" fromMore={fromMore} go={goView} backLabel={backLabel}><SetupArchive input={data.input} go={goView} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
           )}
           {view === 'profile' && (
-            <ViewFrame view="profile" fromMore={simpleNav} go={go}>
+            <ViewFrame view="profile" fromMore={fromMore} go={goView} backLabel={backLabel}>
               <GbpCard />
               <BusinessAuditCard />
             </ViewFrame>
           )}
           {view === 'reviews' && (
-            <ViewFrame view="reviews" fromMore={simpleNav} go={go}>
+            <ViewFrame view="reviews" fromMore={fromMore} go={goView}>
               <ReviewsCard />
               <ReviewDraftsCard />
               <ReviewRequestsCard />
             </ViewFrame>
           )}
-          {view === 'content' && <ViewFrame view="content" fromMore={simpleNav} go={go}><ContentPlanCard /></ViewFrame>}
+          {view === 'content' && <ViewFrame view="content" fromMore={fromMore} go={goView} backLabel={backLabel}><ContentPlanCard /></ViewFrame>}
           {view === 'leads' && (
-            <ViewFrame view="leads" fromMore={simpleNav} go={go}>
+            <ViewFrame view="leads" fromMore={fromMore} go={goView} backLabel={backLabel}>
               <LeadsTable items={data.items} summary={data.summary} />
               <ExternalSiteCard />
             </ViewFrame>
           )}
-          {view === 'plan' && (
-            <ViewFrame view="plan" fromMore={simpleNav} go={go}>
-              <SeoSubscriptionCard />
-              {data.input.loaded && data.input.subscriptionStatus === null && (
-                <div className="dv2-card p-5">
-                  <p className="font-semibold text-[var(--ink)]">אין כרגע חיוב חודשי לנהל</p>
-                  {data.billingEnabled ? (
-                    <>
-                      <p className="mt-1 text-sm text-[var(--muted)]">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
-                      <Link to="/seo-plan" className="dv2-btn mt-3">להצטרפות למנוי החודשי ולתשלום</Link>
-                    </>
-                  ) : (
-                    <p className="mt-1 text-sm text-[var(--muted)]">המוצר פעיל בחשבון שלכם ואין עליו חיוב כרגע.</p>
-                  )}
-                </div>
-              )}
-              {showPageUpsell && (
-                <div className="dv2-card p-5 text-center">
-                  <p className="text-sm text-[var(--muted)]">מחזיקים רק בקידום בגוגל. רוצים גם דף נחיתה לעסק?</p>
-                  <Link to="/create" className="dv2-btn-ghost mt-3">יצירת דף ב-Pagey</Link>
-                </div>
-              )}
-            </ViewFrame>
-          )}
         </motion.div>
       </AnimatePresence>
-      <FeedbackBox page={view} />
+      <FeedbackBox page={view ?? area} />
     </div>
   );
 }
