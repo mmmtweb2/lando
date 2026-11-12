@@ -10,9 +10,13 @@ import type { Autopilot } from './useAutopilot';
 // "פרטי העסק": the business card everything automatic is written from, in three steps (CardSteps):
 // what we found, filling in the gaps, and the one approval the customer gives.
 
-interface Props { auto: Autopilot; onSettings: () => void; onProfile: () => void }
+interface Props {
+  auto: Autopilot; onSettings: () => void; onProfile: () => void;
+  /** inside the short setup: the three steps only, without the page heading and the links that lead away */
+  bare?: boolean;
+}
 
-export default function BusinessCardScreen({ auto, onSettings, onProfile }: Props) {
+export default function BusinessCardScreen({ auto, onSettings, onProfile, bare = false }: Props) {
   const { truth, gbp } = auto;
   const [notice, setNotice] = useState<CardNotice>(null);
   // An account that already approved comes here to update details; a new one starts from what we found.
@@ -68,11 +72,12 @@ export default function BusinessCardScreen({ auto, onSettings, onProfile }: Prop
           key={auto.truthVersion} truth={t} auto={auto} step={cur} notice={notice} onNotice={setNotice} onSettings={onSettings}
           onStep={(n) => { setStep(n); if (n !== cur) setNotice((x) => (x?.kind === 'ok' ? x : null)); }}
         />
-        <button type="button" className="dv3-linkbtn" onClick={onProfile}>{CARD.toProfile}</button>
+        {!bare && <button type="button" className="dv3-linkbtn" onClick={onProfile}>{CARD.toProfile}</button>}
       </>
     );
   }
 
+  if (bare) return <div className="dv3-skin">{body}</div>;
   return (
     <ViewShell title={CARD.title} hint={CARD.hint}>
       {auto.preview && <SampleBanner />}

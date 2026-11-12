@@ -12,6 +12,8 @@ export interface TruthCard {
   hours: TruthHours[];
   open: boolean;
   notes: string;
+  /** Google's own link for writing a review of the listing; empty until the listing was read */
+  reviewUrl?: string;
 }
 export type CheckState = 'ok' | 'weak' | 'missing';
 export interface ReadinessCheck { key: string; state: CheckState; required: boolean; title: string; why: string }
@@ -56,4 +58,13 @@ export interface GoogleNumbers { calls: number; directions: number }
 /** "צרו לי דף נחיתה" (POST /api/seo/truth/landing): the new draft, or the page the account already has. */
 export type PageStatus = 'draft' | 'published' | 'frozen';
 export interface LandingResult { existing: boolean; id: string; slug: string; status: PageStatus | (string & {}) }
+/** POST /api/landing/:id/publish from "הדף והחיפושים שלכם": never starts a payment. */
+export type PublishState =
+  | { phase: 'idle' }
+  | { phase: 'busy'; id: string }
+  | { phase: 'done'; id: string; slug: string; url: string }
+  /** 402: the server's sentence, and the purchase lives on the page itself */
+  | { phase: 'payment'; id: string; error: string }
+  | { phase: 'error'; id: string; error: string };
+export type PublishResult = { ok: true; slug: string; url: string } | { ok: false; needsPayment: true; error: string };
 export type LandingState = { phase: 'idle' } | { phase: 'busy' } | { phase: 'done'; page: LandingResult } | { phase: 'error'; error: string };

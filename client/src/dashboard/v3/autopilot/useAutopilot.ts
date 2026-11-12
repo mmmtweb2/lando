@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GENERIC_ERROR } from '../autopilotCopy';
 import { ApiError, sampleApi, serverApi, type AutopilotApi } from './api';
-import type { Activity, Automation, AutomationPatch, GbpStatus, GoogleNumbers, LandingState, Loadable, Phrases, Post, Truth, TruthPatch } from './types';
+import type { Activity, Automation, AutomationPatch, GbpStatus, GoogleNumbers, LandingState, Loadable, Phrases, Post, PublishState, Truth, TruthPatch } from './types';
 
 // One place that loads the automatic product's data for the dashboard: the business card, the
 // Google connection, the automation choices, the posts and the activity log. Each source loads and
@@ -43,6 +43,13 @@ export interface Autopilot {
   createPhrase: (phrase: string) => Promise<string | null | false>;
   /** calls and direction requests from the Google listing, last 30 days; null when there are none to show */
   numbers: GoogleNumbers | null;
+  /** "פרסמו את הדף". Kept here so a page published a moment ago stays published when moving between screens. */
+  publish: PublishState;
+  publishPage: (id: string) => void;
+  /** Does the subscription cover publishing this draft? Throws the sentence to show when the check itself failed. */
+  checkIncluded: (id: string) => Promise<boolean>;
+  /** Sends the browser to Google to connect the listing. Returns the sentence to show when it could not start. */
+  connectGoogle: () => Promise<string | null>;
 }
 
 // Google's numbers change once a day, and every read costs a call to Google: keep them for the visit.
@@ -72,6 +79,8 @@ export function useAutopilot(preview: boolean): Autopilot {
   const [phraseBusy, setPhraseBusy] = useState<string | null>(null);
   const phraseLock = useRef(false);
   const [numbers, setNumbers] = useState<GoogleNumbers | null>(null);
+  const [publish, setPublish] = useState<PublishState>({ phase: 'idle' });
+  const publishBusy = useRef(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
@@ -161,6 +170,28 @@ export function useAutopilot(preview: boolean): Autopilot {
     ).finally(() => { landingBusy.current = false; });
   }, [api, loadActivity]);
 
+  // One request at a time. A 402 never opens a payment here: the screen shows the sentence and a link to the page.
+  const publishPage = useCallback((id: string) => {
+    if (publishBusy.current) return;
+    publishBusy.current = true;
+    setPublish({ phase: 'busy', id });
+    api.publishLanding(id).then(
+      (r) => {
+        if (!alive.current) return;
+        if (!r.ok) { setPublish({ phase: 'payment', id, error: r.error }); return; }
+        setPublish({ phase: 'done', id, slug: r.slug, url: r.url });
+        setPhrases(null); void loadActivity();
+      },
+      (e: unknown) => { if (alive.current) setPublish({ phase: 'error', id, error: msg(e) }); },
+    ).finally(() => { publishBusy.current = false; });
+  }, [api, loadActivity]);
+
+  const checkIncluded = useCallback((id: string) => api.included(id), [api]);
+
+  const connectGoogle = useCallback(async () => {
+    try { window.location.href = await api.connectUrl(); return null; } catch (e) { return msg(e); }
+  }, [api]);
+
   const loadPhrases = useCallback(() => {
     setPhrases((p) => (p && p.status === 'ok' ? p : LOADING));
     api.phrases().then(
@@ -188,5 +219,5 @@ export function useAutopilot(preview: boolean): Autopilot {
     }
   }, [api, loadPhrases, loadActivity]);
 
-  return { phrases, loadPhrases, phraseBusy, createPhrase, numbers, preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost, landing, createLanding };
+  return { publish, publishPage, checkIncluded, connectGoogle, phrases, loadPhrases, phraseBusy, createPhrase, numbers, preview, truth, notReady, gbp, automation, posts, activity, truthVersion, syncing, reload, sync, save, approve, setAutomation, editPost, publishPost, skipPost, landing, createLanding };
 }

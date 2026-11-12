@@ -1,10 +1,11 @@
 // The calls of the automatic product. Two implementations of one interface: the server (authFetch,
 // the same helper every dashboard call uses) and the preview's in-memory sample.
 import { authFetch } from '../../../lib/api';
+import { shareUrl } from '../../../lib/pageUrl';
 import { GENERIC_ERROR } from '../autopilotCopy';
-import { buildSample, sampleLanding, sampleVariant } from './sample';
+import { buildSample, sampleFlag, sampleLanding, sampleVariant } from './sample';
 import type { GoogleNumbers, PhrasePage, Phrases } from './types';
-import type { Activity, Automation, AutomationPatch, GbpStatus, LandingResult, Post, Truth, TruthPatch } from './types';
+import type { Activity, Automation, AutomationPatch, GbpStatus, LandingResult, Post, PublishResult, Truth, TruthPatch } from './types';
 
 /** `message` is the server's own Hebrew sentence when it sent one. */
 export class ApiError extends Error {
@@ -30,6 +31,12 @@ export interface AutopilotApi {
   phrases(): Promise<Phrases>;
   /** About half a minute: the page is written before the server answers. */
   createPhrase(phrase: string): Promise<{ page: PhrasePage; parentPublished: boolean }>;
+  /** Does the subscription cover publishing this draft? (GET /api/landing/:id/included) */
+  included(id: string): Promise<boolean>;
+  /** Publishes the included page. 402 comes back as `needsPayment` with the server's sentence; nothing is charged here. */
+  publishLanding(id: string): Promise<PublishResult>;
+  /** Where the customer connects the Google account that manages the listing (the same call GbpCard makes). */
+  connectUrl(): Promise<string>;
   /** Never throws: null means "no numbers from Google right now". */
   googleNumbers(): Promise<GoogleNumbers | null>;
 }
@@ -44,6 +51,8 @@ async function call<T>(url: string, method = 'GET', body?: unknown): Promise<T> 
   return b as T;
 }
 
+/** a server sentence is shown only when it is written for the customer */
+const HEBREW = /[\u0590-\u05FF]/;
 const postUrl = (id: string, tail = '') => `/api/seo/posts/${encodeURIComponent(id)}${tail}`;
 
 export const serverApi: AutopilotApi = {
@@ -78,6 +87,21 @@ export const serverApi: AutopilotApi = {
     if (!b.page) throw new ApiError(GENERIC_ERROR);
     return { page: b.page, parentPublished: b.parentPublished === true };
   },
+  included: async (id) => (await call<{ included?: boolean }>(`/api/landing/${encodeURIComponent(id)}/included`)).included === true,
+  publishLanding: async (id) => {
+    let r: Response;
+    try { r = await authFetch(`/api/landing/${encodeURIComponent(id)}/publish`, { method: 'POST' }); } catch { throw new ApiError(GENERIC_ERROR); }
+    const b = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+    const said = typeof b?.error === 'string' && HEBREW.test(b.error) ? b.error : null;
+    if (r.status === 402) return { ok: false, needsPayment: true, error: said ?? GENERIC_ERROR };
+    if (!r.ok || !b || typeof b.slug !== 'string' || !b.slug) throw new ApiError(said ?? GENERIC_ERROR);
+    return { ok: true, slug: b.slug, url: shareUrl(b.slug, typeof b.subdomain === 'string' ? b.subdomain : null) };
+  },
+  connectUrl: async () => {
+    const b = await call<{ url?: string }>('/api/seo/gbp/oauth/start');
+    if (!b.url) throw new ApiError(GENERIC_ERROR);
+    return b.url;
+  },
   googleNumbers: async () => {
     try {
       const b = await call<{ totals?: Partial<GoogleNumbers> }>('/api/seo/gbp/stats');
@@ -98,7 +122,7 @@ export function sampleApi(): AutopilotApi {
   };
   const copy = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
   return {
-    truth: async () => ({ truth: copy(s.truth), notReady: false }),
+    truth: async () => ({ truth: s.read ? copy(s.truth) : null, notReady: false }),
     gbp: async () => s.gbp,
     sync: async () => { s.truth.fetchedAt = now(); return copy(s.truth); },
     save: async (patch) => {
@@ -149,6 +173,15 @@ export function sampleApi(): AutopilotApi {
       log('page_created', `יצרנו דף לחיפוש "${phrase}"`);
       return { page, parentPublished: s.phrases.parentPublished };
     },
+    included: async () => { await new Promise((r) => setTimeout(r, 300)); return sampleFlag('included') !== 'no'; },
+    publishLanding: async () => {
+      await new Promise((r) => setTimeout(r, 1500));
+      if (sampleFlag('publish') === '402') return { ok: false, needsPayment: true, error: 'אין לך יתרת דפים לפרסום. אפשר לשלם על הדף הזה בנפרד, או לרכוש חבילת דפים ולחסוך.' };
+      if (s.page) s.page.status = 'published';
+      s.phrases.parentPublished = true;
+      return { ok: true, slug: 'sample-page', url: 'https://pagey.co.il/p/sample-page' };
+    },
+    connectUrl: async () => { throw new ApiError('בתצוגה לדוגמה אין חיבור אמיתי לגוגל.'); },
     googleNumbers: async () => (s.truth.approvedAt ? { calls: 9, directions: 7 } : null),
   };
 }

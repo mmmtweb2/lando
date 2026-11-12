@@ -86,7 +86,7 @@ function PostText({ post }: { post: Post }) {
   );
 }
 
-export default function NextPostCard({ auto, approved }: { auto: Autopilot; approved: boolean }) {
+export default function NextPostCard({ auto, approved, title = POST.title }: { auto: Autopilot; approved: boolean; title?: string }) {
   const { posts } = auto;
   const a = auto.automation.status === 'ok' ? auto.automation.data : null;
   const list = posts.status === 'ok' ? posts.data : [];
@@ -97,7 +97,7 @@ export default function NextPostCard({ auto, approved }: { auto: Autopilot; appr
   return (
     <section className="dv4-card dv4-post" aria-labelledby="dv3-post">
       <div className="dv4-card-head">
-        <h3 id="dv3-post" tabIndex={-1}>{POST.title}</h3>
+        <h3 id="dv3-post" tabIndex={-1}>{title}</h3>
         {posts.status === 'ok' && <NeedChip kind={waits ? 'approve' : 'none'} />}
       </div>
       {posts.status === 'loading' && <div aria-busy="true" aria-label="טוען"><Skeleton className="h-32 !rounded-[16px]" /></div>}
