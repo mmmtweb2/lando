@@ -42,6 +42,20 @@ export function quietNow(d: Date): boolean {
   return hour >= 21 || hour < 8;
 }
 
+/**
+ * When a post that becomes due at `d` will really go out by itself: `d`, or the first moment after
+ * it that is not a quiet time. This is what the customer is shown, so the screen never promises a
+ * Friday afternoon that we will not keep.
+ */
+export function nextOpenTime(d: Date): Date {
+  let t = d;
+  for (let i = 0; i < 6 * 48 && quietNow(t); i++) {
+    // jump to the next half hour
+    t = new Date(Math.floor(t.getTime() / 1_800_000) * 1_800_000 + 1_800_000);
+  }
+  return t;
+}
+
 export const publishAfter = (created: Date): Date => new Date(created.getTime() + EDIT_WINDOW_HOURS * HOUR);
 
 // ── Topics ───────────────────────────────────────────────────────────────────
