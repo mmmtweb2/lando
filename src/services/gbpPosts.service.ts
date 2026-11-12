@@ -23,7 +23,7 @@ import { recordHeartbeat, withHeartbeat } from './opsMetrics.service';
 import { type PostsMode, autopilotEnabled, getAutomation, logActivity, missingTable } from './automation.service';
 import { type TruthCard, emptyCard } from './businessTruth';
 import {
-  MAX_ATTEMPTS, POST_SYSTEM, RETRY_HOURS, STALE_DAYS, cleanPost, ctaFor, fallbackPost, pickTopic, postPrompt, publishAfter, quietNow, weekKey,
+  MAX_ATTEMPTS, POST_SYSTEM, RETRY_HOURS, STALE_DAYS, cleanPost, ctaFor, fallbackPost, nextOpenTime, pickTopic, postPrompt, publishAfter, quietNow, weekKey,
 } from './gbpPosts';
 
 const HOUR = 3_600_000;
@@ -246,6 +246,17 @@ const realDeps: SweepDeps = {
   log: logActivity,
 };
 
+/**
+ * Writes the first post for ONE account right now, so a customer who has just approved their
+ * details sees what we prepared in the same minute and not at the next sweep. Same rules as the
+ * sweep (it is the sweep, for one account); does nothing while the product is switched off.
+ */
+export async function planPostFor(email: string, now = new Date()): Promise<void> {
+  try { await sweepPosts(now, { ...realDeps, accounts: async () => ((await realDeps.accounts(now)).includes(email) ? [email] : []) }); } catch (e) {
+    console.error('[POSTS] first post failed:', e instanceof Error ? e.message.slice(0, 160) : 'unknown');
+  }
+}
+
 export function startPostsSweep(): void {
   if (!autopilotEnabled()) return;
   const run = () => { withHeartbeat('gbp_posts', sweepPosts).catch((e) => console.error('[POSTS] sweep crashed:', e)); };
@@ -259,10 +270,10 @@ export class PostError extends Error {
   constructor(public readonly code: 'not_found' | 'bad_text' | 'not_scheduled' | 'not_connected' | 'quota_pending' | 'google' | 'not_migrated', message = code) { super(message); }
 }
 
-export interface PostView { id: string; topic: string; body: string; status: PostStatus; edited: boolean; publishAfter: string; publishedAt: string | null; createdAt: string; problem: string | null }
+export interface PostView { id: string; topic: string; body: string; status: PostStatus; edited: boolean; publishAfter: string; /** When it will really go out by itself (never on Shabbat or at night). Null once it is not waiting. */ expectedAt: string | null; publishedAt: string | null; createdAt: string; problem: string | null }
 const toView = (r: PostRow): PostView => ({
   id: r.id, topic: r.topic.replace(/^(service|area):/, ''), body: r.body, status: r.status === 'publishing' ? 'scheduled' : r.status, edited: r.edited,
-  publishAfter: r.publish_after, publishedAt: r.published_at, createdAt: r.created_at,
+  publishAfter: r.publish_after, expectedAt: r.status === 'scheduled' || r.status === 'publishing' ? nextOpenTime(new Date(Math.max(Date.parse(r.publish_after), Date.now()))).toISOString() : null, publishedAt: r.published_at, createdAt: r.created_at,
   problem: r.last_error === 'google quota pending' ? 'quota_pending' : r.status === 'failed' ? 'failed' : null,
 });
 

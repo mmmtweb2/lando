@@ -10,7 +10,7 @@ import { underKitLimit } from './seoContent.controller';
 import { logActivity } from '../services/automation.service';
 import { TruthError, approve, getTruth, saveEdit, syncFromGoogle } from '../services/businessTruth.service';
 import { POSTS_MODES, REPLIES_MODES, autopilotEnabled, getAutomation, listActivity, setAutomation } from '../services/automation.service';
-import { PostError, editPost, listPosts, publishNow, skipPost } from '../services/gbpPosts.service';
+import { PostError, editPost, listPosts, planPostFor, publishNow, skipPost } from '../services/gbpPosts.service';
 import { EDIT_WINDOW_HOURS } from '../services/gbpPosts';
 
 // The automatic product (docs/mvp-plan.md, part A): the business card everything is written from,
@@ -80,7 +80,12 @@ export async function putCard(req: Request, res: Response): Promise<void> {
 /** POST /api/seo/truth/approve — "הפרטים נכונים, תתחילו לעבוד". */
 export async function approveCard(req: Request, res: Response): Promise<void> {
   if (!req.authEmail) return needAuth(res);
-  try { res.json({ truth: await approve(req.authEmail), automation: await getAutomation(req.authEmail) }); } catch (e) { fail(res, e); }
+  try {
+    const truth = await approve(req.authEmail);
+    // The first post is written at once (best effort, capped), so the customer sees it on the next screen.
+    await Promise.race([planPostFor(req.authEmail), new Promise((r) => setTimeout(r, 20_000))]);
+    res.json({ truth, automation: await getAutomation(req.authEmail) });
+  } catch (e) { fail(res, e); }
 }
 
 /** GET /api/seo/automation — `live` is false while the operator switch is off (nothing is published yet). */

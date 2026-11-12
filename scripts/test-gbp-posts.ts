@@ -4,7 +4,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'fake';
 import assert from 'assert';
 import { emptyCard, type TruthCard } from '../src/services/businessTruth';
 import { GbpError } from '../src/services/gbpGoogle';
-import { cleanPost, ctaFor, fallbackPost, israelTime, pickTopic, postPrompt, publishAfter, quietNow, topicsOf, weekKey } from '../src/services/gbpPosts';
+import { cleanPost, ctaFor, fallbackPost, israelTime, nextOpenTime, pickTopic, postPrompt, publishAfter, quietNow, topicsOf, weekKey } from '../src/services/gbpPosts';
 import { ownerText, sweepPosts, writePost, type PostRow, type SweepDeps } from '../src/services/gbpPosts.service';
 
 const card: TruthCard = {
@@ -29,6 +29,9 @@ const GOOD = 'נזילה קטנה מתחת לכיור יכולה להפוך תו
   assert.equal(quietNow(new Date('2026-11-14T19:30:00Z')), true, 'Saturday 21:30: Shabbat is out but it is night; Sunday morning is the next slot');
   assert.equal(quietNow(new Date('2026-11-11T02:00:00Z')), true, '04:00 at night');
   assert.equal(quietNow(new Date('2026-11-11T06:30:00Z')), false, '08:30 in the morning');
+  assert.equal(nextOpenTime(new Date('2026-11-10T10:00:00Z')).toISOString(), '2026-11-10T10:00:00.000Z', 'an open time stays as it is');
+  assert.equal(nextOpenTime(new Date('2026-11-13T13:47:00Z')).toISOString(), '2026-11-15T06:00:00.000Z', 'Friday afternoon becomes Sunday 08:00 in Israel');
+  assert.equal(nextOpenTime(new Date('2026-11-11T01:10:00Z')).toISOString(), '2026-11-11T06:00:00.000Z', 'night becomes the same morning');
   assert.equal(publishAfter(new Date('2026-11-10T10:00:00Z')).toISOString(), '2026-11-12T10:00:00.000Z', '48 hours to read and edit');
 
   // ── topics ──
