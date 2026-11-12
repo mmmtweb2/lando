@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
-import { AUTOMATION, BACK_HOME, POSTS_OPTIONS, REPLIES_OPTIONS } from '../autopilotCopy';
+import { AUTOMATION, POSTS_OPTIONS, REPLIES_OPTIONS } from '../autopilotCopy';
 import { LoadError, Notice, SampleBanner } from './bits';
 import type { Autopilot } from './useAutopilot';
 import type { AutomationPatch } from './types';
@@ -27,7 +27,7 @@ function Choice<T extends string>({ legend, options, value, disabled, onPick }: 
   );
 }
 
-export default function AutomationScreen({ auto, onBack, onCard, backLabel = BACK_HOME }: { auto: Autopilot; onBack: () => void; onCard: () => void; backLabel?: string }) {
+export default function AutomationScreen({ auto, onCard }: { auto: Autopilot; onCard: () => void }) {
   const a = auto.automation;
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -38,7 +38,7 @@ export default function AutomationScreen({ auto, onBack, onCard, backLabel = BAC
     setNote(err ? { kind: 'error', text: err } : { kind: 'ok', text: AUTOMATION.saved });
   };
   return (
-    <ViewShell kicker={AUTOMATION.kicker} title={AUTOMATION.title} hint={AUTOMATION.hint} back={{ label: backLabel, onClick: onBack }}>
+    <ViewShell title={AUTOMATION.title} hint={AUTOMATION.hint}>
       {auto.preview && <SampleBanner />}
       {a.status === 'loading' && <div className="flex flex-col gap-4" aria-busy="true" aria-label="טוען"><Skeleton className="h-56 !rounded-[24px]" /><Skeleton className="h-56 !rounded-[24px]" /></div>}
       {a.status === 'error' && <LoadError text={`${AUTOMATION.error} ${a.error}`} onRetry={auto.reload} />}
@@ -54,8 +54,12 @@ export default function AutomationScreen({ auto, onBack, onCard, backLabel = BAC
           <Choice legend={AUTOMATION.repliesLegend} options={REPLIES_OPTIONS} value={a.data.repliesMode} disabled={busy} onPick={(v) => void pick({ repliesMode: v })} />
           <div className="dv3-a-always">
             <ShieldCheck size={20} aria-hidden />
-            <p><strong>{AUTOMATION.always}</strong> {AUTOMATION.quiet}</p>
+            <p><strong>{AUTOMATION.always}</strong></p>
           </div>
+          <section className="dv4-card" aria-labelledby="dv4-autodetails">
+            <div className="dv4-card-head"><h3 id="dv4-autodetails">{AUTOMATION.detailsTitle}</h3></div>
+            <ul className="dv4-bullets">{AUTOMATION.details.map((t) => <li key={t}>{t}</li>)}</ul>
+          </section>
           <div aria-live="polite" className="dv3-a-live">
             {busy && <p className="dv3-a-hint">{AUTOMATION.saving}</p>}
             {!busy && note && <Notice kind={note.kind}>{note.text}</Notice>}

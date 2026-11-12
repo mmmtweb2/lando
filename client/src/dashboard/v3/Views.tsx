@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Check as CheckIcon, ChevronLeft, FileText, Mail, MessageCircle, Phone, Search } from 'lucide-react';
+import { Check as CheckIcon, ChevronLeft, ChevronRight, FileText, Mail, MessageCircle, Phone, Search } from 'lucide-react';
 import type { LeadsSummary } from '../../components/LeadsTable';
 import { Tile } from '../Overview';
 import { MONTHLY_COPY, remainingText } from '../monthly';
@@ -11,14 +11,14 @@ import type { Monthly } from '../useMonthly';
 // header as the task screen and a "skin" around the cards it already had. The cards themselves are
 // not redesigned and keep all their logic; only radius, shadow and border colour change (CSS).
 
-export function ViewShell({ kicker, title, hint, back, children }: { kicker: string; title: string; hint?: string; back?: { label: string; onClick: () => void }; children: ReactNode }) {
+/** A screen: a plain heading (the one coloured hero of the product is the home's), a way back, and the content. */
+export function ViewShell({ title, hint, back, children }: { title: string; hint?: string; back?: { label: string; onClick: () => void }; children: ReactNode }) {
   return (
     <section className="dv3-view" aria-labelledby="dv3-view-title">
-      {back && <button type="button" className="dv3-back" onClick={back.onClick}>{back.label}</button>}
-      <header className="dv3-hero">
-        <p className="dv3-kicker">{kicker}</p>
-        <h2 id="dv3-view-title" className="dv3-view-title">{title}</h2>
-        {hint && <p className="dv3-hero-note">{hint}</p>}
+      {back && <button type="button" className="dv3-back" onClick={back.onClick}><ChevronRight size={16} aria-hidden />{back.label}</button>}
+      <header className="dv4-pagehead">
+        <h2 id="dv3-view-title">{title}</h2>
+        {hint && <p>{hint}</p>}
       </header>
       <div className="dv3-skin">{children}</div>
     </section>
@@ -26,11 +26,11 @@ export function ViewShell({ kicker, title, hint, back, children }: { kicker: str
 }
 
 /** One of the other views: the gradient header, a way back to "עוד" when that is where it came from, and the skin. */
-export function ViewFrame({ view, fromMore, go, children }: { view: View; fromMore: boolean; go: (v: View) => void; children: ReactNode }) {
+export function ViewFrame({ view, fromMore, go, backLabel = 'חזרה ל״עוד״', children }: { view: View; fromMore: boolean; go: (v: View) => void; backLabel?: string; children: ReactNode }) {
   return (
     <ViewShell
-      kicker="קידום בגוגל" title={VIEW_LABEL[view]} hint={VIEW_HINT[view]}
-      back={fromMore && MORE_VIEWS.includes(view) ? { label: 'חזרה ל״עוד״', onClick: () => go('more') } : undefined}
+      title={VIEW_LABEL[view]} hint={VIEW_HINT[view]}
+      back={fromMore && MORE_VIEWS.includes(view) ? { label: backLabel, onClick: () => go('more') } : undefined}
     >{children}</ViewShell>
   );
 }
@@ -41,7 +41,7 @@ export interface MoreExtra { key: string; label: string; hint: string; onClick: 
 /** `extra`: screens that are not journey views (the automatic product's two screens), listed first. */
 export function MoreV3({ go, extra = [] }: { go: (v: View) => void; extra?: MoreExtra[] }) {
   return (
-    <ViewShell kicker="עוד" title="כל השאר, במקום אחד" hint="הגדרות, פרופיל, תוכן ומנוי.">
+    <ViewShell title="כל השאר, במקום אחד" hint="פרופיל, תוכן, פניות ורשימת ההקמה.">
       <ul className="dv3-more">
         {extra.map((x) => (
           <li key={x.key}>
@@ -71,7 +71,7 @@ export function MoreV3({ go, extra = [] }: { go: (v: View) => void; extra?: More
 export function ProgressV3({ summary, monthly, go }: { summary: LeadsSummary; monthly: Monthly; go: (v: View) => void }) {
   const v = monthly.view;
   return (
-    <ViewShell kicker="התקדמות" title={`פניות החודש: ${summary.month_total}`}
+    <ViewShell title={`פניות החודש: ${summary.month_total}`}
       hint={summary.month_total > 0 ? `${inquiriesText(summary.month_total)} מתחילת החודש.` : 'עדיין אין פניות החודש.'}>
       {summary.month_total > 0 && (
         <section aria-label="מאיפה הגיעו הפניות" className="dv3-block">

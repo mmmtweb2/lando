@@ -1,11 +1,9 @@
 import JourneyBanner from '../components/JourneyBanner';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Globe, Plus, ExternalLink, Loader2,
-  LayoutDashboard, Settings, Users, LogOut,
-  CheckCircle, Check, Clock, Trash2, Menu, X, Sparkles, Share2,
+  Globe, Plus, ExternalLink, Loader2, Users,
+  CheckCircle, Check, Clock, Trash2, X, Sparkles, Share2,
   Mail, MessageCircle, QrCode,
 } from 'lucide-react';
 import QrModal from '../components/QrModal';
@@ -15,16 +13,22 @@ import { shareUrl, publicPageLabel } from '../lib/pageUrl';
 import { useAuth } from '../context/AuthContext';
 import { useUser } from '../context/UserContext';
 import { authFetch } from '../lib/api';
-import { LandoMark, LandoBot } from '../components/Lando';
+import { LandoBot } from '../components/Lando';
 import RefundAck from '../components/RefundAck';
 import LeadsTable, { type LeadFeedItem, type LeadsSummary } from '../components/LeadsTable';
 import WalletBadge from '../components/WalletBadge';
 import ReferralCard from '../components/ReferralCard';
 import SetPasswordCard from '../components/SetPasswordCard';
-import SeoProductPanel, { ProductSwitch } from '../components/SeoProductPanel';
+import SeoProductPanel from '../components/SeoProductPanel';
+import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
 import SeoReturnBanner from '../components/SeoReturnBanner';
 import SeoDashboardV2 from '../dashboard/v3/SeoDashboardEntry';   // v2, or v3 with ?dash=v3
 import { dashV2Enabled } from '../dashboard/flag';
+import { dashV3Enabled } from '../dashboard/v3/flag';
+import DashboardShell from '../dashboard/shell/DashboardShell';
+import { AREA_LABEL, PAGES_LABEL, PROMO_LABEL, accountKind, isPromoArea, navFor, navParent, resolveArea, type PromoMode } from '../dashboard/shell/areas';
+import { dropQuery, useArea } from '../dashboard/shell/useArea';
+import type { IncludedPage, PromoBridge } from '../dashboard/shell/bridge';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -99,8 +103,6 @@ interface BundleDef {
   whiteLabel: boolean;
 }
 
-type ActiveTab = 'pages' | 'leads' | 'settings';
-
 // ─── Design tokens ────────────────────────────────────────────────────────────
 //
 // One accent (the brand blue) used only on primary actions and live state;
@@ -109,13 +111,6 @@ type ActiveTab = 'pages' | 'leads' | 'settings';
 // no spring physics, no staggered entrance choreography.
 
 const ACCENT = '#2E63F6';
-
-/** The one entrance animation used across the page. */
-const fadeIn = {
-  initial: { opacity: 0, y: 6 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.2, ease: 'easeOut' },
-} as const;
 
 const btnPrimary =
   'inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2E63F6] hover:bg-[#1E4FD6] px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50';
@@ -131,23 +126,10 @@ function formatDate(iso: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function NavItem({ icon, label, active = false, onClick }: { icon: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
-  return (
-    <button onClick={onClick} className={`flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm transition-colors ${
-      active
-        ? 'bg-slate-100 text-slate-900 font-medium'
-        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-    }`}>
-      <span className={active ? 'text-[#2E63F6]' : 'text-slate-400'}>{icon}</span>
-      {label}
-    </button>
-  );
-}
-
 /** One figure in the stat strip. Reads as data: quiet label, loud number. */
 function StatCard({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-4">
+    <div className="flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-3 sm:px-5 sm:py-4 min-w-0">
       <div className="flex items-center gap-1.5 text-slate-500">
         <span className="text-slate-400">{icon}</span>
         <p className="text-xs font-medium">{label}</p>
@@ -246,42 +228,6 @@ function StatusBadge({ status }: { status: PageRow['status'] }) {
   );
 }
 
-// ─── Tab bar (segmented control) ──────────────────────────────────────────────
-
-interface TabBarProps {
-  active: ActiveTab;
-  onChange: (tab: ActiveTab) => void;
-  pageCount: number;
-  leadCount: number;
-}
-
-function TabBar({ active, onChange, pageCount, leadCount }: TabBarProps) {
-  const tabs: { id: ActiveTab; label: string; count: number }[] = [
-    { id: 'pages', label: 'הדפים שלי', count: pageCount },
-    { id: 'leads', label: 'לידים', count: leadCount },
-  ];
-  return (
-    <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors ${
-            active === tab.id
-              ? 'bg-white text-slate-900 font-medium shadow-sm'
-              : 'text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          {tab.label}
-          <span className={`text-xs tabular-nums ${active === tab.id ? 'text-slate-500' : 'text-slate-400'}`}>
-            {tab.count}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── Page cards ───────────────────────────────────────────────────────────────
 
 /**
@@ -347,9 +293,11 @@ async function sharePage(url: string, businessName: string, onCopied: () => void
 }
 
 function PageGrid({
-  pages, onDelete, onRenew, renewingId, renewalPrice,
+  pages, onDelete, onRenew, renewingId, renewalPrice, includedId = null,
 }: {
   pages: PageRow[];
+  /** the page that comes with the promotion subscription (shown with a tag) */
+  includedId?: string | null;
   onDelete: (id: string, name: string) => void;
   onRenew: (id: string) => void;
   renewingId: string | null;
@@ -395,7 +343,10 @@ function PageGrid({
                 <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">{publicPageLabel(p.slug, p.subdomain)}</p>
               </div>
             </div>
-            <StatusBadge status={p.status} />
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <StatusBadge status={p.status} />
+              {includedId === p.id && <span className="rounded-md bg-[#E9EEFB] px-2 py-0.5 text-[11px] font-medium text-[#0E2148]">כלול במנוי הקידום</span>}
+            </div>
           </div>
           <p className="text-xs text-slate-400 tabular-nums">{formatDate(p.created_at)}</p>
           {p.status === 'published' && (
@@ -462,20 +413,6 @@ function PageGrid({
 
 // ─── Skeleton loader ─────────────────────────────────────────────────────────
 
-function PageGridSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-3 animate-pulse">
-          <div className="w-9 h-9 rounded-lg bg-slate-100" />
-          <div className="h-3.5 rounded bg-slate-100 w-3/4" />
-          <div className="h-2.5 rounded bg-slate-100 w-1/2" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -494,7 +431,7 @@ export default function Dashboard() {
   // effect below to re-run when the user clicks "try again".
   const [dataError, setDataError]     = useState(false);
   const [retryTick, setRetryTick]     = useState(0);
-  const [activeTab, setActiveTab]     = useState<ActiveTab>('pages');
+  const { requested, go } = useArea();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [buying, setBuying] = useState(false);
   const [buyMsg, setBuyMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -502,7 +439,10 @@ export default function Dashboard() {
   const [paymentNotice, setPaymentNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const [plan, setPlan] = useState<AccountStatus | null>(null);
   const [isAdminAccount, setIsAdminAccount] = useState(false); // only decides whether dashboard v2 is on by default
-  const [product, setProduct] = useState<'pages' | 'seo'>('pages'); // only matters with BOTH products
+  // The promotion product: which page its subscription includes, whether a subscription exists,
+  // and what its screens look like in this account (reported by the screens themselves).
+  const [seoSub, setSeoSub] = useState<{ enabled: boolean; has: boolean; pageId: string | null } | null>(null);
+  const [promoMode, setPromoMode] = useState<PromoMode>('unknown');
   const [bundlesCatalog, setBundlesCatalog] = useState<Record<string, BundleDef>>({});
   const [singlePagePrice, setSinglePagePrice] = useState<number>(PRICING.singlePage.price);
   const [showPlans, setShowPlans] = useState(false);
@@ -513,7 +453,6 @@ export default function Dashboard() {
   const [bundleAck, setBundleAck] = useState(false);
   const [creditsAck, setCreditsAck] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
   // An applied coupon is only a PREVIEW of the price (see CouponField). What
   // makes it real is passing `code` through to /api/payments/start, which
@@ -543,7 +482,7 @@ export default function Dashboard() {
     setPaymentNotice(NOTICES[status] ?? null);
     if (status === 'success') setWalletKey((k) => k + 1);
     // Clean the query param so a refresh doesn't re-show the notice.
-    window.history.replaceState({}, '', window.location.pathname);
+    dropQuery('payment');
     const t = setTimeout(() => setPaymentNotice(null), 6000);
     return () => clearTimeout(t);
   }, []);
@@ -557,7 +496,7 @@ export default function Dashboard() {
     if (q.get('bundles') !== '1' && q.get('upgrade') !== '1') return;
     setBundleAck(false);
     setShowPlans(true);
-    window.history.replaceState({}, '', window.location.pathname);
+    dropQuery('bundles', 'upgrade');
   }, []);
 
   // Deep link from a renewal reminder email (?renew=<page id>). Deliberately
@@ -567,21 +506,14 @@ export default function Dashboard() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     if (!q.get('renew')) return;
-    setActiveTab('pages');
+    // the pages area is opened by the URL itself (shell/areas.ts: ?renew= means "pages")
     setPaymentNotice({ text: 'הדף מסומן לחידוש — לחצו על כפתור החידוש בכרטיס הדף.', ok: true });
-    window.history.replaceState({}, '', window.location.pathname);
+    dropQuery('renew');
     const t = setTimeout(() => setPaymentNotice(null), 8000);
     return () => clearTimeout(t);
   }, []);
 
-  // Deep link from the publish-success modal's "see your leads" nudge
-  // (?leads=1) — just switches to the leads tab, nothing to acknowledge.
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get('leads') !== '1') return;
-    setActiveTab('leads');
-    window.history.replaceState({}, '', window.location.pathname);
-  }, []);
+  // ?leads=1 (the publish-success modal's "see your leads" nudge) opens the leads area: shell/areas.ts.
 
   async function handleDeletePage(id: string, name: string) {
     if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
@@ -627,6 +559,14 @@ export default function Dashboard() {
               setIsAdminAccount(pd.isAdmin === true);
               setBundlesCatalog(pd.bundles);
               if (pd.singlePagePrice) setSinglePagePrice(pd.singlePagePrice);
+            }
+            // Which page comes with the promotion subscription (read only; the card in settings manages it).
+            if (pd.status?.entitlements?.seo_autopilot === true) {
+              try {
+                const subRes = await authFetch('/api/seo/subscription');
+                const sb = subRes.ok ? await subRes.json() as { enabled?: boolean; subscription?: { page?: { pageId?: string | null } | null } | null } : null;
+                if (!cancelled) setSeoSub({ enabled: sb?.enabled === true, has: !!sb?.subscription, pageId: sb?.subscription?.page?.pageId ?? null });
+              } catch { /* the included page falls back to the newest one */ }
             }
           }
         } catch { /* plan card just won't render */ }
@@ -757,168 +697,90 @@ export default function Dashboard() {
     }
   }
 
-  // Shared nav item definitions — desktop sidebar and mobile drawer both drive
-  // the same `activeTab` state via these, so there is only ever one nav model.
-  // Product entitlements (Stage 5.5.1). An account that holds ONLY the Google-promotion
-  // product (seo_autopilot, no Pagey page) must not be pushed into page creation; an
-  // account with BOTH gets one dashboard with a clear product switch. Until the plan has
-  // loaded (or if it failed) hasSeo is false and the dashboard is exactly what it was.
-  const hasSeo = plan?.entitlements?.seo_autopilot === true;
-  const seoOnly = hasSeo && !dataLoading && !dataError && pages.length === 0;
-  const bothProducts = hasSeo && pages.length > 0;
-  const seoView = activeTab !== 'settings' && (seoOnly || (bothProducts && product === 'seo'));
-  const dashV2 = dashV2Enabled(isAdminAccount);
 
-  const navItems: { icon: ReactNode; label: string; tab: ActiveTab }[] = [
-    { icon: <LayoutDashboard size={17} />, label: 'סקירה כללית', tab: 'pages' },
-    ...(seoOnly ? [] : [
-      { icon: <Globe size={17} />, label: 'הדפים שלי', tab: 'pages' as ActiveTab },
-      { icon: <Users size={17} />, label: 'לידים', tab: 'leads' as ActiveTab },
-    ]),
-    { icon: <Settings size={17} />, label: 'הגדרות', tab: 'settings' },
-  ];
+  // ── One navigation model (docs/dashboard-v4-spec.md) ──────────────────────────────
+  // Two products, one sidebar grouped by product. Which groups an account sees follows what it
+  // holds: promotion only, pages only, or both. Until the plan has loaded nothing is decided, so a
+  // promotion customer never sees a flash of the pages screens.
+  const hasSeo = plan?.entitlements?.seo_autopilot === true;
+  const kind = dataLoading
+    ? null
+    : accountKind({ hasSeo, pageCount: pages.length, pageCredits: plan?.pageCredits ?? 0, pageCreditsTotal: plan?.pageCreditsTotal ?? 0 });
+  const area = resolveArea(kind ?? 'pages', requested);
+  const dashV2 = dashV2Enabled(isAdminAccount);
+  // ?dash=v1 / ?dash=v2: the older promotion dashboards, which bring their own inner navigation.
+  const mode: PromoMode = !dashV2 || !dashV3Enabled() ? 'classic' : promoMode;
+  const nav = kind ? navFor(kind, mode) : null;
+  const inPromo = kind !== null && isPromoArea(area);
+
+  // The landing page that comes with the promotion subscription: the one the subscription names,
+  // else the newest page (the same page the server builds the search-phrase pages under).
+  const includedRow = hasSeo ? (pages.find((p) => p.id === seoSub?.pageId) ?? pages[0] ?? null) : null;
+  const includedPage: IncludedPage | null = includedRow
+    ? { id: includedRow.id, slug: includedRow.slug, status: includedRow.status ?? 'draft', url: shareUrl(includedRow.slug, includedRow.subdomain) }
+    : null;
+  const bridge: PromoBridge = {
+    area: isPromoArea(area) ? area : 'home', go, onMode: setPromoMode,
+    page: dataError ? null : includedPage, morePagesLink: kind === 'promo',
+  };
+
+  const openCredits = () => { setCreditsAck(false); setShowBuyCredits(true); };
+  const openBundles = () => { setBundleAck(false); setShowPlans(true); };
+
+  const HEAD: Record<string, { title: string; sub: string }> = {
+    pages: { title: AREA_LABEL.pages, sub: 'כל דפי הנחיתה שבניתם, במקום אחד.' },
+    leads: { title: AREA_LABEL.leads, sub: 'פניות שהגיעו דרך הדפים שלכם.' },
+    credits: { title: AREA_LABEL.credits, sub: 'יתרת הדפים לפרסום, וקרדיטים ליצירה ולעריכה.' },
+    settings: { title: AREA_LABEL.settings, sub: hasSeo ? 'המנוי, הסיסמה והחשבון.' : 'הסיסמה, התמיכה והחשבון.' },
+  };
+  const head = !kind || inPromo ? null : HEAD[area];
+  // Credits belong to the pages product: they show inside its area only, never for promotion only.
+  const tools: ReactNode = kind && kind !== 'promo' && (area === 'pages' || area === 'leads' || area === 'credits') ? (
+    <>
+      <WalletBadge email={user.email} refreshKey={walletKey} />
+      <button onClick={openCredits} className={`${btnSecondary} min-h-[44px]`}>
+        <Plus size={14} className="text-slate-400" /> טען קרדיטים
+      </button>
+    </>
+  ) : null;
+
+  const errorBox = (
+    <div className="rounded-xl border border-dashed border-red-200 bg-red-50/50 p-12 flex flex-col items-center gap-3 text-center">
+      <p className="text-sm font-semibold text-red-700">משהו השתבש בטעינת הנתונים</p>
+      <p className="text-sm text-red-500/80">זה לא בהכרח אומר שאין לכם דפים — כנראה תקלת רשת זמנית.</p>
+      <button onClick={() => setRetryTick((t) => t + 1)} className={`${btnSecondary} mt-1`}>
+        נסו שוב
+      </button>
+    </div>
+  );
+
+  const legalFooter = (
+    <footer className="border-t border-[#DCE4F7] px-5 py-6">
+      {/* Persistent legal footer — the dashboard is where purchases happen,
+          so the refund/renewal terms have to be reachable from it. */}
+      <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-500">
+        <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
+        <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
+        <Link to="/accessibility" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
+        <span>© {new Date().getFullYear()} Pagey</span>
+      </div>
+    </footer>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex" dir="rtl">
+    <DashboardShell
+      nav={nav} active={navParent(area, mode)} onGo={go} email={user.email ?? ''} onLogout={handleLogout}
+      title={head?.title} sub={head?.sub} tools={tools} footer={legalFooter}
+      srTitle={inPromo ? `${PROMO_LABEL}: ${AREA_LABEL[area]}` : kind ? `${PAGES_LABEL}: ${AREA_LABEL[area]}` : 'הדשבורד שלכם'}
+    >
 
       {/* Payment return toast */}
       {paymentNotice && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
+        <div role="status" className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
           {paymentNotice.ok && <Check size={15} className="text-emerald-400 flex-shrink-0" />}
           {paymentNotice.text}
         </div>
       )}
-
-      {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-60 bg-white border-l border-slate-200 sticky top-0 h-screen flex-shrink-0">
-        <div className="px-5 h-14 flex items-center border-b border-slate-200">
-          <Link to="/" className="flex items-center gap-2">
-            <LandoMark size={26} />
-            <span className="text-sm font-semibold tracking-tight text-slate-900">Pagey</span>
-          </Link>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
-          {/* "סקירה כללית" has no separate view of its own — the pages tab already
-              doubles as the dashboard's overview (stats + plan + pages grid), so this
-              item is just another way in to the same 'pages' tab. */}
-          <NavItem icon={<LayoutDashboard size={17} />} label="סקירה כללית" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />
-          {!seoOnly && <NavItem icon={<Globe size={17} />} label="הדפים שלי" active={activeTab === 'pages'} onClick={() => setActiveTab('pages')} />}
-          {!seoOnly && <NavItem icon={<Users size={17} />} label="לידים" active={activeTab === 'leads'} onClick={() => setActiveTab('leads')} />}
-          <NavItem icon={<Settings size={17} />} label="הגדרות" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
-        </nav>
-
-        <div className="px-3 py-4 border-t border-slate-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-          >
-            <LogOut size={16} className="text-slate-400" /> יציאה
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Mobile nav drawer ────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {mobileNavOpen && (
-          <>
-            <motion.div
-              key="mobile-nav-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="fixed inset-0 z-[90] bg-slate-900/40 lg:hidden"
-              onClick={() => setMobileNavOpen(false)}
-            />
-            <motion.aside
-              key="mobile-nav-drawer"
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-              className="fixed inset-y-0 right-0 z-[95] w-72 max-w-[80vw] bg-white border-l border-slate-200 flex flex-col shadow-xl lg:hidden"
-              dir="rtl"
-            >
-              <div className="px-5 h-14 border-b border-slate-200 flex items-center justify-between">
-                <Link to="/" className="flex items-center gap-2" onClick={() => setMobileNavOpen(false)}>
-                  <LandoMark size={26} />
-                  <span className="text-sm font-semibold tracking-tight text-slate-900">Pagey</span>
-                </Link>
-                <button
-                  onClick={() => setMobileNavOpen(false)}
-                  aria-label="סגור תפריט"
-                  className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
-                {navItems.map((item, i) => (
-                  <NavItem
-                    key={i}
-                    icon={item.icon}
-                    label={item.label}
-                    active={activeTab === item.tab}
-                    onClick={() => { setActiveTab(item.tab); setMobileNavOpen(false); }}
-                  />
-                ))}
-              </nav>
-
-              <div className="px-3 py-4 border-t border-slate-200">
-                <button
-                  onClick={() => { setMobileNavOpen(false); handleLogout(); }}
-                  className="flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-                >
-                  <LogOut size={16} className="text-slate-400" /> יציאה
-                </button>
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ── Main area ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
-
-        {/* Header */}
-        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 sm:px-6 h-14 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="lg:hidden flex items-center gap-2">
-              <LandoMark size={24} />
-            </span>
-            <h1 className="text-sm font-semibold tracking-tight text-slate-900 truncate">
-              {activeTab === 'settings' ? 'הגדרות וחיוב' : 'סקירה כללית'}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <WalletBadge email={user.email} refreshKey={walletKey} />
-            <button
-              onClick={() => { setCreditsAck(false); setShowBuyCredits(true); }}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium px-2.5 py-1.5 transition-colors">
-              <Plus size={13} className="text-slate-400" /> טען קרדיטים
-            </button>
-            <span className="hidden md:block text-xs text-slate-400 font-mono truncate max-w-48" dir="ltr">
-              {user.email}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-              aria-label="יציאה"
-            >
-              <LogOut size={15} />
-            </button>
-            <button
-              onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-              aria-label="פתח תפריט"
-            >
-              <Menu size={20} />
-            </button>
-          </div>
-        </header>
-
         {showDeleteAccount && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/50" onClick={() => !deletingAccount && setShowDeleteAccount(false)}>
             <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
@@ -1113,89 +975,36 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Content */}
-        <main className="flex-1 px-5 sm:px-6 py-8 flex flex-col gap-8 max-w-5xl w-full mx-auto">
           <SeoReturnBanner />
 
           <JourneyBanner />
 
-          {/* Page title */}
-          <motion.div {...fadeIn}>
-            <p className="text-xs text-slate-400 font-mono truncate" dir="ltr">{user.email}</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-              {activeTab === 'settings' ? 'הגדרות וחיוב' : seoView ? 'קידום בגוגל' : 'סקירה כללית'}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {activeTab === 'settings'
-                ? 'היתרה, החבילות והקרדיטים שלך — במקום אחד.'
-                : seoView
-                  ? 'הקידום של העסק שלך בגוגל — במקום אחד.'
-                  : 'הדפים, היתרה והלידים שלך — במבט אחד.'}
-            </p>
-          </motion.div>
-
-          {activeTab === 'settings' ? (
-            /* ── Settings (billing/plan/credits) ─────────────────────────── */
-            <motion.div
-              key="settings"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
-              className="flex flex-col gap-4"
-            >
-              {/* Page balance, AI credits and the white-label add-on only concern Pagey pages;
-                  an account holding ONLY seo_autopilot does not see them (Moshe, 2026-10-21). */}
-              {!seoOnly && (<>
-              {plan ? (
-                <BalanceCard plan={plan} onBuyBundle={() => { setBundleAck(false); setShowPlans(true); }} />
-              ) : (
-                <div className={`${surface} p-5 text-sm text-slate-400`}>
-                  טוען נתוני מסלול…
-                </div>
-              )}
-
-              <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">יתרת קרדיטים</span>
-                  <WalletBadge email={user.email} refreshKey={walletKey} />
-                </div>
-                <button
-                  onClick={() => { setCreditsAck(false); setShowBuyCredits(true); }}
-                  className={btnSecondary}>
-                  <Plus size={14} className="text-slate-400" /> טען קרדיטים
-                </button>
-              </div>
-
-              {/* Standalone white-label surfacing (2026-09-06, retention fixes):
-                  previously the ₪350 white-label add-on was only reachable from
-                  inside the "buy pages" modal, itself only reachable via a
-                  "buy pages" button — a customer who already has enough page
-                  balance and just wants the badge gone had no reason to ever
-                  open that modal and no prompt telling them the option exists,
-                  even though the badge shows on every page they publish. This
-                  is a second, low-effort entry point into the SAME purchase
-                  flow (handleBuyBundle('whitelabel_addon') via the existing
-                  bundle modal + RefundAck gating) — not a new purchase path. */}
-              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
-                <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
-                  <div className="flex items-start gap-3 min-w-0">
-                    <span className="mt-0.5 flex-shrink-0 text-[#2E63F6]"><Sparkles size={16} /></span>
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-sm font-medium text-slate-900">הסרת מיתוג Pagey מהדפים שלך</span>
-                      <span className="text-xs text-slate-500 leading-relaxed">
-                        כרגע כל דף שלך מציג "נוצר באמצעות Pagey" בתחתית. תוסף חד־פעמי של ₪{bundlesCatalog.whitelabel_addon.price.toLocaleString()} מסיר את התיוג לצמיתות, מכל הדפים — גם הקיימים וגם העתידיים.
-                      </span>
+          {kind === null ? (
+            <div className="dsh-load" aria-busy="true" aria-label="טוען"><span /><span /><span /></div>
+          ) : area === 'settings' ? (
+            /* ── Settings and billing: the subscription, the password, support, the account ── */
+            <div className="flex flex-col gap-4">
+              {hasSeo && (
+                <section className="dsh-section" aria-label="המנוי לקידום בגוגל">
+                  <SeoSubscriptionCard />
+                  {seoSub && !seoSub.has && (
+                    <div className={`${surface} p-5`}>
+                      <p className="text-sm font-medium text-slate-900">אין כרגע חיוב חודשי לנהל</p>
+                      {seoSub.enabled ? (
+                        <>
+                          <p className="mt-1 text-sm text-slate-500">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
+                          <Link to="/seo-plan" className={`${btnSecondary} mt-3 min-h-[44px]`}>להצטרפות למנוי החודשי ולתשלום</Link>
+                        </>
+                      ) : (
+                        <p className="mt-1 text-sm text-slate-500">קידום בגוגל פעיל בחשבון שלכם ואין עליו חיוב כרגע.</p>
+                      )}
                     </div>
-                  </div>
-                  <button
-                    onClick={() => { setBundleAck(false); setShowPlans(true); }}
-                    className={btnSecondary}>
-                    הסרת המיתוג
-                  </button>
-                </div>
+                  )}
+                </section>
               )}
-              </>)}
 
+              {/* Set a password (for users who signed up via magic link) */}
+              <SetPasswordCard />
               {/* Contact/support card (2026-09-14) — visible in a spot every user
                   passes through, encouraging reach-out for any issue rather
                   than silent churn. Deliberately placed before the danger
@@ -1244,120 +1053,100 @@ export default function Dashboard() {
                   מחיקת החשבון שלי
                 </button>
               </div>
-            </motion.div>
-          ) : seoOnly ? (
-            /* ── seo_autopilot only: no Pagey page, no page-creation prompts ── */
-            <>
-              {dashV2 ? <SeoDashboardV2 showPageUpsell /> : <SeoProductPanel showPageUpsell />}
-              <SetPasswordCard />
-            </>
-          ) : (
-            <>
-              {bothProducts && <ProductSwitch value={product} onChange={setProduct} />}
-              {bothProducts && product === 'seo' ? (dashV2 ? <SeoDashboardV2 /> : <SeoProductPanel />) : (<>
-              {/* Stats */}
-              <motion.div
-                {...fadeIn}
-                className="grid grid-cols-1 sm:grid-cols-3 gap-4"
-              >
-                <StatCard
-                  label="סה״כ דפים"
-                  value={dataLoading ? '—' : String(pages.length)}
-                  icon={<Globe size={14} />}
-                />
-                <StatCard
-                  label="דפים פעילים"
-                  value={dataLoading ? '—' : String(publishedPages.length)}
-                  icon={<CheckCircle size={14} />}
-                />
-                <StatCard
-                  label="לידים החודש"
-                  value={dataLoading ? '—' : String(leadsSummary.month_total)}
-                  icon={<Users size={14} />}
-                />
-              </motion.div>
+            </div>
+          ) : inPromo ? (
+            /* ── קידום בגוגל: its own screens; the sidebar chooses which one ── */
+            dashV2 ? <SeoDashboardV2 showPageUpsell={kind === 'promo'} bridge={bridge} /> : <SeoProductPanel showPageUpsell={kind === 'promo'} />
+          ) : dataError ? errorBox : area === 'credits' ? (
+            /* ── דפי נחיתה: page balance, AI credits, the white-label add-on, referrals ── */
+            <div className="flex flex-col gap-4">
+              {plan ? (
+                <BalanceCard plan={plan} onBuyBundle={openBundles} />
+              ) : (
+                <div className={`${surface} p-5 text-sm text-slate-400`}>
+                  טוען נתוני מסלול…
+                </div>
+              )}
 
-              {/* Plan + usage */}
-              {plan && <BalanceCard plan={plan} onBuyBundle={() => { setBundleAck(false); setShowPlans(true); }} />}
+              <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">יתרת קרדיטים</span>
+                  <WalletBadge email={user.email} refreshKey={walletKey} />
+                </div>
+                <button
+                  onClick={openCredits}
+                  className={btnSecondary}>
+                  <Plus size={14} className="text-slate-400" /> טען קרדיטים
+                </button>
+              </div>
 
+              {/* Standalone white-label surfacing (2026-09-06, retention fixes):
+                  previously the ₪350 white-label add-on was only reachable from
+                  inside the "buy pages" modal, itself only reachable via a
+                  "buy pages" button — a customer who already has enough page
+                  balance and just wants the badge gone had no reason to ever
+                  open that modal and no prompt telling them the option exists,
+                  even though the badge shows on every page they publish. This
+                  is a second, low-effort entry point into the SAME purchase
+                  flow (handleBuyBundle('whitelabel_addon') via the existing
+                  bundle modal + RefundAck gating) — not a new purchase path. */}
+              {!plan?.whiteLabel && bundlesCatalog.whitelabel_addon && (
+                <div className={`${surface} p-5 flex items-center justify-between gap-4 flex-wrap`}>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span className="mt-0.5 flex-shrink-0 text-[#2E63F6]"><Sparkles size={16} /></span>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900">הסרת מיתוג Pagey מהדפים שלך</span>
+                      <span className="text-xs text-slate-500 leading-relaxed">
+                        כרגע כל דף שלך מציג "נוצר באמצעות Pagey" בתחתית. תוסף חד־פעמי של ₪{bundlesCatalog.whitelabel_addon.price.toLocaleString()} מסיר את התיוג לצמיתות, מכל הדפים — גם הקיימים וגם העתידיים.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={openBundles}
+                    className={btnSecondary}>
+                    הסרת המיתוג
+                  </button>
+                </div>
+              )}
               {/* Referral */}
               {portalUser && <ReferralCard user={portalUser} />}
-
-              {/* Set a password (for users who signed up via magic link) */}
-              <SetPasswordCard />
-
-              {/* Tab bar + tab content */}
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <TabBar
-                    active={activeTab}
-                    onChange={setActiveTab}
-                    pageCount={pages.length}
-                    leadCount={leadsSummary.month_total}
-                  />
-                  {activeTab === 'pages' && (
-                    <Link to="/create" className={btnPrimary}>
-                      <Plus size={15} /> דף חדש
-                    </Link>
-                  )}
-                </div>
-
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.18 }}
-                  >
-                    {activeTab === 'pages' && !dataLoading && !dataError && <GoogleDraftCard />}
-                    {dataError ? (
-                      <div className="rounded-xl border border-dashed border-red-200 bg-red-50/50 p-12 flex flex-col items-center gap-3 text-center">
-                        <p className="text-sm font-semibold text-red-700">משהו השתבש בטעינת הנתונים</p>
-                        <p className="text-sm text-red-500/80">זה לא בהכרח אומר שאין לכם דפים — כנראה תקלת רשת זמנית.</p>
-                        <button onClick={() => setRetryTick((t) => t + 1)} className={`${btnSecondary} mt-1`}>
-                          נסו שוב
-                        </button>
-                      </div>
-                    ) : activeTab === 'pages' ? (
-                      dataLoading ? <PageGridSkeleton /> : (
-                        <PageGrid
-                          pages={pages}
-                          onDelete={handleDeletePage}
-                          onRenew={handleRenewPage}
-                          renewingId={renewingId}
-                          renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : PRICING.renewal.base}
-                        />
-                      )
-                    ) : (
-                      dataLoading ? (
-                        <div className="flex items-center justify-center py-16">
-                          <Loader2 size={22} className="animate-spin text-slate-300" />
-                        </div>
-                      ) : (
-                        <LeadsTable items={leads} summary={leadsSummary} />
-                      )
-                    )}
-                  </motion.div>
-                </AnimatePresence>
+            </div>
+          ) : area === 'leads' ? (
+            <LeadsTable items={leads} summary={leadsSummary} />
+          ) : (
+            /* ── דפי נחיתה: the pages ── */
+            <>
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                <StatCard label="סה״כ דפים" value={String(pages.length)} icon={<Globe size={14} />} />
+                <StatCard label="דפים פעילים" value={String(publishedPages.length)} icon={<CheckCircle size={14} />} />
+                <StatCard label="לידים החודש" value={String(leadsSummary.month_total)} icon={<Users size={14} />} />
               </div>
-              </>)}
+
+              <GoogleDraftCard />
+
+              <section className="dsh-section" aria-label="הדפים שלי">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <p className="text-sm text-slate-500">
+                    {plan && plan.pageCredits > 0 ? `נשארו ${plan.pageCredits} דפים לפרסום ביתרה.` : 'פרסום דף נוסף נעשה מהדף עצמו.'}
+                    {' '}
+                    <button type="button" onClick={() => go('credits')} className="inline-flex min-h-[44px] items-center font-medium text-[#1E4FD6] underline underline-offset-4">ליתרה ולקרדיטים</button>
+                  </p>
+                  <Link to="/create" className={`${btnPrimary} min-h-[44px]`}>
+                    <Plus size={15} /> דף חדש
+                  </Link>
+                </div>
+                <PageGrid
+                  pages={pages}
+                  onDelete={handleDeletePage}
+                  onRenew={handleRenewPage}
+                  renewingId={renewingId}
+                  renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : PRICING.renewal.base}
+                  includedId={kind === 'both' ? includedPage?.id ?? null : null}
+                />
+              </section>
             </>
           )}
 
-        </main>
-
-        {/* Persistent legal footer — the dashboard is where purchases happen,
-            so the refund/renewal terms have to be reachable from it. */}
-        <footer className="border-t border-[#DCE4F7] px-5 py-6">
-          <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-400">
-            <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
-            <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>
-            <Link to="/accessibility" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">הצהרת נגישות</Link>
-            <span>© {new Date().getFullYear()} Pagey</span>
-          </div>
-        </footer>
-      </div>
-    </div>
+    </DashboardShell>
   );
 }

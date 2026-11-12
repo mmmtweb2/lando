@@ -3,6 +3,7 @@
 import { authFetch } from '../../../lib/api';
 import { GENERIC_ERROR } from '../autopilotCopy';
 import { buildSample, sampleLanding, sampleVariant } from './sample';
+import type { GoogleNumbers, PhrasePage, Phrases } from './types';
 import type { Activity, Automation, AutomationPatch, GbpStatus, LandingResult, Post, Truth, TruthPatch } from './types';
 
 /** `message` is the server's own Hebrew sentence when it sent one. */
@@ -26,6 +27,11 @@ export interface AutopilotApi {
   activity(): Promise<Activity[]>;
   /** Can take about a minute: the page is written on the server before it answers. */
   createLanding(): Promise<LandingResult>;
+  phrases(): Promise<Phrases>;
+  /** About half a minute: the page is written before the server answers. */
+  createPhrase(phrase: string): Promise<{ page: PhrasePage; parentPublished: boolean }>;
+  /** Never throws: null means "no numbers from Google right now". */
+  googleNumbers(): Promise<GoogleNumbers | null>;
 }
 
 async function call<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
@@ -62,6 +68,21 @@ export const serverApi: AutopilotApi = {
     if (typeof b.slug !== 'string' || !b.slug) throw new ApiError(GENERIC_ERROR);
     const existing = b.existing === true;
     return { existing, id: String(b.id ?? ''), slug: b.slug, status: existing && typeof b.status === 'string' ? b.status : 'draft' };
+  },
+  phrases: async () => {
+    const b = await call<Partial<Phrases>>('/api/seo/truth/phrases');
+    return { hasPage: b.hasPage === true, parentPublished: b.parentPublished === true, pages: b.pages ?? [], ideas: b.ideas ?? [], cap: Number(b.cap) || 0, left: Number(b.left) || 0 };
+  },
+  createPhrase: async (phrase) => {
+    const b = await call<{ page?: PhrasePage; parentPublished?: boolean }>('/api/seo/truth/phrases', 'POST', { phrase });
+    if (!b.page) throw new ApiError(GENERIC_ERROR);
+    return { page: b.page, parentPublished: b.parentPublished === true };
+  },
+  googleNumbers: async () => {
+    try {
+      const b = await call<{ totals?: Partial<GoogleNumbers> }>('/api/seo/gbp/stats');
+      return b.totals ? { calls: Number(b.totals.calls) || 0, directions: Number(b.totals.directions) || 0 } : null;
+    } catch { return null; }
   },
 };
 
@@ -109,8 +130,25 @@ export function sampleApi(): AutopilotApi {
       if (s.page) { await wait(600); return { ...s.page, existing: true }; }
       await wait(6000);   // the real call takes about a minute; long enough here to see the waiting state
       s.page = { existing: false, id: 'sample-page', slug: 'sample-page', status: 'draft' };
+      s.phrases.hasPage = true;
       log('page_created', 'יצרנו לכם דף נחיתה מפרטי העסק');
       return { ...s.page };
     },
+    phrases: async () => copy(s.phrases),
+    createPhrase: async (phrase) => {
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const idea = s.phrases.ideas.find((i) => i.phrase === phrase);
+      if (!s.phrases.hasPage) throw new ApiError('צריך קודם דף נחיתה. צרו אותו בלחיצה אחת מפרטי העסק.', 'no_page');
+      if (!idea) throw new ApiError('אפשר ליצור דף רק לשירות ולאזור שמופיעים בפרטי העסק שלכם.', 'not_offered');
+      if (s.phrases.left <= 0) throw new ApiError('הגעתם למספר הדפים שמתאים לעסק שלכם. הוספת שירותים או אזורים בפרטי העסק פותחת דפים נוספים.', 'limit');
+      await wait(5000);   // the real call takes about half a minute
+      const page: PhrasePage = { id: `sample-phrase-${s.phrases.pages.length}`, phrase, title: phrase, url: '' };
+      s.phrases.pages = [...s.phrases.pages, page];
+      s.phrases.ideas = s.phrases.ideas.filter((i) => i.phrase !== phrase);
+      s.phrases.left -= 1;
+      log('page_created', `יצרנו דף לחיפוש "${phrase}"`);
+      return { page, parentPublished: s.phrases.parentPublished };
+    },
+    googleNumbers: async () => (s.truth.approvedAt ? { calls: 9, directions: 7 } : null),
   };
 }

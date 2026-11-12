@@ -30,6 +30,8 @@ export interface Post {
   id: string; topic: string; body: string;
   status: 'scheduled' | 'published' | 'skipped' | 'failed';
   edited: boolean; publishAfter: string; publishedAt: string | null; createdAt: string;
+  /** when it will really go out by itself (never on Shabbat or at night); absent on an older server, null once it is not waiting */
+  expectedAt?: string | null;
   problem: null | 'quota_pending' | 'failed';
 }
 
@@ -42,6 +44,14 @@ export interface GbpStatus { enabled: boolean; connected: boolean; needsReconnec
 export type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ok'; data: T };
 
 export type AutoScreen = 'card' | 'automation';
+
+/** GET /api/seo/truth/phrases: the search-phrase pages that exist, what we offer next, and how many are left. */
+export interface PhrasePage { id: string; phrase: string | null; title: string | null; url: string }
+export interface PhraseIdea { phrase: string; service: string; area: string }
+export interface Phrases { hasPage: boolean; parentPublished: boolean; pages: PhrasePage[]; ideas: PhraseIdea[]; cap: number; left: number }
+
+/** Clicks from the Google listing in the last 30 days (GET /api/seo/gbp/stats); null when Google has nothing to give. */
+export interface GoogleNumbers { calls: number; directions: number }
 
 /** "צרו לי דף נחיתה" (POST /api/seo/truth/landing): the new draft, or the page the account already has. */
 export type PageStatus = 'draft' | 'published' | 'frozen';
