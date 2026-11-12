@@ -18,3 +18,16 @@ export function homeMode(auto: Autopilot): HomeMode {
   if (auto.truth.status === 'loading') return 'loading';
   return isApproved(auto) ? 'approved' : 'pending';
 }
+
+// The short setup of the automatic product (ShortSetup.tsx): connect, approve, "from here we work".
+export type SetupStep = 1 | 2 | 3;
+
+/** Which step the account is on. `finished` = the details were approved while this setup was open. */
+export function setupStep(auto: Autopilot, finished: boolean): SetupStep {
+  if (finished) return 3;
+  const { truth, gbp } = auto;
+  const connected = !!gbp && gbp.connected && !gbp.needsReconnect;
+  // Details that were already read can be approved even while the connection needs renewing.
+  if (truth.status === 'ok' && truth.data === null && !connected) return 1;
+  return 2;
+}

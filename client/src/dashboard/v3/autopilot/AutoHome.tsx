@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ChevronLeft, FileCheck, Link2Off, MessageSquare, type LucideIcon } from 'lucide-react';
-import type { LeadsSummary } from '../../../components/LeadsTable';
+import type { LeadFeedItem, LeadsSummary } from '../../../components/LeadsTable';
 import { Skeleton } from '../../ui';
 import { CARD, HOME } from '../autopilotCopy';
 import { ActivityLines } from './ActivityFeed';
@@ -7,11 +7,12 @@ import NextPostCard from './NextPostCard';
 import { LoadError } from './bits';
 import { shortDate } from './format';
 import { autoAvailable, isApproved } from './mode';
-import { homeNumbers, type HomeNumbers } from './numbers';
+import { homeNumbers, last30, type HomeNumbers } from './numbers';
+import { sampleFlag } from './sample';
 import type { Autopilot } from './useAutopilot';
 
 // The promotion home (docs/dashboard-v4-spec.md, part B). Four things and nothing else:
-//   1. we are working for you, since when, and the month's one number
+//   1. we are working for you, since when, and one number for one period (numbers.ts)
 //   2. what waits for you (only what truly needs the owner; otherwise one calm line)
 //   3. the next post, compact
 //   4. what we did and what came in, in one block
@@ -47,7 +48,7 @@ export function HomeHero({ auto, numbers }: { auto: Autopilot; numbers: HomeNumb
       </div>
       <p className="dv4-hero-num">
         <strong className="tabular-nums">{numbers.total}</strong>
-        <span>{HOME.heroNumber}</span>
+        <span>{numbers.totalLabel}</span>
       </p>
     </section>
   );
@@ -117,14 +118,19 @@ export function Results({ auto, numbers, onAll }: { auto: Autopilot; numbers: Ho
         </div>
         <div>
           <h4>{HOME.resultsGot}</h4>
-          <dl className="dv4-nums">
-            {numbers.tiles.map(({ key, label, value, Icon }) => (
-              <div key={key}>
-                <dt><Icon size={16} aria-hidden />{label}</dt>
-                <dd className="tabular-nums">{value}</dd>
-              </div>
-            ))}
-          </dl>
+          {numbers.groups.map((g) => (
+            <div key={g.key} className="dv4-numgroup">
+              <p className="dv4-period">{g.label}</p>
+              <dl className="dv4-nums">
+                {g.tiles.map(({ key, label, value, Icon }) => (
+                  <div key={key}>
+                    <dt><Icon size={16} aria-hidden />{label}</dt>
+                    <dd className="tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
           <p className="dv4-fine">{numbers.note}</p>
         </div>
       </div>
@@ -135,13 +141,17 @@ export function Results({ auto, numbers, onAll }: { auto: Autopilot; numbers: Ho
 
 interface HomeProps extends WaitingProps {
   summary: LeadsSummary;
+  /** the inquiries list: the 30-day counts are made from it */
+  items: LeadFeedItem[];
   onActivity: () => void;
   onExtras: () => void;
   onRefresh: () => void;
 }
 
-export function AutoHome({ auto, summary, pendingReplies, onReviews, onProfile, onActivity, onExtras, onRefresh }: HomeProps) {
-  const numbers = homeNumbers(summary, auto.numbers);
+export function AutoHome({ auto, summary, items, pendingReplies, onReviews, onProfile, onActivity, onExtras, onRefresh }: HomeProps) {
+  // `&numbers=split` (preview only): as if the list were cut before it reaches 30 days back
+  const own = auto.preview && sampleFlag('numbers') === 'split' ? null : last30(items);
+  const numbers = homeNumbers(summary, own, auto.numbers);
   return (
     <>
       <HomeHero auto={auto} numbers={numbers} />

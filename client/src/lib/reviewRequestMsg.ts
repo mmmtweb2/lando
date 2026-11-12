@@ -26,3 +26,13 @@ export function waLink(phone: string, text: string): string {
 export function localPhone(phone: string): string {
   return phone.startsWith('972') ? '0' + phone.slice(3) : phone;
 }
+
+/** The same request without a name, for a message the owner forwards to any customer (what ReviewsCard sends). */
+export function requestTextOpen(business: string, link: string): string {
+  return `היי, תודה שבחרתם ב${business}! נשמח אם תכתבו לנו ביקורת בגוגל, זה לוקח דקה: ${link}`;
+}
+
+/** WhatsApp with the text ready and no recipient: the owner picks the customer there. */
+export function waShare(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}

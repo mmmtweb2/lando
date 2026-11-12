@@ -5,17 +5,26 @@
 // `&landing=existing` / `&landing=error` choose what "צרו לי דף נחיתה" answers; without it a draft is
 // "created" after a few seconds. `&page=draft|live|frozen` starts with the included landing page already
 // there in that state (without it: no page yet), so "הדף והחיפושים שלכם" can be seen in every state.
-import type { LeadsSummary } from '../../../components/LeadsTable';
+// Round 4: `&setup=1` the short setup before Google is connected (without `sample` the setup opens on
+// step 2; `&sample=approved&setup=3` its last screen), `&included=no` a draft the subscription does not
+// cover, `&publish=402` a publish that needs a purchase, `&kit=nolink` no review link yet,
+// `&numbers=split` the home numbers when the inquiries list cannot cover 30 days.
+import type { LeadFeedItem, LeadsSummary } from '../../../components/LeadsTable';
 import type { Activity, Automation, GbpStatus, LandingResult, Phrases, Post, Truth } from './types';
 
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 const ahead = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
 
-export interface SampleState { truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[]; page: LandingResult | null; phrases: Phrases }
+export interface SampleState { /** false = the listing was not read yet (`&setup=1`) */ read: boolean; truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[]; page: LandingResult | null; phrases: Phrases }
 export type SampleVariant = 'pending' | 'approved' | 'quiet';
 
 export function sampleVariant(): SampleVariant {
   try { const q = new URLSearchParams(window.location.search).get('sample'); return q === 'approved' || q === 'quiet' ? q : 'pending'; } catch { return 'pending'; }
+}
+
+/** One of the preview's switches: `&included=no`, `&publish=402`, `&kit=nolink`, `&numbers=split`, `&setup=1|3`. */
+export function sampleFlag(name: string): string | null {
+  try { return new URLSearchParams(window.location.search).get(name); } catch { return null; }
 }
 
 export function sampleLanding(): 'create' | 'existing' | 'error' {
@@ -37,6 +46,13 @@ export function sampleSummary(): LeadsSummary {
     : { month_total: 14, month_whatsapp: 6, month_call: 5, month_form: 2, month_email: 1, month_link: 0 };
 }
 
+/** The inquiries behind the sample's numbers, spread over the last 30 days. */
+export function sampleItems(): LeadFeedItem[] {
+  if (sampleVariant() === 'pending') return [];
+  const kinds: LeadFeedItem['kind'][] = ['whatsapp', 'call', 'whatsapp', 'form', 'call', 'whatsapp', 'call', 'email', 'whatsapp', 'call', 'whatsapp', 'form', 'call', 'whatsapp', 'whatsapp', 'call', 'form'];
+  return kinds.map((kind, i) => ({ id: `s${i}`, kind, created_at: ago(5 + i * 40), landing_page_id: 'sample-page', page_name: 'אינסטלציה אבי כהן', page_slug: 'sample-page', name: null, phone: null, email: null, message: null }));
+}
+
 /** Never on Shabbat or at night, like the server: the next weekday morning when the time falls there. */
 function openTime(iso: string): string {
   const d = new Date(iso);
@@ -56,6 +72,8 @@ export function samplePendingReplies(): number {
 
 export function buildSample(variant: SampleVariant): SampleState {
   const approved = variant !== 'pending';
+  // `&setup=1`: before the Google listing is connected, so nothing was read yet
+  const first = !approved && sampleFlag('setup') === '1';
   const truth: Truth = {
     fetchedAt: ago(30), approvedAt: approved ? ago(380) : null,
     card: {
@@ -74,6 +92,7 @@ export function buildSample(variant: SampleVariant): SampleState {
         { day: 'FRIDAY', open: '08:00', close: '13:00' },
       ],
       open: true,
+      reviewUrl: sampleFlag('kit') === 'nolink' ? '' : 'https://g.page/r/CSample1234/review',
       notes: approved ? 'עובד לבד כבר 14 שנה, מגיע בעצמי לכל קריאה. נותן הצעת מחיר לפני שמתחילים, בלי הפתעות.' : '',
     },
     readiness: {
@@ -122,9 +141,9 @@ export function buildSample(variant: SampleVariant): SampleState {
     ],
   };
   return {
-    truth, posts, page, phrases,
+    read: !first, truth, posts, page, phrases,
     activity: variant === 'quiet' ? activity.filter((a) => a.kind !== 'reply_drafted') : activity,
-    gbp: { enabled: true, connected: true, needsReconnect: false },
+    gbp: { enabled: true, connected: !first, needsReconnect: false },
     automation: { postsMode: 'auto', repliesMode: 'auto_positive', consentAt: approved ? ago(380) : null, live: approved, editWindowHours: 48 },
   };
 }

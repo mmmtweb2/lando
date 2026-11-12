@@ -27,8 +27,10 @@ import ActivityFeed from './autopilot/ActivityFeed';
 import { PostHistory } from './autopilot/NextPostCard';
 import { AutoHome, FirstStep } from './autopilot/AutoHome';
 import { SampleBanner } from './autopilot/bits';
-import { homeMode } from './autopilot/mode';
-import { samplePendingReplies, sampleSummary } from './autopilot/sample';
+import { homeMode, setupStep } from './autopilot/mode';
+import { sampleFlag, sampleItems, samplePendingReplies, sampleSummary } from './autopilot/sample';
+import ShortSetup from './autopilot/ShortSetup';
+import ReviewKit from './autopilot/ReviewKit';
 import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS } from './autopilotCopy';
 import { useAutopilot } from './autopilot/useAutopilot';
 import type { AreaId, PromoArea, PromoMode } from '../shell/areas';
@@ -133,14 +135,25 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
 
   const hmode = homeMode(auto);
   const isAuto = hmode === 'pending' || hmode === 'approved';
-  // The focused setup screen: one task at a time, until the setup is done (or the full menu was asked for).
-  const inSetup = phase === 'setup' && !fullMenu && !data.failed && !(isAuto && (asked === 'business' || asked === 'automation'));
-  const mode: PromoMode = inSetup ? 'setup' : hmode === 'loading' ? 'unknown' : isAuto ? 'auto' : 'legacy';
+  // The automatic product has its own short setup (three steps: connect, approve, "from here we work").
+  // It runs until the details are approved, and its last screen shows once, right after the approval.
+  // (`&sample=approved&setup=3` opens that last screen in the preview.)
+  const [finishing, setFinishing] = useState<boolean>(() => previewOngoing && sampleFlag('setup') === '3');
+  const [seenMode, setSeenMode] = useState(hmode);
+  if (isAuto && hmode !== seenMode) {
+    setSeenMode(hmode);
+    if (seenMode === 'pending' && hmode === 'approved') setFinishing(true);
+  }
+  const shortSetup = (hmode === 'pending' || (hmode === 'approved' && finishing)) && asked !== 'automation';
+  // The older focused setup (five manual tasks): only where the automatic product is not open.
+  // While we do not know yet which of the two this account gets, neither is shown.
+  const inSetup = hmode === 'legacy' && phase === 'setup' && !fullMenu && !data.failed;
+  const mode: PromoMode = inSetup || shortSetup || (hmode === 'pending' && asked === 'automation') ? 'setup' : hmode === 'loading' ? 'unknown' : isAuto ? 'auto' : 'legacy';
   const { onMode, go: goArea } = bridge;
   useEffect(() => { onMode(mode); }, [mode, onMode]);
 
   // An area this account does not have falls back to the nearest one it does.
-  const area: PromoArea = mode === 'auto'
+  const area: PromoArea = isAuto
     ? (asked === 'more' ? 'extras' : asked)
     : AUTO_ONLY.includes(asked) ? (asked === 'business' && mode === 'legacy' ? 'profile' : 'home') : asked;
   const view: View | null = AREA_VIEW[area] ?? null;
@@ -165,6 +178,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
 
   const pendingReplies = previewOngoing ? samplePendingReplies() : data.pendingReplies ?? 0;
   const summary = previewOngoing ? sampleSummary() : data.summary;
+  const items = previewOngoing ? sampleItems() : data.items;
   const pastDue = data.input.subscriptionStatus === 'past_due';
 
   if (inSetup) {
@@ -180,9 +194,24 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
     );
   }
 
+  if (hmode === 'loading' && phase === 'setup') return <div className="dv2 dv3 dv4" dir="rtl"><HomeSkeleton /></div>;
+
+  if (shortSetup) {
+    return (
+      <div className="dv2 dv3 dv4" dir="rtl">
+        <ShortSetup
+          auto={auto} step={setupStep(auto, hmode === 'approved')} page={bridge.page}
+          onHome={() => { setFinishing(false); go('home'); }}
+          onSettings={() => go('automation')} onBusiness={() => go('business')} onPlan={() => go('settings')}
+        />
+        <FeedbackBox page="setup" />
+      </div>
+    );
+  }
+
   const monthTask = openTask ? monthTasks.find((t) => t.id === openTask) ?? null : null;
-  const fromMore = phase !== 'setup';
-  const backLabel = mode === 'auto' ? EXTRAS.back : undefined;
+  const fromMore = isAuto || phase !== 'setup';
+  const backLabel = isAuto ? EXTRAS.back : undefined;
   const taskScreen = monthTask && (
     <MonthScreen
       task={monthTask} tasks={monthTasks} mview={monthly.view} requestsSent={data.requestsSent} flash={flash} reload={data.reload}
@@ -218,7 +247,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
               onOpen={(id) => setOpenTask(id as MonthlyId)} onView={goView} onBack={() => go('home')}
             />
           ))}
-          {area === 'home' && phase === 'ongoing' && !data.failed && (
+          {area === 'home' && (phase === 'ongoing' || isAuto) && !data.failed && (
             taskScreen || (
               <OverviewV3
                 tasks={monthTasks} summary={data.summary} input={data.input} email={email} flash={flash}
@@ -230,7 +259,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
                   <>
                     {auto.preview && <SampleBanner />}
                     <AutoHome
-                      auto={auto} summary={summary} pendingReplies={pendingReplies}
+                      auto={auto} summary={summary} items={items} pendingReplies={pendingReplies}
                       onReviews={() => go('reviews')} onProfile={() => go('profile')} onActivity={() => go('activity')} onExtras={() => go('extras')}
                       onRefresh={() => { data.reload(); auto.reload(); }}
                     />
@@ -244,8 +273,8 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
               />
             )
           )}
-          {area === 'home' && phase === 'welcome' && !data.failed && <WelcomeV3 setTick={data.setTick} />}
-          {area === 'home' && (phase === 'setup' || data.failed) && (
+          {area === 'home' && phase === 'welcome' && !isAuto && !data.failed && <WelcomeV3 setTick={data.setTick} />}
+          {area === 'home' && ((phase === 'setup' && !isAuto) || data.failed) && (
             <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={goView} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
           )}
           {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={goView} />}
@@ -261,9 +290,11 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
           )}
           {view === 'reviews' && (
             <ViewFrame view="reviews" fromMore={fromMore} go={goView}>
-              <ReviewsCard />
+              {isAuto && <ReviewKit auto={auto} onBusiness={() => go('business')} />}
+              {!isAuto && <ReviewsCard />}
               <ReviewDraftsCard />
               <ReviewRequestsCard />
+              {isAuto && <ReviewsCard />}
             </ViewFrame>
           )}
           {view === 'content' && <ViewFrame view="content" fromMore={fromMore} go={goView} backLabel={backLabel}><ContentPlanCard /></ViewFrame>}
