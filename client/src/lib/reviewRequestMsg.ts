@@ -36,3 +36,13 @@ export function requestTextOpen(business: string, link: string): string {
 export function waShare(text: string): string {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
+
+/** The reviews widget of one business: where it is served, and the code the owner pastes in their site. */
+export function reviewsWidget(businessId: string): { src: string; snippet: string } {
+  const src = `${window.location.origin}/w/reviews/${businessId}`;
+  return {
+    src,
+    snippet: `<iframe src="${src}" title="ביקורות Google" width="100%" height="560" ` +
+      `style="border:0;max-width:640px" loading="lazy"></iframe>`,
+  };
+}

@@ -48,7 +48,17 @@ export const CARD = {
   noServices: 'עוד אין שירותים ברשימה.',
   areas: 'אזורי שירות', areasHint: 'עד 10 יישובים או אזורים שאתם מגיעים אליהם.', areaNew: 'יישוב או אזור להוספה', addArea: 'הוספה', removeArea: 'הסרת',
   noAreas: 'עוד אין אזורים ברשימה.',
-  hours: 'שעות פעילות', hoursNote: 'את השעות מעדכנים בגוגל. כאן הן לקריאה בלבד.', noHours: 'לא מצאנו שעות פעילות בכרטיס.',
+  hours: 'שעות פעילות', hoursNote: 'על השעות האלה אנחנו כותבים בפוסטים ובדף הנחיתה. את השעות שמוצגות בגוגל עצמה משנים בגוגל.', noHours: 'לא מצאנו שעות פעילות בכרטיס.',
+  hoursHint: 'סמנו ״סגור״ ביום שבו אתם לא עובדים. ליום עם הפסקה באמצע אפשר להוסיף טווח שני.',
+  hoursClosed: 'סגור', hoursFrom: 'משעה', hoursTo: 'עד שעה',
+  hoursDay: (day: string) => `יום ${day}`,
+  hoursAdd: 'הוספת טווח שני', hoursAddLabel: (day: string) => `הוספת טווח שני ליום ${day}`,
+  hoursRemove: 'הסרת הטווח השני', hoursRemoveLabel: (day: string) => `הסרת הטווח השני של יום ${day}`,
+  hoursRange: (n: number) => (n === 0 ? 'טווח ראשון' : 'טווח שני'),
+  hoursErrMissing: 'חסרה שעת פתיחה או שעת סגירה.',
+  hoursErrOrder: 'שעת הסגירה צריכה להיות אחרי שעת הפתיחה.',
+  hoursErrOverlap: 'הטווח השני צריך להתחיל אחרי שהראשון נגמר.',
+  hoursErrSave: 'יש טעות בשעות הפעילות. תקנו אותה ושמרו שוב.',
   save: 'שמירת השינויים', saving: 'שומרים…', saved: 'השינויים נשמרו.',
   sync: 'קראו שוב מגוגל', syncDone: 'הפרטים נקראו שוב מגוגל.',
   approve: 'הפרטים נכונים, תתחילו לעבוד', approving: 'מאשרים…',
@@ -379,6 +389,22 @@ export const KIT = {
   noLink: 'הקישור יופיע כאן אחרי שכרטיס העסק שלכם בגוגל יחובר וייקרא.',
   toBusiness: 'לפרטי העסק',
   error: 'לא הצלחנו לטעון את הקישור לביקורות.',
+  readyTitle: 'קישור והודעה מוכנה, לכל לקוח',
+  personalTitle: 'בקשה אישית ללקוח',
+  personalLead: 'כתבו שם ונייד ולחצו ״שליחה בוואטסאפ״. ההודעה נפתחת מוכנה ויוצאת מהוואטסאפ שלכם, לא מאיתנו. בקשה אחת ותזכורת אחת בלבד, בהפרש של שבוע.',
+};
+
+/** The reviews area of the automatic product, in its order: what waits for you, asking for reviews, the widget. */
+export const REVIEWS_AREA = {
+  draftsTitle: 'תשובות שמחכות לאישור שלכם',
+  draftsEmpty: 'אין תשובות שמחכות לכם',
+  embedTitle: 'הצגת ביקורות באתר שלכם',
+  embedLead: 'הדביקו את הקוד באתר, במקום שבו תרצו להציג ביקורות. הביקורות נטענות מגוגל בכל צפייה (עד 5, לפי הבחירה של גוגל), וכל אחת מקושרת לביקורת המקורית.',
+  embedCode: (name: string) => `קוד ההטמעה של ${name}`,
+  embedCopy: 'העתקת קוד ההטמעה',
+  embedShow: 'תצוגה מקדימה',
+  embedHide: 'הסתרת התצוגה',
+  embedFrame: 'תצוגה מקדימה של הביקורות באתר',
 };
 
 /** The screen behind "רוצים לעשות עוד בעצמכם?": optional tasks and the older screens. */

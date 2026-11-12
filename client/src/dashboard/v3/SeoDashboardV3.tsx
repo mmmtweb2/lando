@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import BusinessAuditCard from '../../components/BusinessAuditCard';
 import ReviewsCard from '../../components/ReviewsCard';
@@ -9,6 +9,7 @@ import ExternalSiteCard from '../../components/ExternalSiteCard';
 import GbpCard from '../../components/GbpCard';
 import LeadsTable from '../../components/LeadsTable';
 import { useAuth } from '../../context/AuthContext';
+import { authFetch } from '../../lib/api';
 import { trackAccount } from '../../lib/journeyClient';
 import FeedbackBox from '../FeedbackBox';
 import Overview, { SetupArchive } from '../Overview';
@@ -31,7 +32,10 @@ import { homeMode, setupStep } from './autopilot/mode';
 import { sampleFlag, sampleItems, samplePendingReplies, sampleSummary } from './autopilot/sample';
 import ShortSetup from './autopilot/ShortSetup';
 import ReviewKit from './autopilot/ReviewKit';
-import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS } from './autopilotCopy';
+import ReviewsEmbed from './autopilot/ReviewsEmbed';
+import { sampleReviewsFetcher } from './autopilot/sampleReviews';
+import { clearFinish, readFinish, writeFinish } from './autopilot/finishFlag';
+import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS, KIT, REVIEWS_AREA } from './autopilotCopy';
 import { useAutopilot } from './autopilot/useAutopilot';
 import type { AreaId, PromoArea, PromoMode } from '../shell/areas';
 import type { PromoBridge } from '../shell/bridge';
@@ -94,6 +98,8 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
   const phase = previewOngoing ? 'ongoing' : derivePhase(data.input);
   // The automatic product (docs/mvp-plan.md, part B). In the preview it runs on sample data and sends nothing.
   const auto = useAutopilot(previewOngoing);
+  // The reviews cards call the server themselves; in the preview they get the sample instead.
+  const reviewsFetch = useMemo(() => (previewOngoing ? sampleReviewsFetcher() : authFetch), [previewOngoing]);
   const monthly = useMonthly(email, data.input, data.requestsSent, data.pendingReplies);
   const setup = buildSetupTasks(data.input, skips);
   const monthTasks = buildMonthTasks(monthly.view);
@@ -136,13 +142,14 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
   const hmode = homeMode(auto);
   const isAuto = hmode === 'pending' || hmode === 'approved';
   // The automatic product has its own short setup (three steps: connect, approve, "from here we work").
-  // It runs until the details are approved, and its last screen shows once, right after the approval.
-  // (`&sample=approved&setup=3` opens that last screen in the preview.)
-  const [finishing, setFinishing] = useState<boolean>(() => previewOngoing && sampleFlag('setup') === '3');
+  // It runs until the details are approved, and its last screen shows right after the approval and stays
+  // until the customer presses "לבית": it is remembered per account in this browser, so a reload keeps it.
+  // (`&sample=approved&setup=3` opens that last screen in the preview, which remembers nothing.)
+  const [finishing, setFinishing] = useState<boolean>(() => (previewOngoing ? sampleFlag('setup') === '3' : readFinish(email)));
   const [seenMode, setSeenMode] = useState(hmode);
   if (isAuto && hmode !== seenMode) {
     setSeenMode(hmode);
-    if (seenMode === 'pending' && hmode === 'approved') setFinishing(true);
+    if (seenMode === 'pending' && hmode === 'approved') { setFinishing(true); if (!previewOngoing) writeFinish(email); }
   }
   const shortSetup = (hmode === 'pending' || (hmode === 'approved' && finishing)) && asked !== 'automation';
   // The older focused setup (five manual tasks): only where the automatic product is not open.
@@ -201,7 +208,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
       <div className="dv2 dv3 dv4" dir="rtl">
         <ShortSetup
           auto={auto} step={setupStep(auto, hmode === 'approved')} page={bridge.page}
-          onHome={() => { setFinishing(false); go('home'); }}
+          onHome={() => { setFinishing(false); if (!previewOngoing) clearFinish(email); go('home'); }}
           onSettings={() => go('automation')} onBusiness={() => go('business')} onPlan={() => go('settings')}
         />
         <FeedbackBox page="setup" />
@@ -290,11 +297,24 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
           )}
           {view === 'reviews' && (
             <ViewFrame view="reviews" fromMore={fromMore} go={goView}>
-              {isAuto && <ReviewKit auto={auto} onBusiness={() => go('business')} />}
-              {!isAuto && <ReviewsCard />}
-              <ReviewDraftsCard />
-              <ReviewRequestsCard />
-              {isAuto && <ReviewsCard />}
+              {isAuto ? (
+                <>
+                  {/* one order, nothing twice: what waits for you, asking for reviews, the widget */}
+                  {auto.preview && <SampleBanner />}
+                  <div className="dv4-touch"><ReviewDraftsCard fetcher={reviewsFetch} title={REVIEWS_AREA.draftsTitle} emptyText={REVIEWS_AREA.draftsEmpty} /></div>
+                  <ReviewKit
+                    auto={auto} onBusiness={() => go('business')}
+                    personal={<ReviewRequestsCard fetcher={reviewsFetch} embedded={{ title: KIT.personalTitle, lead: KIT.personalLead }} />}
+                  />
+                  <ReviewsEmbed fetcher={reviewsFetch} preview={auto.preview} />
+                </>
+              ) : (
+                <>
+                  <ReviewsCard />
+                  <ReviewDraftsCard />
+                  <ReviewRequestsCard />
+                </>
+              )}
             </ViewFrame>
           )}
           {view === 'content' && <ViewFrame view="content" fromMore={fromMore} go={goView} backLabel={backLabel}><ContentPlanCard /></ViewFrame>}

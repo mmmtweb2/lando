@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Check, Copy, MessageCircle, QrCode } from 'lucide-react';
 import QrModal from '../../../components/QrModal';
 import { requestTextOpen, waShare } from '../../../lib/reviewRequestMsg';
@@ -9,6 +9,8 @@ import type { Autopilot } from './useAutopilot';
 
 // "בקשו ביקורות": the three ready things an owner needs to ask a customer for a review. The link is
 // Google's own (truth.card.reviewUrl, read from the listing). We give the tools; only the owner can ask.
+// `personal` is the kit's second part: the request to one customer by name and phone (ReviewRequestsCard,
+// embedded), which used to be a card of its own further down the screen.
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -27,7 +29,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-export default function ReviewKit({ auto, onBusiness }: { auto: Autopilot; onBusiness: () => void }) {
+export default function ReviewKit({ auto, onBusiness, personal }: { auto: Autopilot; onBusiness: () => void; personal?: ReactNode }) {
   const linkId = useId();
   const msgId = useId();
   const [qr, setQr] = useState(false);
@@ -49,6 +51,7 @@ export default function ReviewKit({ auto, onBusiness }: { auto: Autopilot; onBus
       )}
       {truth.status === 'ok' && link && (
         <>
+          <h4 className="dv4-kit-sub">{KIT.readyTitle}</h4>
           <div className="dv4-kit-grid">
             <div className="dv4-kit-part">
               <label htmlFor={linkId}>{KIT.linkLabel}</label>
@@ -73,6 +76,7 @@ export default function ReviewKit({ auto, onBusiness }: { auto: Autopilot; onBus
           {qr && <QrModal url={link} title={KIT.qrTitle(card?.name ?? '')} onClose={() => setQr(false)} />}
         </>
       )}
+      {truth.status === 'ok' && personal}
     </section>
   );
 }

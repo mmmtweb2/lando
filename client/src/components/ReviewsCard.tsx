@@ -3,6 +3,7 @@ import { Copy, Check, MessageCircle, QrCode, Eye } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { RoleTag } from './RoleTag';
 import QrModal from './QrModal';
+import { reviewsWidget } from '../lib/reviewRequestMsg';
 
 // Stage 6.2 — get more Google reviews and show them.
 //   • The review link only needs the saved place_id (no Google content involved).
@@ -39,10 +40,7 @@ function BusinessReviews({ b }: { b: Saved }) {
   const [preview, setPreview] = useState(false);
   const placeId = b.google_place_id!;
   const link = reviewUrl(placeId);
-  const widgetSrc = `${window.location.origin}/w/reviews/${b.id}`;
-  const snippet =
-    `<iframe src="${widgetSrc}" title="ביקורות Google" width="100%" height="560" ` +
-    `style="border:0;max-width:640px" loading="lazy"></iframe>`;
+  const { src: widgetSrc, snippet } = reviewsWidget(b.id);
   const wa = `https://wa.me/?text=${encodeURIComponent(`היי, תודה שבחרתם ב${b.name}! נשמח אם תכתבו לנו ביקורת בגוגל, זה לוקח דקה: ${link}`)}`;
 
   return (

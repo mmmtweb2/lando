@@ -4,6 +4,7 @@ import { authFetch } from '../lib/api';
 import { localPhone, requestText, reviewUrl, waLink } from '../lib/reviewRequestMsg';
 
 interface Saved { id: string; name: string; google_place_id: string | null }
+type Fetcher = typeof authFetch;
 interface Item {
   id: string; first_name: string; phone: string; status: 'new' | 'sent' | 'reviewed';
   next: 'send' | 'wait' | 'followup' | 'done'; waitDays: number;
@@ -17,7 +18,7 @@ function statusText(i: Item): string {
   return 'נשלחו בקשה ותזכורת';
 }
 
-function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
+function Business({ b, onSent, fetcher, plain }: { b: Saved; onSent?: () => void; fetcher: Fetcher; plain: boolean }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -31,25 +32,25 @@ function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await authFetch(`/api/seo/review-requests?businessId=${encodeURIComponent(b.id)}`);
+      const r = await fetcher(`/api/seo/review-requests?businessId=${encodeURIComponent(b.id)}`);
       if (r.status === 503) { setErr('הכלי הזה עדיין לא הופעל.'); setItems([]); return; }
       const body = await r.json().catch(() => ({}));
       setItems(r.ok ? (body.items ?? []) : []);
     } catch { setItems([]); }
-  }, [b.id]);
+  }, [b.id, fetcher]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`)
+    fetcher(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`)
       .then((r) => (r.ok ? r.json() : { services: [] }))
       .then((x: { services?: string[] }) => setServices(x.services ?? []))
       .catch(() => setServices([]));
-  }, [b.id]);
+  }, [b.id, fetcher]);
 
   async function saveServices() {
     const list = draft.split(/[\n,،]/).map((x) => x.trim()).filter(Boolean);
     setErr('');
     try {
-      const r = await authFetch(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`, {
+      const r = await fetcher(`/api/seo/businesses/${encodeURIComponent(b.id)}/services`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ services: list }),
       });
       const body = await r.json().catch(() => ({})) as { services?: string[]; error?: string };
@@ -61,7 +62,7 @@ function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
   async function call(path: string, init?: RequestInit): Promise<boolean> {
     setErr('');
     try {
-      const r = await authFetch(path, init);
+      const r = await fetcher(path, init);
       if (!r.ok) { const body = await r.json().catch(() => ({})) as { error?: string }; setErr(body.error ?? 'משהו השתבש. נסו שוב.'); return false; }
       return true;
     } catch { setErr('משהו השתבש. נסו שוב.'); return false; }
@@ -84,8 +85,8 @@ function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 p-4 flex flex-col gap-3">
-      <div className="font-semibold text-slate-900">{b.name}</div>
+    <div className={plain ? 'flex flex-col gap-3' : 'rounded-lg border border-slate-200 p-4 flex flex-col gap-3'}>
+      {!plain && <div className="font-semibold text-slate-900">{b.name}</div>}
       <form onSubmit={add} className="flex flex-wrap items-end gap-2">
         <label className="text-xs text-slate-500">שם פרטי
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required
@@ -163,15 +164,28 @@ function Business({ b, onSent }: { b: Saved; onSent?: () => void }) {
   );
 }
 
-/** Stage 7: the owner's list of customers to ask for a Google review. The message leaves from the owner's own WhatsApp. */
-export default function ReviewRequestsCard({ onSent }: { onSent?: () => void } = {}) {
+/**
+ * Stage 7: the owner's list of customers to ask for a Google review. The message leaves from the owner's own WhatsApp.
+ * `embedded`: the same list as the second part of the automatic product's review kit (ReviewKit.tsx):
+ * no card of its own, and the heading comes from there.
+ */
+export default function ReviewRequestsCard({ onSent, fetcher = authFetch, embedded }: { onSent?: () => void; fetcher?: Fetcher; embedded?: { title: string; lead: string } } = {}) {
   const [list, setList] = useState<Saved[] | null>(null);
   useEffect(() => {
-    authFetch('/api/seo/businesses').then((r) => (r.ok ? r.json() : { businesses: [] }))
+    fetcher('/api/seo/businesses').then((r) => (r.ok ? r.json() : { businesses: [] }))
       .then((b: { businesses?: Saved[] }) => setList((b.businesses ?? []).filter((x) => !!x.google_place_id)))
       .catch(() => setList([]));
-  }, []);
+  }, [fetcher]);
   if (!list || list.length === 0) return null;
+  if (embedded) {
+    return (
+      <div className="dv4-kit-requests">
+        <h4>{embedded.title}</h4>
+        <p className="dv4-quiet">{embedded.lead}</p>
+        {list.map((b) => <Business key={b.id} b={b} onSent={onSent} fetcher={fetcher} plain={list.length === 1} />)}
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-4">
       <div>
@@ -181,7 +195,7 @@ export default function ReviewRequestsCard({ onSent }: { onSent?: () => void } =
           כדי לא להציק: בקשה אחת ותזכורת אחת בלבד, בהפרש של שבוע. שלחו רק ללקוחות שהיו אצלכם בפועל.
         </p>
       </div>
-      {list.map((b) => <Business key={b.id} b={b} onSent={onSent} />)}
+      {list.map((b) => <Business key={b.id} b={b} onSent={onSent} fetcher={fetcher} plain={false} />)}
     </div>
   );
 }
