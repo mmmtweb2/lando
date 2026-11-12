@@ -152,3 +152,53 @@ export const REPLIES_OPTIONS: { value: RepliesMode; label: string; hint: string 
   { value: 'approve', label: 'כל תשובה מחכה לאישור שלי', hint: 'נכין טיוטה לכל ביקורת, ושום דבר לא יתפרסם בלי אישור.' },
   { value: 'off', label: 'בלי תשובות', hint: 'לא נכין ולא נפרסם תשובות לביקורות.' },
 ];
+
+export const BACK_MORE = 'חזרה ל״עוד״';
+
+/** The home once the product works by itself: what we do first, what the owner may do last. */
+export const HOME = {
+  heroTitle: 'אנחנו עובדים בשבילכם',
+  heroSince: (date: string) => `מאז ${date}. כותבים ומפרסמים מפרטי העסק שאישרתם.`,
+  waitingTitle: 'מה מחכה לכם',
+  nothing: 'אין שום דבר שמחכה לכם',
+  nothingSub: 'כשנצטרך אתכם, זה יופיע כאן.',
+  replies: (n: number) => (n === 1 ? 'טיוטת תשובה לביקורת מחכה לאישור שלכם' : `${n} טיוטות תשובה לביקורות מחכות לאישור שלכם`),
+  repliesSub: 'תשובה כזאת לא מתפרסמת בלי אישור שלכם.',
+  repliesCta: 'לביקורות',
+  reconnect: 'החיבור לכרטיס העסק שלכם בגוגל נותק',
+  reconnectSub: 'עד שתתחברו מחדש אנחנו לא יכולים לפרסם.',
+  reconnectCta: 'לחיבור מחדש',
+  post: 'הפוסט של השבוע מחכה לאישור שלכם',
+  postSub: 'הוא לא יתפרסם עד שתאשרו.',
+  postCta: 'לפוסט',
+  leadsTitle: 'פניות החודש',
+  leadsWhy: 'סופרים כאן פניות שהגיעו דרך הקישורים שלכם: וואטסאפ, שיחות, טפסים ואימייל.',
+  leadsEmpty: 'עדיין אין פניות החודש.',
+  extrasTitle: 'רוצים לעשות עוד בעצמכם?',
+  extrasHint: 'לא חובה. אנחנו ממשיכים לעבוד גם בלי זה.',
+  extrasEmpty: 'אין כרגע פעולות נוספות להציע.',
+};
+
+/** "צרו לי דף נחיתה": a landing page written from the business details, always as a draft. */
+export const LANDING = {
+  title: 'דף נחיתה לעסק',
+  what: 'דף אחד שמסביר מה אתם עושים, ונותן ללקוח דרך פשוטה לפנות אליכם.',
+  how: 'אנחנו כותבים את הדף מפרטי העסק שלכם. הכתיבה לוקחת בערך דקה.',
+  you: 'ללחוץ על הכפתור, ואחר כך לקרוא את הדף.',
+  honest: 'הדף נוצר כטיוטה. הוא לא מתפרסם ואין שום חיוב עד שתפרסמו אותו בעצמכם, מהדף עצמו.',
+  cta: 'צרו לי דף נחיתה',
+  busyCta: 'כותבים את הדף…',
+  busy: 'כותבים את הדף שלכם. זה לוקח בערך דקה.',
+  busySub: 'אפשר להמשיך לעבוד בדשבורד בינתיים.',
+  done: 'הדף מוכן, כטיוטה.',
+  doneSub: 'קראו אותו ותקנו מה שצריך. הוא לא באוויר עד שתפרסמו אותו מהדף עצמו.',
+  open: 'לפתיחת הטיוטה',
+  existing: 'כבר יש לכם דף',
+  existingStatus: (s: string) => `מצב הדף: ${s}.`,
+  openExisting: 'לדף שלכם',
+  status: { draft: 'טיוטה', published: 'באוויר', frozen: 'מוקפא' } as Record<string, string>,
+  statusOther: 'לא ידוע',
+  newTab: '(נפתח בלשונית חדשה)',
+  notReady: 'כדי ליצור דף צריך קודם להשלים את פרטי החובה שלמעלה.',
+  sampleLink: 'בתצוגה לדוגמה אין דף אמיתי לפתוח.',
+};

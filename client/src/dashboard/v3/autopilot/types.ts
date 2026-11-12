@@ -42,3 +42,8 @@ export interface GbpStatus { enabled: boolean; connected: boolean; needsReconnec
 export type Loadable<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ok'; data: T };
 
 export type AutoScreen = 'card' | 'automation';
+
+/** "צרו לי דף נחיתה" (POST /api/seo/truth/landing): the new draft, or the page the account already has. */
+export type PageStatus = 'draft' | 'published' | 'frozen';
+export interface LandingResult { existing: boolean; id: string; slug: string; status: PageStatus | (string & {}) }
+export type LandingState = { phase: 'idle' } | { phase: 'busy' } | { phase: 'done'; page: LandingResult } | { phase: 'error'; error: string };

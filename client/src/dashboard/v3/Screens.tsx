@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
+import { ArrowLeft, ChevronDown, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
 import { trackAccount } from '../../lib/journeyClient';
 import { LandoBot } from '../../components/Lando';
 import type { LeadsSummary } from '../../components/LeadsTable';
@@ -15,6 +15,8 @@ import type { OverviewInput } from '../journey';
 import { DoneFlash, RestState, RowHead, SegmentsBar, SummaryBar, TaskRail, TaskRow } from './parts';
 import TaskView from './TaskView';
 import { summarize, visibleRows, type V3Task } from './tasks';
+import { HOME } from './autopilotCopy';
+import type { HomeMode } from './autopilot/mode';
 
 /* ---------- loading: the shape of the new home (summary + rows), not a spinner ---------- */
 
@@ -120,12 +122,53 @@ interface OverviewProps {
   goPlan: () => void;
   onOpen: (id: V3Task['id']) => void;
   onRetry: () => void;
-  /** the automatic product: its first step (above everything) and its sections (under the tasks) */
-  first?: ReactNode;
-  autopilot?: ReactNode;
+  /**
+   * The automatic product. `mode` picks the order of the home ('legacy' = the feature is not open
+   * in this account, and the home stays as it was). `top` is the first step, or the hero and what
+   * waits; `work` the next post and what we did; `more` the landing page offer and the settings.
+   */
+  mode?: HomeMode;
+  top?: ReactNode;
+  work?: ReactNode;
+  more?: ReactNode;
 }
 
-export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPlan, onOpen, onRetry, first, autopilot }: OverviewProps) {
+function Leads({ summary, why }: { summary: LeadsSummary; why?: string }) {
+  return (
+    <section aria-label={HOME.leadsTitle} className="dv3-leads">
+      <h2>{HOME.leadsTitle}: <span className="tabular-nums">{summary.month_total}</span></h2>
+      {why && <p className="dv3-a-leadswhy">{why}</p>}
+      {summary.month_total > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Tile icon={<MessageCircle size={18} />} label="וואטסאפ" value={summary.month_whatsapp} />
+          <Tile icon={<Phone size={18} />} label="שיחות" value={summary.month_call} />
+          <Tile icon={<FileText size={18} />} label="טפסים" value={summary.month_form} />
+          <Tile icon={<Mail size={18} />} label="אימייל" value={summary.month_email} />
+        </div>
+      ) : <p>{HOME.leadsEmpty}</p>}
+    </section>
+  );
+}
+
+/** The manual tasks as optional extras: closed until asked for, and never counted as waiting. */
+function Extras({ tasks, onOpen }: { tasks: V3Task[]; onOpen: (id: V3Task['id']) => void }) {
+  return (
+    <details className="dv3-a-extras">
+      <summary><span>{HOME.extrasTitle}</span><ChevronDown size={20} aria-hidden /></summary>
+      <div className="dv3-a-extras-body">
+        <p>{HOME.extrasHint}</p>
+        {tasks.length === 0 ? <p>{HOME.extrasEmpty}</p> : (
+          <>
+            <RowHead />
+            <ul className="dv3-rows">{tasks.map((t) => <TaskRow key={t.key} task={t} optional onOpen={() => onOpen(t.id)} />)}</ul>
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
+
+export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPlan, onOpen, onRetry, mode = 'legacy', top, work, more }: OverviewProps) {
   const [onlyMine, setOnlyMine] = useState(false);
   const s = summarize(tasks);
   const rows = visibleRows(tasks, onlyMine);
@@ -141,28 +184,37 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
           <button type="button" className="dv3-btn" onClick={goPlan}>לפרטי המנוי <ArrowLeft size={16} aria-hidden /></button>
         </section>
       )}
-      {first}
-      <SummaryBar s={s} onlyMine={onlyMine} onToggle={() => setOnlyMine((v) => !v)} />
-      {tasks.length === 0 ? <RestState /> : rows.length === 0 ? <RestState /> : (
-        <section aria-label="משימות החודש">
-          <RowHead />
-          <ul className="dv3-rows">{rows.map((t) => <TaskRow key={t.key} task={t} onOpen={() => onOpen(t.id)} />)}</ul>
-        </section>
+      {mode === 'loading' && (
+        <div className="flex flex-col gap-4" aria-busy="true" aria-label="טוען">
+          <Skeleton className="h-24 !rounded-[24px]" /><Skeleton className="h-44 !rounded-[24px]" /><Skeleton className="h-44 !rounded-[24px]" />
+        </div>
       )}
-      {autopilot}
-      <WhatPromotes email={email} />
-      <GoogleDraftLink input={input} />
-      <section aria-label="פניות החודש" className="dv3-leads">
-        <h2>פניות החודש: <span className="tabular-nums">{summary.month_total}</span></h2>
-        {summary.month_total > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Tile icon={<MessageCircle size={18} />} label="וואטסאפ" value={summary.month_whatsapp} />
-            <Tile icon={<Phone size={18} />} label="שיחות" value={summary.month_call} />
-            <Tile icon={<FileText size={18} />} label="טפסים" value={summary.month_form} />
-            <Tile icon={<Mail size={18} />} label="אימייל" value={summary.month_email} />
-          </div>
-        ) : <p>עדיין אין פניות החודש.</p>}
-      </section>
+      {mode === 'legacy' && (
+        <>
+          <SummaryBar s={s} onlyMine={onlyMine} onToggle={() => setOnlyMine((v) => !v)} />
+          {tasks.length === 0 ? <RestState /> : rows.length === 0 ? <RestState /> : (
+            <section aria-label="משימות החודש">
+              <RowHead />
+              <ul className="dv3-rows">{rows.map((t) => <TaskRow key={t.key} task={t} onOpen={() => onOpen(t.id)} />)}</ul>
+            </section>
+          )}
+          <WhatPromotes email={email} />
+          <GoogleDraftLink input={input} />
+          <Leads summary={summary} />
+        </>
+      )}
+      {(mode === 'approved' || mode === 'pending') && (
+        <>
+          {top}
+          {work}
+          <Leads summary={summary} why={HOME.leadsWhy} />
+          {more}
+          <Extras tasks={tasks} onOpen={onOpen} />
+          <WhatPromotes email={email} />
+          {/* once approved, `more` carries the landing page offer; two offers of one page would compete */}
+          {mode === 'pending' && <GoogleDraftLink input={input} />}
+        </>
+      )}
       <button type="button" className="dv3-linkbtn" onClick={onRetry}>רענון הנתונים</button>
     </div>
   );

@@ -1,20 +1,32 @@
 // Sample data for the preview mode (?preview=ongoing): a made-up business, so the screens can be
 // looked at and screenshotted without a server. Nothing here is sent anywhere; actions change this
-// in-memory copy only. `&sample=approved` shows the state after the customer approved the card.
-import type { Activity, Automation, GbpStatus, Post, Truth } from './types';
+// in-memory copy only. `&sample=approved` shows the state after the customer approved the card (with
+// one review reply waiting for them), `&sample=quiet` the same with nothing waiting.
+// `&landing=existing` / `&landing=error` choose what "צרו לי דף נחיתה" answers; without it a draft is
+// "created" after a few seconds.
+import type { Activity, Automation, GbpStatus, LandingResult, Post, Truth } from './types';
 
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 const ahead = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
 
-export interface SampleState { truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[] }
-export type SampleVariant = 'pending' | 'approved';
+export interface SampleState { truth: Truth; gbp: GbpStatus; automation: Automation; posts: Post[]; activity: Activity[]; page: LandingResult | null }
+export type SampleVariant = 'pending' | 'approved' | 'quiet';
 
 export function sampleVariant(): SampleVariant {
-  try { return new URLSearchParams(window.location.search).get('sample') === 'approved' ? 'approved' : 'pending'; } catch { return 'pending'; }
+  try { const q = new URLSearchParams(window.location.search).get('sample'); return q === 'approved' || q === 'quiet' ? q : 'pending'; } catch { return 'pending'; }
+}
+
+export function sampleLanding(): 'create' | 'existing' | 'error' {
+  try { const q = new URLSearchParams(window.location.search).get('landing'); return q === 'existing' || q === 'error' ? q : 'create'; } catch { return 'create'; }
+}
+
+/** Review reply drafts that wait for the owner in the sample: the one the sample's activity log mentions. */
+export function samplePendingReplies(): number {
+  return sampleVariant() === 'approved' ? 1 : 0;
 }
 
 export function buildSample(variant: SampleVariant): SampleState {
-  const approved = variant === 'approved';
+  const approved = variant !== 'pending';
   const truth: Truth = {
     fetchedAt: ago(30), approvedAt: approved ? ago(380) : null,
     card: {
@@ -71,7 +83,8 @@ export function buildSample(variant: SampleVariant): SampleState {
     { id: 'a0', kind: 'card_synced', title: 'קראנו את פרטי העסק מכרטיס העסק שלכם בגוגל', detail: null, createdAt: ago(30) },
   ];
   return {
-    truth, posts, activity,
+    truth, posts, page: null,
+    activity: variant === 'quiet' ? activity.filter((a) => a.kind !== 'reply_drafted') : activity,
     gbp: { enabled: true, connected: true, needsReconnect: false },
     automation: { postsMode: 'auto', repliesMode: 'auto_positive', consentAt: approved ? ago(380) : null, live: approved, editWindowHours: 48 },
   };

@@ -36,10 +36,21 @@ export function ViewFrame({ view, fromMore, go, children }: { view: View; fromMo
 }
 
 /** "עוד": everything that is not home / reviews / progress, in one list. */
-export function MoreV3({ go }: { go: (v: View) => void }) {
+export interface MoreExtra { key: string; label: string; hint: string; onClick: () => void }
+
+/** `extra`: screens that are not journey views (the automatic product's two screens), listed first. */
+export function MoreV3({ go, extra = [] }: { go: (v: View) => void; extra?: MoreExtra[] }) {
   return (
     <ViewShell kicker="עוד" title="כל השאר, במקום אחד" hint="הגדרות, פרופיל, תוכן ומנוי.">
       <ul className="dv3-more">
+        {extra.map((x) => (
+          <li key={x.key}>
+            <button type="button" onClick={x.onClick}>
+              <span><strong>{x.label}</strong><small>{x.hint}</small></span>
+              <ChevronLeft size={18} aria-hidden />
+            </button>
+          </li>
+        ))}
         {MORE_VIEWS.map((v) => (
           <li key={v}>
             <button type="button" onClick={() => go(v)}>

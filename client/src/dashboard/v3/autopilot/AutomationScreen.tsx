@@ -27,7 +27,7 @@ function Choice<T extends string>({ legend, options, value, disabled, onPick }: 
   );
 }
 
-export default function AutomationScreen({ auto, onBack, onCard }: { auto: Autopilot; onBack: () => void; onCard: () => void }) {
+export default function AutomationScreen({ auto, onBack, onCard, backLabel = BACK_HOME }: { auto: Autopilot; onBack: () => void; onCard: () => void; backLabel?: string }) {
   const a = auto.automation;
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -38,7 +38,7 @@ export default function AutomationScreen({ auto, onBack, onCard }: { auto: Autop
     setNote(err ? { kind: 'error', text: err } : { kind: 'ok', text: AUTOMATION.saved });
   };
   return (
-    <ViewShell kicker={AUTOMATION.kicker} title={AUTOMATION.title} hint={AUTOMATION.hint} back={{ label: BACK_HOME, onClick: onBack }}>
+    <ViewShell kicker={AUTOMATION.kicker} title={AUTOMATION.title} hint={AUTOMATION.hint} back={{ label: backLabel, onClick: onBack }}>
       {auto.preview && <SampleBanner />}
       {a.status === 'loading' && <div className="flex flex-col gap-4" aria-busy="true" aria-label="טוען"><Skeleton className="h-56 !rounded-[24px]" /><Skeleton className="h-56 !rounded-[24px]" /></div>}
       {a.status === 'error' && <LoadError text={`${AUTOMATION.error} ${a.error}`} onRetry={auto.reload} />}
