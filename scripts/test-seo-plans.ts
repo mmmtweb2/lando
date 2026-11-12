@@ -6,9 +6,10 @@ import { publicSeoCatalog } from '../src/config/seoCatalog';
 
 const cat = publicSeoCatalog() as unknown as Catalog;
 
-// four plans, each reachable by (cycle, withPage)
-assert.equal(cat.plans.length, 4);
-const picks = [['month', false, 'monthly', 250], ['month', true, 'monthly_page', 265], ['year', false, 'annual', 2500], ['year', true, 'annual_page', 2650]] as const;
+// two plans are sold (12.11.2026): monthly and annual, each with a landing page included.
+assert.equal(cat.plans.length, 2);
+assert.ok(cat.plans.every(p => p.withPage), 'every plan includes a page');
+const picks = [['month', false, 'monthly', 250], ['month', true, 'monthly', 250], ['year', false, 'annual', 2500], ['year', true, 'annual', 2500]] as const;
 for (const [c, w, id, price] of picks) {
   const p = pickPlan(cat, c, w);
   assert.ok(p, `${id} found`);
@@ -17,18 +18,17 @@ for (const [c, w, id, price] of picks) {
 }
 assert.equal(pickPlan(null, 'month', false), null);
 
-// the selector's add-on line matches the difference between the plans (nothing typed twice)
-assert.equal(addonPrice(cat, 'month'), pickPlan(cat, 'month', true)!.price - pickPlan(cat, 'month', false)!.price);
-assert.equal(addonPrice(cat, 'year'), pickPlan(cat, 'year', true)!.price - pickPlan(cat, 'year', false)!.price);
+// no page add-on is sold any more
+assert.equal(addonPrice(cat, 'month'), 0);
+assert.equal(addonPrice(cat, 'year'), 0);
 
 // annual: saving shown against paying monthly; monthly: none
 assert.equal(pickPlan(cat, 'year', false)!.savingVsMonthly, 250 * 12 - 2500);
-assert.equal(pickPlan(cat, 'year', true)!.savingVsMonthly, 265 * 12 - 2650);
 assert.equal(pickPlan(cat, 'month', false)!.savingVsMonthly, 0);
 
 assert.equal(cycleUnit('year'), 'לשנה');
 assert.equal(cycleUnit('month'), 'לחודש');
-assert.equal(planLabel('year', true), 'מנוי שנתי, עם דף נחיתה');
+assert.equal(planLabel('year', true), 'מנוי שנתי');
 assert.equal(planLabel('month', false), 'מנוי חודשי');
 
 // included page line

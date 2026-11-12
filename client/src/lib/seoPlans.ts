@@ -21,7 +21,9 @@ export interface Catalog {
 }
 
 export function pickPlan(catalog: Catalog | null | undefined, cycle: SeoCycle, withPage: boolean): CatalogPlan | null {
-  return catalog?.plans.find(p => p.cycle === cycle && p.withPage === withPage) ?? null;
+  // Every plan includes a page now; `withPage` is kept only so older callers compile.
+  void withPage;
+  return catalog?.plans.find(p => p.cycle === cycle) ?? null;
 }
 
 /** Add-on price shown next to the "with a landing page" choice, per the chosen cycle. */
@@ -35,7 +37,8 @@ export function cycleUnit(cycle: SeoCycle): string {
 
 /** "מנוי חודשי" / "מנוי שנתי, עם דף נחיתה" for a plan id/cycle pair (used by the dashboard card). */
 export function planLabel(cycle: SeoCycle, withPage: boolean): string {
-  return `מנוי ${cycle === 'year' ? 'שנתי' : 'חודשי'}${withPage ? ', עם דף נחיתה' : ''}`;
+  void withPage;
+  return `מנוי ${cycle === 'year' ? 'שנתי' : 'חודשי'}`;
 }
 
 export type AddonPageStatus = 'published' | 'frozen' | 'draft' | null;

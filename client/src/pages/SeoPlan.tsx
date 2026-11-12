@@ -5,7 +5,7 @@ import { authFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { LandoMark } from '../components/Lando';
 import { PRICING, fmt } from '../config/pricing';
-import { addonPrice, cycleUnit, pageLine, pickPlan, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
+import { cycleUnit, pageLine, pickPlan, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
 import '../ui/ui-v3.css';
 
 // /seo-plan — where a customer picks and starts a plan of the Google-promotion product:
@@ -42,7 +42,8 @@ export default function SeoPlan() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [cycle, setCycle] = useState<SeoCycle>('month');
-  const [withPage, setWithPage] = useState(false);
+  // Every plan includes a landing page (12.11.2026); there is no add-on to choose.
+  const withPage = true;
   const [ack, setAck] = useState(false);
   const [payLink, setPayLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -134,23 +135,6 @@ export default function SeoPlan() {
           </div>
         </fieldset>
 
-        <fieldset className="uv3-fieldset">
-          <legend>דף נחיתה</legend>
-          <div className="uv3-opts">
-            <label className="uv3-opt">
-              <input type="radio" name="page" checked={!withPage} onChange={() => setWithPage(false)} />
-              <span className="uv3-opt-body"><span className="uv3-opt-title">בלי דף נחיתה</span><span className="uv3-opt-sub">המערכת בלבד.</span></span>
-            </label>
-            <label className="uv3-opt">
-              <input type="radio" name="page" checked={withPage} onChange={() => setWithPage(true)} />
-              <span className="uv3-opt-body">
-                <span className="uv3-opt-title">עם דף נחיתה</span>
-                <span className="uv3-opt-sub">דף אחד מפורסם כל עוד המנוי פעיל. תוספת <bdi>₪{fmt(addonPrice(plans, cycle))}</bdi> {cycleUnit(cycle)}.</span>
-              </span>
-            </label>
-          </div>
-        </fieldset>
-
         {plan && (
           <div className="uv3-sum" aria-live="polite">
             <p className="uv3-sum-price">₪{fmt(price)} <small>{cycleUnit(cycle)}, כולל מע״מ</small></p>
@@ -158,8 +142,9 @@ export default function SeoPlan() {
             <ul className="uv3-checks">
               <li>בדיקת כרטיס העסק שלכם בגוגל מפות והשוואה לעסקים דומים באזור.</li>
               <li>קישור וקוד QR לביקורות, וקוד להצגת הביקורות באתר.</li>
-              <li>דפי נחיתה לשירותים, ערכות תוכן ומעקב פניות במקום אחד.</li>
-              {withPage && <li>דף נחיתה אחד מפורסם כל עוד המנוי פעיל, בלי לממש קרדיט דף.</li>}
+              <li>פוסט שבועי בכרטיס העסק ותשובות לביקורות, שאנחנו כותבים ומפרסמים בשבילכם.</li>
+              <li>דף נחיתה לעסק ודפים לחיפושים של לקוחות באזור שלכם, כלולים במנוי כל עוד הוא פעיל.</li>
+              <li>דוח חודשי: מה עשינו, וכמה פניות הגיעו.</li>
             </ul>
           </div>
         )}
