@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Star } from 'lucide-react';
+import { Check, Star } from 'lucide-react';
 import { authFetch } from '../lib/api';
 
 // Reviews that waited 5+ days for an answer, each with a draft reply. While Google's API access is
@@ -7,9 +7,19 @@ import { authFetch } from '../lib/api';
 // promises publishing. When the server reports that publishing works, nothing is sent unless the
 // owner presses the publish button on that card; the text sent is exactly what is in the box.
 
-interface Draft { id: string; rating: number; reviewer: string | null; createdAt: string; draft: string; reviewText: string | null }
+export interface Draft { id: string; rating: number; reviewer: string | null; createdAt: string; draft: string; reviewText: string | null }
+type Fetcher = typeof authFetch;
 
-function Row({ d, canPublish, onDone }: { d: Draft; canPublish: boolean; onDone: (id: string, msg: string) => void }) {
+interface Props {
+  onChange?: () => void;
+  /** the preview passes its in-memory sample instead of the server */
+  fetcher?: Fetcher;
+  /** the automatic product's reviews area: its own heading, and a calm line instead of hiding when nothing waits */
+  title?: string;
+  emptyText?: string;
+}
+
+function Row({ d, canPublish, onDone, fetcher }: { d: Draft; canPublish: boolean; onDone: (id: string, msg: string) => void; fetcher: Fetcher }) {
   const [text, setText] = useState(d.draft);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -18,7 +28,7 @@ function Row({ d, canPublish, onDone }: { d: Draft; canPublish: boolean; onDone:
   async function act(path: 'publish' | 'dismiss') {
     setBusy(true); setErr('');
     try {
-      const r = await authFetch(`/api/seo/review-drafts/${encodeURIComponent(d.id)}/${path}`, {
+      const r = await fetcher(`/api/seo/review-drafts/${encodeURIComponent(d.id)}/${path}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(path === 'publish' ? { text } : {}),
       });
       const body = await r.json().catch(() => ({})) as { error?: string };
@@ -59,30 +69,54 @@ function Row({ d, canPublish, onDone }: { d: Draft; canPublish: boolean; onDone:
   );
 }
 
-export default function ReviewDraftsCard({ onChange }: { onChange?: () => void } = {}) {
+export default function ReviewDraftsCard({ onChange, fetcher = authFetch, title, emptyText }: Props = {}) {
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [note, setNote] = useState('');
   const [canPublish, setCanPublish] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    authFetch('/api/seo/review-drafts').then((r) => (r.ok ? r.json() : { drafts: [] }))
-      .then((b: { drafts?: Draft[]; canPublish?: boolean }) => { setCanPublish(b.canPublish === true); setDrafts(b.drafts ?? []); })
-      .catch(() => setDrafts([]));
-  }, []);
-  if (!drafts || (drafts.length === 0 && !note)) return null;
+    let live = true;
+    fetcher('/api/seo/review-drafts').then((r) => { if (!r.ok) throw new Error('load'); return r.json(); })
+      .then((b: { drafts?: Draft[]; canPublish?: boolean }) => { if (!live) return; setFailed(false); setCanPublish(b.canPublish === true); setDrafts(b.drafts ?? []); })
+      .catch(() => { if (live) { setFailed(true); setDrafts([]); } });
+    return () => { live = false; };
+  }, [fetcher, tick]);
+  const always = emptyText !== undefined;
+  if (!always && (!drafts || (drafts.length === 0 && !note))) return null;
+  const list = drafts ?? [];
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-4">
       <div>
-        <h3 className="text-base font-semibold text-slate-900">ביקורות שמחכות לתשובה</h3>
-        <p className="mt-1 text-sm text-slate-500">
-          {canPublish
-            ? 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. התשובה נשלחת לגוגל רק כשאתם לוחצים על "פרסום", בדיוק בנוסח שבתיבה.'
-            : 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. אפשר לערוך אותה, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.'}
-        </p>
+        <h3 className="text-base font-semibold text-slate-900">{title ?? 'ביקורות שמחכות לתשובה'}</h3>
+        {(!always || list.length > 0) && (
+          <p className="mt-1 text-sm text-slate-500">
+            {canPublish
+              ? 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. התשובה נשלחת לגוגל רק כשאתם לוחצים על "פרסום", בדיוק בנוסח שבתיבה.'
+              : 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. אפשר לערוך אותה, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.'}
+          </p>
+        )}
       </div>
       {note && <p role="status" className="text-sm text-emerald-700">{note}</p>}
-      <ul className="flex flex-col gap-3">
-        {drafts.map((d) => <Row key={d.id} d={d} canPublish={canPublish} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); onChange?.(); }} />)}
-      </ul>
+      {always && drafts === null && <p role="status" className="text-sm text-slate-500">טוען…</p>}
+      {always && drafts !== null && failed && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-red-700">
+          <span>לא הצלחנו לטעון את התשובות שמחכות.</span>
+          <button type="button" onClick={() => { setDrafts(null); setTick((n) => n + 1); }}
+            className="min-h-[44px] rounded-lg border border-slate-200 px-4 text-sm text-slate-700">ניסיון חוזר</button>
+        </div>
+      )}
+      {always && drafts !== null && !failed && list.length === 0 && (
+        <p className="flex items-center gap-2 text-sm text-slate-600">
+          <span aria-hidden className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Check size={14} strokeWidth={3} /></span>
+          {emptyText}
+        </p>
+      )}
+      {list.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {list.map((d) => <Row key={d.id} d={d} canPublish={canPublish} fetcher={fetcher} onDone={(id, msg) => { setDrafts((cur) => (cur ?? []).filter((x) => x.id !== id)); if (msg) setNote(msg); onChange?.(); }} />)}
+        </ul>
+      )}
     </div>
   );
 }

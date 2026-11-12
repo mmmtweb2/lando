@@ -3,9 +3,10 @@ import { AlertTriangle, ArrowLeft, Check, Minus, RefreshCw } from 'lucide-react'
 import { CARD, STEPS } from '../autopilotCopy';
 import { AreasField, Field, MAX_DESCRIPTION, MAX_NOTES, ServicesField, TextArea } from './CardFields';
 import { Notice } from './bits';
-import { formOf, hoursLines, patchOf, shortDate, type CardForm } from './format';
+import HoursField from './HoursField';
+import { formOf, hoursProblems, patchOf, shortDate, type CardForm, type HoursProblem } from './format';
 import type { Autopilot } from './useAutopilot';
-import type { CheckState, ReadinessCheck, Truth } from './types';
+import type { CheckState, Day, ReadinessCheck, Truth } from './types';
 
 // "פרטי העסק" in three steps instead of one long form (docs/dashboard-v4-spec.md, part E):
 //   1. what we found   – only the weak and missing items are spelled out; the full ones are one line
@@ -28,8 +29,8 @@ interface Props {
   onSettings: () => void;
 }
 
-type FieldKey = 'phone' | 'website' | 'services' | 'areas' | 'description' | 'notes';
-const FIELDS: FieldKey[] = ['phone', 'website', 'services', 'areas', 'description', 'notes'];
+type FieldKey = 'phone' | 'website' | 'services' | 'areas' | 'hours' | 'description' | 'notes';
+const FIELDS: FieldKey[] = ['phone', 'website', 'services', 'areas', 'hours', 'description', 'notes'];
 const isField = (k: string): k is FieldKey => (FIELDS as string[]).includes(k);
 const MARK: Record<CheckState, typeof Check> = { ok: Check, weak: Minus, missing: AlertTriangle };
 
@@ -82,9 +83,23 @@ export default function CardSteps({ truth, auto, step, onStep, notice, onNotice,
   const open = readiness.checks.filter((c) => c.state !== 'ok');
   const ok = readiness.checks.filter((c) => c.state === 'ok');
   const missing = readiness.checks.filter((c) => c.required && c.state === 'missing');
+  // The hours are checked only once the customer changed them: what Google gave is never held against them.
+  // A missing time is pointed out after a save was tried; a close before the open, right away.
+  const [hoursTried, setHoursTried] = useState(false);
+  const allProblems = patch.hours ? hoursProblems(form.hours) : {};
+  const hoursBad = Object.keys(allProblems).length > 0;
+  const shownProblems: Partial<Record<Day, HoursProblem>> = hoursTried
+    ? allProblems
+    : Object.fromEntries(Object.entries(allProblems).filter(([, v]) => v !== 'missing'));
   const up = <K extends keyof CardForm>(k: K, v: CardForm[K]) => { setForm((f) => ({ ...f, [k]: v })); if (notice) onNotice(null); };
 
   const run = async (kind: 'save' | 'approve' | 'sync', then?: Step) => {
+    if (kind !== 'sync' && hoursBad) {
+      setHoursTried(true);
+      onNotice({ kind: 'error', text: CARD.hoursErrSave });
+      if (step !== 2) onStep(2);
+      return;
+    }
     setBusy(kind); onNotice(null);
     let err: string | null = null;
     let okText = CARD.saved;
@@ -112,6 +127,7 @@ export default function CardSteps({ truth, auto, step, onStep, notice, onNotice,
       );
       case 'services': return <ServicesField key={k} value={form.services} onChange={(v) => up('services', v)} />;
       case 'areas': return <AreasField key={k} value={form.areas} onChange={(v) => up('areas', v)} />;
+      case 'hours': return <HoursField key={k} value={form.hours} problems={shownProblems} onChange={(v) => up('hours', v)} />;
       case 'description': return <TextArea key={k} label={CARD.description} hint={CARD.descriptionHint} value={form.description} max={MAX_DESCRIPTION} rows={5} onChange={(v) => up('description', v)} />;
       default: return <TextArea key={k} label={CARD.notes} hint={CARD.notesHint} value={form.notes} max={MAX_NOTES} rows={4} onChange={(v) => up('notes', v)} />;
     }
@@ -119,7 +135,6 @@ export default function CardSteps({ truth, auto, step, onStep, notice, onNotice,
   const first = FIELDS.filter((k) => open.some((c) => c.key === k));
   const rest = FIELDS.filter((k) => !first.includes(k));
   const inGoogle = open.filter((c) => !isField(c.key));
-  const hours = hoursLines(card.hours);
 
   const syncBtn = (
     <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" disabled={busy !== null || auto.syncing} onClick={() => void run('sync')}>
@@ -134,16 +149,8 @@ export default function CardSteps({ truth, auto, step, onStep, notice, onNotice,
           <div><dt>{CARD.name}</dt><dd>{card.name || CARD.empty}</dd></div>
           <div><dt>{CARD.address}</dt><dd>{card.address || CARD.empty}</dd></div>
           <div><dt>{CARD.category}</dt><dd>{[card.category, ...card.categories].filter(Boolean).join(', ') || CARD.empty}</dd></div>
-          <div>
-            <dt>{CARD.hours}</dt>
-            <dd>
-              {hours.length === 0 ? CARD.noHours : (
-                <ul className="dv3-a-hours">{hours.map((h) => <li key={h.days}><span>{h.days}</span> <bdi dir="ltr">{h.spans}</bdi></li>)}</ul>
-              )}
-            </dd>
-          </div>
         </dl>
-        <p className="dv3-a-hint">{CARD.googleNote} {CARD.hoursNote}</p>
+        <p className="dv3-a-hint">{CARD.googleNote}</p>
         {syncBtn}
       </div>
     </details>
@@ -186,7 +193,7 @@ export default function CardSteps({ truth, auto, step, onStep, notice, onNotice,
               {syncBtn}
             </div>
           )}
-          <details className="dv4-fold" open={first.length === 0 && inGoogle.length === 0 ? true : undefined}>
+          <details className="dv4-fold" open={(first.length === 0 && inGoogle.length === 0) || (hoursBad && hoursTried && rest.includes('hours')) ? true : undefined}>
             <summary>{STEPS.allFields}</summary>
             <div className="dv4-fold-body dv4-fields">{rest.map(field)}</div>
           </details>

@@ -45,8 +45,8 @@ export function dayAndHour(iso: string): string {
   return `${p.weekday}, ${p.day}.${p.month}, בשעה ${p.hour}:${p.minute}`;
 }
 
-const DAYS: Day[] = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-const DAY_HE: Record<Day, string> = { SUNDAY: 'ראשון', MONDAY: 'שני', TUESDAY: 'שלישי', WEDNESDAY: 'רביעי', THURSDAY: 'חמישי', FRIDAY: 'שישי', SATURDAY: 'שבת' };
+export const DAYS: Day[] = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+export const DAY_HE: Record<Day, string> = { SUNDAY: 'ראשון', MONDAY: 'שני', TUESDAY: 'שלישי', WEDNESDAY: 'רביעי', THURSDAY: 'חמישי', FRIDAY: 'שישי', SATURDAY: 'שבת' };
 
 /** Days with the same hours on one line; a run of days is written "ראשון עד חמישי". */
 export function hoursLines(hours: readonly TruthHours[]): { days: string; spans: string }[] {
@@ -64,12 +64,34 @@ export function hoursLines(hours: readonly TruthHours[]): { days: string; spans:
   });
 }
 
-export interface CardForm { phone: string; website: string; description: string; notes: string; areas: string[]; services: { name: string; description: string }[] }
+/** "8:00" as the time inputs need it ("08:00"); anything that is not a time stays as it is. */
+const hhmm = (t: string) => { const m = /^(\d{1,2}):(\d{2})/.exec(t.trim()); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t.trim(); };
+
+/** The hours by day, Sunday first, a day's ranges in the order they were given. */
+export function sortedHours(hours: readonly TruthHours[]): TruthHours[] {
+  return DAYS.flatMap((day) => hours.filter((h) => h.day === day).map((h) => ({ day, open: hhmm(h.open), close: hhmm(h.close) })));
+}
+
+export type HoursProblem = 'missing' | 'order' | 'overlap';
+/** What stops the hours from being saved, by day: a missing time, a close that is not after the open, a second range that starts too early. */
+export function hoursProblems(hours: readonly TruthHours[]): Partial<Record<Day, HoursProblem>> {
+  const out: Partial<Record<Day, HoursProblem>> = {};
+  for (const day of DAYS) {
+    const ranges = hours.filter((h) => h.day === day);
+    if (ranges.some((r) => r.open && r.close && r.close <= r.open)) out[day] = 'order';
+    else if (ranges.some((r, i) => i > 0 && r.open && ranges[i - 1].close && r.open < ranges[i - 1].close)) out[day] = 'overlap';
+    else if (ranges.some((r) => !r.open || !r.close)) out[day] = 'missing';
+  }
+  return out;
+}
+
+export interface CardForm { phone: string; website: string; description: string; notes: string; areas: string[]; services: { name: string; description: string }[]; hours: TruthHours[] }
 
 export function formOf(c: TruthCard): CardForm {
   return {
     phone: c.phone, website: c.website, description: c.description, notes: c.notes, areas: [...c.areas],
     services: c.services.map((s) => ({ name: s.name, description: s.description })),
+    hours: sortedHours(c.hours ?? []),
   };
 }
 
@@ -84,5 +106,7 @@ export function patchOf(saved: TruthCard, form: CardForm): TruthPatch {
   if (form.notes.trim() !== base.notes.trim()) out.notes = form.notes;
   if (JSON.stringify(form.areas) !== JSON.stringify(base.areas)) out.areas = form.areas;
   if (JSON.stringify(services) !== JSON.stringify(base.services)) out.services = services;
+  const hours = sortedHours(form.hours);
+  if (JSON.stringify(hours) !== JSON.stringify(base.hours)) out.hours = hours;
   return out;
 }

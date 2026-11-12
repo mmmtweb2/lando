@@ -21,7 +21,7 @@ export interface Readiness { checks: ReadinessCheck[]; ready: boolean; done: num
 export interface Truth { card: TruthCard; readiness: Readiness; fetchedAt: string | null; approvedAt: string | null }
 
 /** The fields the customer may change here. A save sends only the ones that changed. */
-export type TruthPatch = Partial<Pick<TruthCard, 'phone' | 'website' | 'description' | 'notes' | 'areas'>> & { services?: { name: string; description: string }[] };
+export type TruthPatch = Partial<Pick<TruthCard, 'phone' | 'website' | 'description' | 'notes' | 'areas'>> & { services?: { name: string; description: string }[]; hours?: TruthHours[] };
 
 export type PostsMode = 'auto' | 'approve' | 'off';
 export type RepliesMode = 'auto_positive' | 'approve' | 'off';
