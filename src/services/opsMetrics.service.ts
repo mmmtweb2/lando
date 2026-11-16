@@ -60,9 +60,19 @@ export async function recordHeartbeat(job: string, error: unknown | null, now = 
     }, { onConflict: 'job' });
   } catch { /* best-effort */ }
 }
+/**
+ * How a finished sweep is recorded: a sweep that ran but failed for some accounts (it reports
+ * `{ failed: n }`) is FAILING, not ok. Otherwise one bad account per run would never show up.
+ */
+export function sweepError(result: unknown): string | null {
+  const failed = result && typeof result === 'object' ? Number((result as { failed?: unknown }).failed) : 0;
+  return failed > 0 ? `${failed} account(s) failed in the last run` : null;
+}
 /** Runs a sweep and records whether it finished. Errors are logged by the caller, not rethrown. */
 export async function withHeartbeat(job: string, fn: () => Promise<unknown>): Promise<void> {
-  try { await fn(); await recordHeartbeat(job, null); } catch (e) { await recordHeartbeat(job, e); throw e; }
+  let result: unknown;
+  try { result = await fn(); } catch (e) { await recordHeartbeat(job, e); throw e; }
+  await recordHeartbeat(job, sweepError(result));
 }
 
 export interface JobSpec { job: string; label: string; everyHours: number }

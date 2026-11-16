@@ -30,6 +30,11 @@ import { type RepliesMode, autopilotEnabled, getAutomation, logActivity, missing
 import { BARE_DOMAIN, quietNow } from './gbpPosts';
 
 const HOUR = 3_600_000;
+/**
+ * The replies sweep keeps its own Google heartbeat: writing "ok" into `gbp_google` after every review
+ * fetch used to wipe a posts error within hours, so a broken publishing path never showed.
+ */
+const REPLIES_GOOGLE = 'gbp_google_replies';
 const DAY = 24 * HOUR;
 const SWEEP_EVERY_MS = 3 * HOUR;
 const MAX_ACCOUNTS_PER_SWEEP = 100;
@@ -38,22 +43,52 @@ export const MAX_PER_ACCOUNT = 5;
 export const MIN_AGE_HOURS = 2;
 export const MAX_AGE_DAYS = 30;
 export const MAX_REPLY = 500;
+/** Automatic replies per account per day: a business that just joined is not flooded at once. */
+export const MAX_AUTO_PER_DAY = 5;
+/** On joining we answer only recent reviews by ourselves; older ones were never waiting for us. */
+export const BACKFILL_DAYS = 7;
+
+/** Text with letters but no Hebrew ones (English, Russian, Arabic...): a Hebrew template would read oddly. */
+export const foreignText = (t: string): boolean => /\p{L}/u.test(t) && !/[\u05d0-\u05ea]/.test(t);
+
+/**
+ * Reviews older than this are never answered by ourselves: the later of the moment the customer
+ * agreed to automation and BACKFILL_DAYS ago.
+ */
+export function autoSince(consentAt: string | null, now: Date): Date {
+  const floor = now.getTime() - BACKFILL_DAYS * DAY;
+  const c = consentAt ? Date.parse(consentAt) : NaN;
+  return new Date(Number.isFinite(c) ? Math.max(c, floor) : floor);
+}
 
 // ── Pure logic ───────────────────────────────────────────────────────────────
 
 /** Which unanswered, not-yet-handled reviews we answer ourselves and which become drafts. */
-export function plan(reviews: GbpReview[], handled: Set<string>, mode: RepliesMode, now: Date): { auto: GbpReview[]; drafts: GbpReview[] } {
+export function plan(
+  reviews: GbpReview[], handled: Set<string>, mode: RepliesMode, now: Date,
+  opts: { since?: Date; autoLeft?: number } = {},
+): { auto: GbpReview[]; drafts: GbpReview[] } {
   const out = { auto: [] as GbpReview[], drafts: [] as GbpReview[] };
   if (mode === 'off') return out;
+  const since = (opts.since ?? autoSince(null, now)).getTime();
   for (const r of reviews) {
     if (r.hasReply || handled.has(r.id)) continue;
-    const age = now.getTime() - Date.parse(r.createdAt);
+    const created = Date.parse(r.createdAt);
+    const age = now.getTime() - created;
     if (age > MAX_AGE_DAYS * DAY || age < 0) continue;
-    if (r.rating >= 4 && mode === 'auto_positive') { if (age >= MIN_AGE_HOURS * HOUR) out.auto.push(r); } else out.drafts.push(r);
+    if (r.rating >= 4 && mode === 'auto_positive') {
+      // A positive review written in another language gets a draft: the owner decides how to answer it.
+      if (foreignText(r.text ?? '')) { out.drafts.push(r); continue; }
+      // Older positive reviews are left alone (no flood of thank-yous to reviews from before they joined).
+      if (created < since) continue;
+      if (age >= MIN_AGE_HOURS * HOUR) out.auto.push(r);
+    } else out.drafts.push(r);
   }
-  return { auto: out.auto.slice(0, MAX_PER_ACCOUNT), drafts: out.drafts.slice(0, MAX_PER_ACCOUNT) };
+  const left = Math.max(0, Math.min(MAX_PER_ACCOUNT, opts.autoLeft ?? MAX_PER_ACCOUNT));
+  return { auto: out.auto.slice(0, left), drafts: out.drafts.slice(0, MAX_PER_ACCOUNT) };
 }
 
+/** Only for a review with written text: these thank the reviewer for their words. */
 const THANKS = [
   'תודה רבה על הביקורת ועל המילים החמות! שמחים מאוד שנהניתם, ונשמח לראות אתכם שוב.',
   'תודה שלקחתם רגע לכתוב לנו, זה ממש משמח. נשמח לעמוד לשירותכם גם בפעם הבאה.',
@@ -61,6 +96,13 @@ const THANKS = [
   'תודה על הפרגון! המילים שלכם נותנות לנו הרבה כוח להמשיך. נתראה בפעם הבאה.',
   'תודה רבה! משמח מאוד לשמוע שיצאתם מרוצים. אנחנו כאן לכל דבר שתצטרכו.',
   'תודה על הביקורת! חשוב לנו לדעת שהשירות היה טוב, ונשמח לעזור גם בהמשך.',
+];
+/** For a review with stars only: nothing about "words" or "writing". */
+const THANKS_STARS = [
+  'תודה רבה על הדירוג! שמחים מאוד שבחרתם בנו, ונשמח לראות אתכם שוב.',
+  'תודה רבה! משמח מאוד לשמוע שיצאתם מרוצים. אנחנו כאן לכל דבר שתצטרכו.',
+  'תודה על הביקורת! חשוב לנו לדעת שהשירות היה טוב, ונשמח לעזור גם בהמשך.',
+  'תודה רבה שדירגתם אותנו! זה ממש משמח, ומחכים לכם תמיד.',
 ];
 const THANKS_FOR = [
   'תודה רבה על הביקורת! שמחים לשמוע שהייתם מרוצים מהשירות של {s}, ונשמח לעזור גם בפעם הבאה.',
@@ -87,7 +129,8 @@ export function thanks(r: Pick<GbpReview, 'id' | 'reviewer'> & { text?: string }
   for (const ch of r.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const who = firstName(r.reviewer);
   const svc = mentionedService(r.text ?? '', services);
-  const body = svc ? THANKS_FOR[h % THANKS_FOR.length].replace('{s}', svc) : THANKS[h % THANKS.length];
+  const pool = (r.text ?? '').trim() && !foreignText(r.text ?? '') ? THANKS : THANKS_STARS;
+  const body = svc ? THANKS_FOR[h % THANKS_FOR.length].replace('{s}', svc) : pool[h % pool.length];
   return `${who ? `${who}, ` : ''}${body} צוות ${business.trim().slice(0, 60) || 'העסק'}`;
 }
 
@@ -120,6 +163,10 @@ export function replyPrompt(r: GbpReview, business: string): string {
 export interface ReplyDeps {
   accounts(now: Date): Promise<string[]>;
   mode(email: string): Promise<RepliesMode>;
+  /** When the customer agreed to automation (null: never). */
+  consentAt(email: string): Promise<string | null>;
+  /** How many replies we published by ourselves for this account in the last 24 hours. */
+  autoToday(email: string, now: Date): Promise<number>;
   reviews(email: string): Promise<{ reviews: GbpReview[]; account: string; location: string; business: string; services: string[] } | null>;
   handled(email: string, ids: string[]): Promise<Set<string>>;
   write(system: string, prompt: string): Promise<string | null>;
@@ -152,9 +199,12 @@ export async function sweepReplies(now = new Date(), deps: ReplyDeps = realDeps)
       if (mode === 'off') continue;
       const got = await deps.reviews(email);
       if (!got) continue;
-      void recordHeartbeat('gbp_google', null);
+      void recordHeartbeat(REPLIES_GOOGLE, null);
       const open = got.reviews.filter((r) => !r.hasReply);
-      const todo = plan(open, await deps.handled(email, open.map((r) => r.id)), mode, now);
+      const todo = plan(open, await deps.handled(email, open.map((r) => r.id)), mode, now, {
+        since: autoSince(await deps.consentAt(email), now),
+        autoLeft: MAX_AUTO_PER_DAY - (await deps.autoToday(email, now)),
+      });
       const row = (r: GbpReview, draft: string, auto: boolean) => ({
         owner_email: email, review_id: r.id, location_name: got.location, rating: r.rating, reviewer_first: firstName(r.reviewer), review_created_at: r.createdAt, draft, auto,
       });
@@ -177,13 +227,13 @@ export async function sweepReplies(now = new Date(), deps: ReplyDeps = realDeps)
           // The claimed row stays a pending draft: the owner sees it and can publish it themselves.
           out.failed++;
           const msg = e instanceof Error ? e.message : String(e);
-          void recordHeartbeat('gbp_google', /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 120));
+          void recordHeartbeat(REPLIES_GOOGLE, /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 120));
         }
       }
     } catch (e) {
       out.failed++;
       const msg = e instanceof Error ? e.message : String(e);
-      void recordHeartbeat('gbp_google', /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 120));
+      void recordHeartbeat(REPLIES_GOOGLE, /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 120));
       console.error('[AUTO-REPLIES] one account failed:', /http_429/.test(msg) ? 'google quota pending' : msg.slice(0, 160));
     }
   }
@@ -212,6 +262,13 @@ const realDeps: ReplyDeps = {
       .filter((r) => agreed.has(r.owner_email) && loc.get(r.owner_email) === r.location_name).map((r) => r.owner_email);
   },
   mode: async (email) => (await getAutomation(email)).repliesMode,
+  consentAt: async (email) => (await getAutomation(email)).consentAt,
+  async autoToday(email, now) {
+    const { count, error } = await supabase.from('review_reply_drafts').select('id', { head: true, count: 'exact' })
+      .eq('owner_email', email).eq('auto', true).gte('created_at', new Date(now.getTime() - DAY).toISOString());
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  },
   async reviews(email) {
     const access = await accessFor(email);
     const c = await getConnection(email);

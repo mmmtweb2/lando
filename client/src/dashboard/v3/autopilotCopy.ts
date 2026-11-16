@@ -129,7 +129,7 @@ export const ACTIVITY = {
 
 export const ACTIVITY_LABEL: Record<ActivityKind, string> = {
   card_synced: 'פרטי העסק', card_approved: 'פרטי העסק',
-  post_planned: 'פוסט', post_published: 'פוסט', post_skipped: 'פוסט',
+  post_planned: 'פוסט', post_published: 'פוסט', post_skipped: 'פוסט', post_failed: 'פוסט',
   reply_published: 'ביקורת', reply_drafted: 'ביקורת',
   page_created: 'דף',
 };

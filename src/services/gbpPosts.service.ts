@@ -23,7 +23,7 @@ import { recordHeartbeat, withHeartbeat } from './opsMetrics.service';
 import { type PostsMode, autopilotEnabled, getAutomation, logActivity, missingTable } from './automation.service';
 import { type TruthCard, emptyCard } from './businessTruth';
 import {
-  MAX_ATTEMPTS, POST_SYSTEM, RETRY_HOURS, STALE_DAYS, cleanPost, ctaFor, fallbackPost, nextOpenTime, pickTopic, postPrompt, publishAfter, quietNow, weekKey,
+  EDIT_WINDOW_HOURS, MAX_ATTEMPTS, POST_SYSTEM, RETRY_HOURS, STALE_DAYS, cleanPost, ctaFor, fallbackPost, nextOpenTime, pickTopic, postPrompt, publishAfter, quietNow, weekKey,
 } from './gbpPosts';
 
 const HOUR = 3_600_000;
@@ -94,7 +94,13 @@ export async function sweepPosts(now = new Date(), deps: SweepDeps = realDeps): 
       //    "post of the week", never a queue that could later go out all at once.
       const wk = weekKey(now);
       let fresh: string | null = null;
-      if (!ctx.recent.some((r) => r.week_key === wk)) {
+      // A post the customer was promised (e.g. the first one, approved on a Saturday) is never replaced
+      // by next week's before it had its chance: not while it is inside its 48-hour window, and in auto
+      // mode not before we even tried to publish it. Next week's is written once it went out.
+      const inWindow = ctx.recent.some((r) => r.status === 'scheduled' && (
+        now.getTime() - Date.parse(r.created_at) < EDIT_WINDOW_HOURS * HOUR
+        || (ctx.mode === 'auto' && r.attempts === 0 && !r.last_error)));
+      if (!inWindow && !ctx.recent.some((r) => r.week_key === wk)) {
         const w = await writePost(ctx.card, ctx.recent, deps.write);
         if (w) {
           const row = await deps.create({ owner_email: email, location_name: ctx.location, week_key: wk, topic: w.topic, body: w.body, cta: ctaFor(ctx.card), publish_after: publishAfter(now).toISOString() });
@@ -128,6 +134,12 @@ export async function sweepPosts(now = new Date(), deps: SweepDeps = realDeps): 
         });
         if (quota) out.waiting++; else out.failed++;
         void recordHeartbeat('gbp_google', quota ? 'google quota pending' : msg.slice(0, 120));
+        if (dead) {
+          // The customer sees it in "מה עשינו", the owner gets it from the health check (adminHealth).
+          await deps.log(email, 'post_failed', 'לא הצלחנו לפרסם את הפוסט של השבוע בגוגל',
+            e instanceof GbpError && e.code === 'revoked' ? 'החיבור לכרטיס העסק נותק. אחרי שתחברו אותו מחדש נמשיך לפרסם.' : 'אנחנו בודקים מה קרה. הפוסט הבא ייכתב כרגיל.', `failed:${p.id}`);
+          console.error('[POSTS] ALERT a weekly post gave up', { email, id: p.id, error: msg.slice(0, 160) });
+        }
         continue;
       }
       await recordPublished(deps, p.id, name, now);
@@ -241,7 +253,7 @@ const realDeps: SweepDeps = {
       .eq('owner_email', email).eq('status', 'publishing').lt('updated_at', new Date(now.getTime() - HOUR / 2).toISOString()));
     await run('location', mine().neq('location_name', location));
     await run('stale', mine().eq('approved', false).lt('created_at', new Date(now.getTime() - STALE_DAYS * 24 * HOUR).toISOString()));
-    if (keepId) await run('superseded', mine().eq('approved', false).neq('id', keepId));
+    if (keepId) await run('superseded', mine().eq('approved', false).neq('id', keepId).lt('created_at', new Date(now.getTime() - EDIT_WINDOW_HOURS * HOUR).toISOString()));
   },
   log: logActivity,
 };

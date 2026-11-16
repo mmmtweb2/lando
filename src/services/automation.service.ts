@@ -42,7 +42,7 @@ export async function setAutomation(email: string, patch: { postsMode?: PostsMod
 
 export type ActivityKind =
   | 'card_synced' | 'card_approved'
-  | 'post_planned' | 'post_published' | 'post_skipped'
+  | 'post_planned' | 'post_published' | 'post_skipped' | 'post_failed'
   | 'reply_published' | 'reply_drafted'
   | 'page_created';
 export interface Activity { id: string; kind: ActivityKind; title: string; detail: string | null; createdAt: string }

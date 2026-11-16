@@ -715,7 +715,9 @@ export default function Dashboard() {
 
   // The landing page that comes with the promotion subscription: the one the subscription names,
   // else the newest page (the same page the server builds the search-phrase pages under).
-  const includedRow = hasSeo ? (pages.find((p) => p.id === seoSub?.pageId) ?? pages[0] ?? null) : null;
+  // The business's own page as the server resolves it (the included page, or the one made from the business
+  // card). Without it, only an account with a single page can safely be assumed to mean that page.
+  const includedRow = hasSeo ? (pages.find((p) => p.id === seoSub?.pageId) ?? (pages.length === 1 ? pages[0] : null)) : null;
   const includedPage: IncludedPage | null = includedRow
     ? { id: includedRow.id, slug: includedRow.slug, status: includedRow.status ?? 'draft', url: shareUrl(includedRow.slug, includedRow.subdomain) }
     : null;

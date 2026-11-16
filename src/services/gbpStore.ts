@@ -31,10 +31,28 @@ export async function setLocation(email: string, location: string): Promise<void
   if (error) throw wrap(error);
 }
 
-export async function markNeedsReconnect(email: string, why: string): Promise<void> {
-  const { error } = await supabase.from('gbp_connections')
-    .update({ status: 'needs_reconnect', last_error: why.slice(0, 200), updated_at: new Date().toISOString() }).eq('email', email);
+/**
+ * The connection stopped working. Only the call that moves it from active to needs_reconnect tells
+ * the customer (one email per break, reconnectNotice.ts); repeated calls just refresh the reason.
+ * `notify` is replaceable for tests.
+ */
+export async function markNeedsReconnect(
+  email: string, why: string,
+  notify: (email: string) => Promise<unknown> = async (e) => (await import('./reconnectNotice')).sendReconnectNotice(e),
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase.from('gbp_connections')
+    .update({ status: 'needs_reconnect', last_error: why.slice(0, 200), updated_at: now }).eq('email', email).eq('status', 'active').select('email');
   if (error) throw wrap(error);
+  const moved = ((data ?? []) as unknown[]).length > 0;
+  if (!moved) {
+    // Already marked (or no connection): keep the latest reason, no second email.
+    await supabase.from('gbp_connections').update({ last_error: why.slice(0, 200), updated_at: now }).eq('email', email).eq('status', 'needs_reconnect');
+    return false;
+  }
+  console.error('[GBP] ALERT a Google connection needs reconnecting', { email, why: why.slice(0, 60) });
+  void notify(email).catch(() => undefined);
+  return true;
 }
 
 export async function deleteConnection(email: string): Promise<void> {
