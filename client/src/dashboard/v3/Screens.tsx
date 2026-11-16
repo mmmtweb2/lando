@@ -217,7 +217,7 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
           <Leads summary={summary} />
         </>
       )}
-      {(mode === 'approved' || mode === 'pending') && home}
+      {(mode === 'approved' || mode === 'pending' || mode === 'error') && home}
       {mode === 'legacy' && <button type="button" className="dv3-linkbtn" onClick={onRetry}>רענון הנתונים</button>}
     </div>
   );

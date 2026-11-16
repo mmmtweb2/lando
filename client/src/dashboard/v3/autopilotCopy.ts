@@ -224,9 +224,9 @@ export const HOME = {
   resultsEmpty: 'עוד אין פעולות. הראשונות יופיעו כאן בימים הקרובים.',
   numCalls: 'שיחות', numWhatsapp: 'וואטסאפ', numForms: 'טפסים', numDirections: 'הוראות הגעה', numEmail: 'אימייל',
   /** one period per number (autopilot/numbers.ts): normally everything is the last 30 days */
-  hero30: 'פניות ישירות · 30 יום',
+  hero30: 'פניות ישירות ב-30 יום',
   heroMonth: 'פניות ישירות מתחילת החודש',
-  heroGoogle30: 'שיחות מגוגל · 30 יום',
+  heroGoogle30: 'שיחות מגוגל ב-30 יום',
   /** Google's impressions of the listing: the "how they found you" part of the story */
   heroSeen: (n: number) => `הכרטיס שלכם הוצג ${n.toLocaleString('he-IL')} פעמים בחיפושים ובמפות של גוגל ב-30 הימים האחרונים.`,
   period30: 'ב-30 הימים האחרונים',
