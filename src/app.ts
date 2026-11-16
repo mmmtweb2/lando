@@ -14,7 +14,7 @@ import { describeRequest, notifyOwner } from './services/alerts';
 import { recordHttp } from './services/opsMetrics.service';
 import { serveSpaWithMeta } from './services/spaMeta';
 import { serverTimingMiddleware } from './services/serverTiming';
-import { applyCloudflareIp } from './utils/clientIp';
+import { applyCloudflareIp, cloudflareIpMiddleware } from './utils/clientIp';
 
 const app = express();
 
@@ -23,6 +23,13 @@ const app = express();
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
+
+// Every host, not only customer subdomains (security audit 16.11): if the apex is ever proxied by
+// Cloudflare, req.ip would otherwise be a Cloudflare edge address, shared by many visitors, and every
+// per-IP limiter (payment return, leads, admin password throttle) would key on it. The header is
+// believed only when the request provably came from Cloudflare (utils/clientIp.ts), so a direct
+// request cannot choose its own IP; without Cloudflare nothing changes.
+app.use(cloudflareIpMiddleware);
 
 // Baseline security headers (helmet) — deliberately CONSERVATIVE, because the same server serves the
 // SPA (GTM + inline scripts), server-rendered OG/SEO pages with inline JSON-LD, the public
