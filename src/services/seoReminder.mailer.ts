@@ -5,6 +5,7 @@
 // a failure is logged and the caller carries on.
 
 import { Resend } from 'resend';
+import { senderFooterHtml, senderFooterText } from './mailFooter';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 
@@ -25,7 +26,7 @@ export function buildAnnualReminder(p: AnnualReminderParams): { subject: string;
   const whenPart = when ? ` ב-${when}` : ' בקרוב';
   const pageNote = p.withPage ? ' דף הנחיתה שצורף למנוי יושהה בתום התקופה, ויחזור לאוויר אם תרכשו מנוי חדש.' : '';
   const subject = 'המנוי השנתי שלכם לקידום בגוגל מסתיים' + (when ? ` ב-${when}` : ' בקרוב');
-  const text = `המנוי השנתי שלכם מסתיים${whenPart}. הוא לא מתחדש אוטומטית ולא יתבצע חיוב. כדי להמשיך בלי הפסקה, אפשר לרכוש מנוי חדש.${pageNote}`;
+  const text = `המנוי השנתי שלכם מסתיים${whenPart}. הוא לא מתחדש אוטומטית ולא יתבצע חיוב. כדי להמשיך בלי הפסקה, אפשר לרכוש מנוי חדש.${pageNote}\n\n${senderFooterText()}`;
   const url = `${APP_URL}/seo-plan`;
   const html = `<!DOCTYPE html>
 <html dir="rtl" lang="he"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -36,6 +37,7 @@ export function buildAnnualReminder(p: AnnualReminderParams): { subject: string;
 <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#475569;">שילמתם על שנה אחת של קידום העסק בגוגל, והיא מסתיימת${whenPart}. המנוי <strong>לא מתחדש אוטומטית</strong> ולא יתבצע חיוב נוסף.</p>
 <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#475569;">כדי להמשיך בלי הפסקה, אפשר לרכוש מנוי חדש.${pageNote}</p>
 <p style="margin:0;text-align:center;"><a href="${url}" style="display:inline-block;background:#2563eb;color:#fff;font-size:15px;font-weight:700;padding:13px 28px;border-radius:12px;text-decoration:none;">לבחירת מנוי</a></p>
+<div style="margin-top:22px;border-top:1px solid #e2e8f0;padding-top:12px;">${senderFooterHtml({ reason: 'הודעת שירות על המנוי שלכם.' })}</div>
 </td></tr></table></body></html>`;
   return { subject, html, text };
 }

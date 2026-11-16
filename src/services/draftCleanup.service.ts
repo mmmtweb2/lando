@@ -14,6 +14,7 @@
 import { supabase } from '../config/supabase';
 import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendDraftReminder, DraftReminderKind } from './draft.mailer';
+import { draftOptedOut, draftUnsubUrl } from './draftOptOut';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BATCH_LIMIT = 200;
@@ -36,7 +37,7 @@ interface DraftRow {
   draft_warning_30d_at: string | null;
 }
 
-async function sendDueDraftReminders(now: Date): Promise<number> {
+export async function sendDueDraftReminders(now: Date): Promise<number> {
   let sent = 0;
 
   for (let i = 0; i < STAGES.length; i++) {
@@ -58,7 +59,12 @@ async function sendDueDraftReminders(now: Date): Promise<number> {
       continue;
     }
 
-    for (const row of (data ?? []) as DraftRow[]) {
+    const rows = (data ?? []) as DraftRow[];
+    // Owners who clicked "stop these emails": their stages are still marked below (so they are not
+    // reconsidered every sweep), but nothing is sent. The draft lifecycle itself is unchanged.
+    const optedOut = await draftOptedOut([...new Set(rows.map((r) => r.owner_email).filter((e): e is string => !!e))]);
+
+    for (const row of rows) {
       const stamp = new Date().toISOString();
       const marks: Record<string, string> = { [column]: stamp };
       for (const c of lessUrgent) {
@@ -80,11 +86,13 @@ async function sendDueDraftReminders(now: Date): Promise<number> {
         continue;
       }
       if (!claimed || !row.owner_email) continue;
+      if (optedOut.has(row.owner_email)) continue;
 
       const ok = await sendDraftReminder({
         kind,
         to: row.owner_email,
         businessName: row.business_name ?? 'העסק שלך',
+        unsubUrl: draftUnsubUrl(row.owner_email),
       });
       if (ok) sent++;
     }

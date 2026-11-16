@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { getPublicConfig } from '../lib/publicConfig';
 import { trackEvent } from '../lib/track';
+import { OPERATOR } from '../config/operator';
 
 // Lead capture under a public Audit. The consent box is NEVER pre-ticked, the wording shown is
 // the server's own text (so what is stored is what was shown), and without consent nothing is sent.
@@ -115,7 +116,11 @@ export default function AuditLeadForm({
       >
         {busy ? 'שולחים…' : 'שלחו לי את התוכנית'}
       </button>
-      <p className="text-[11px] text-slate-400">אפשר לבקש הסרה בכל עת.</p>
+      <p className="text-[11px] text-slate-500">
+        הפרטים משמשים רק למשלוח התוכנית בוואטסאפ. אפשר לבקש מחיקה בכל עת במייל{' '}
+        <a href={`mailto:${OPERATOR.email}`} dir="ltr" className="underline">{OPERATOR.email}</a>.{' '}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">מדיניות הפרטיות</a>
+      </p>
     </form>
   );
 }

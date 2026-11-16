@@ -14,6 +14,7 @@
 import { Resend } from 'resend';
 import { RENEWAL_PRICE } from '../config/billing';
 import { shareUrl } from './subdomain.service';
+import { senderFooterHtml } from './mailFooter';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 
@@ -191,9 +192,7 @@ function buildEmailHtml(p: ReminderParams): { subject: string; html: string } {
 
       <tr>
         <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">
-            מופעל על ידי Pagey · דף הנחיתה של ${escapeHtml(p.businessName)}
-          </p>
+          ${senderFooterHtml({ reason: `הודעת שירות על דף הנחיתה של ${p.businessName}.` })}
         </td>
       </tr>
 

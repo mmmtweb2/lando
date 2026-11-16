@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Resend } from 'resend';
+import { senderFooterHtml } from './mailFooter';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'https://pagey.co.il').replace(/\/$/, '');
 
@@ -14,6 +15,8 @@ export interface DraftReminderParams {
   kind: DraftReminderKind;
   to: string;
   businessName: string;
+  /** One-click unsubscribe from draft reminders (draftOptOut.ts); null when DIGEST_SECRET is unset. */
+  unsubUrl?: string | null;
 }
 
 function escapeHtml(s: string): string {
@@ -62,7 +65,7 @@ function copyFor(kind: DraftReminderKind, businessName: string) {
   }
 }
 
-function buildEmailHtml(p: DraftReminderParams): { subject: string; html: string } {
+export function buildEmailHtml(p: DraftReminderParams): { subject: string; html: string } {
   const c = copyFor(p.kind, p.businessName);
   const url = `${APP_URL}/dashboard`;
 
@@ -95,9 +98,7 @@ function buildEmailHtml(p: DraftReminderParams): { subject: string; html: string
       </tr>
       <tr>
         <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 32px;">
-          <p style="margin:0;color:#94a3b8;font-size:12px;text-align:center;">
-            מופעל על ידי Pagey · ${escapeHtml(p.businessName)}
-          </p>
+          ${senderFooterHtml({ reason: `קיבלתם את ההודעה כי יצרתם ב-Pagey דף נחיתה עבור ${p.businessName} שעדיין לא פורסם.`, unsubUrl: p.unsubUrl })}
         </td>
       </tr>
     </table>
@@ -124,6 +125,7 @@ export async function sendDraftReminder(p: DraftReminderParams): Promise<boolean
       to: [p.to],
       subject,
       html,
+      ...(p.unsubUrl ? { headers: { 'List-Unsubscribe': `<${p.unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}),
     });
     console.log('[DRAFT MAIL] sent', { kind: p.kind, to: p.to });
     return true;

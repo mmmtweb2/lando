@@ -27,19 +27,20 @@ export function digestEnabled(): boolean {
 
 // ─── Unsubscribe token: base64url(email).hmac — no expiry on purpose ────────
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
-function mac(email: string, secret: string): string {
-  return crypto.createHmac('sha256', secret).update(`digest-unsub:${email}`).digest('base64url');
+// `purpose` scopes a token to one kind of email: a digest link cannot stop draft reminders and vice versa.
+function mac(email: string, secret: string, purpose: string): string {
+  return crypto.createHmac('sha256', secret).update(`${purpose}:${email}`).digest('base64url');
 }
-export function signUnsub(email: string, secret = process.env.DIGEST_SECRET ?? ''): string {
-  return `${b64(email)}.${mac(email, secret)}`;
+export function signUnsub(email: string, secret = process.env.DIGEST_SECRET ?? '', purpose = 'digest-unsub'): string {
+  return `${b64(email)}.${mac(email, secret, purpose)}`;
 }
-export function verifyUnsub(token: unknown, secret = process.env.DIGEST_SECRET ?? ''): string | null {
+export function verifyUnsub(token: unknown, secret = process.env.DIGEST_SECRET ?? '', purpose = 'digest-unsub'): string | null {
   if (typeof token !== 'string' || !secret || token.length > 400) return null;
   const [p, m] = token.split('.');
   if (!p || !m) return null;
   let email: string;
   try { email = Buffer.from(p, 'base64url').toString('utf8'); } catch { return null; }
-  const want = Buffer.from(mac(email, secret)); const got = Buffer.from(m);
+  const want = Buffer.from(mac(email, secret, purpose)); const got = Buffer.from(m);
   return want.length === got.length && crypto.timingSafeEqual(want, got) ? email : null;
 }
 export const unsubUrl = (email: string) => `${API_URL}/api/seo/digest/unsubscribe?t=${signUnsub(email)}`;
