@@ -1,5 +1,5 @@
 import LegalLayout, { LegalSection, LegalList } from './LegalLayout';
-import { OPERATOR } from '../../config/operator';
+import { OPERATOR, filled } from '../../config/operator';
 
 // הצהרת הנגישות של אתר Pagey עצמו.
 // Deliberately does NOT claim full WCAG 2.0 AA / ת"י 5568 conformance: the app
@@ -90,8 +90,8 @@ export default function Accessibility() {
         <LegalList items={[
           <>אחראי נגישות: <span className="font-semibold">{COORDINATOR}</span></>,
           <>דוא"ל: <span dir="ltr" className="font-semibold">{ACCESSIBILITY_EMAIL}</span></>,
-          <>טלפון: <span dir="ltr" className="font-semibold">{OPERATOR.phone}</span></>,
-          <>מפעיל האתר: <span className="font-semibold">{OPERATOR.name}</span>, {OPERATOR.address}</>,
+          ...(filled(OPERATOR.phone) ? [<>טלפון: <span dir="ltr" className="font-semibold">{OPERATOR.phone}</span></>] : []),
+          ...(filled(OPERATOR.name) ? [<>מפעיל האתר: <span className="font-semibold">{OPERATOR.name}</span>{filled(OPERATOR.address) ? `, ${OPERATOR.address}` : ''}</>] : []),
           'זמן טיפול משוער: נשיב לפנייה בתוך 14 ימי עסקים.',
         ]} />
         <p>
