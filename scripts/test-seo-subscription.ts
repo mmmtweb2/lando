@@ -14,6 +14,7 @@ const db: Record<string, Row[]> = { seo_subscriptions: [], seo_subscription_even
 const UNIQUE: Record<string, string[]> = { seo_subscriptions: ['email'], seo_subscription_events: ['sumit_payment_id'] };
 let seq = 0;
 let missingTable = false;
+let failSubUpdate = false;
 (supabase as any).from = (table: string) => {
   const f: Array<(r: Row) => boolean> = []; let op = 'select'; let patch: Row = {}; let onConflict: string[] = [];
   const rows = () => db[table].filter(r => f.every(fn => fn(r)));
@@ -31,6 +32,8 @@ let missingTable = false;
       if (ex) Object.assign(ex, patch); else db[table].push({ ...patch });
       return { data: null, error: null };
     }
+    if (op === 'delete') { db[table] = db[table].filter(r => !f.every(fn => fn(r))); return { data: null, error: null }; }
+    if (op === 'update' && failSubUpdate && table === 'seo_subscriptions') return { data: null, error: { code: 'XX000', message: 'db down' } };
     if (op === 'update') { rows().forEach(r => Object.assign(r, patch)); return { data: null, error: null }; }
     return { data: rows(), error: null };
   };
@@ -38,6 +41,7 @@ let missingTable = false;
     select: () => q, limit: () => q,
     insert: (p: Row) => { op = 'insert'; patch = p; return q; },
     update: (p: Row) => { op = 'update'; patch = p; return q; },
+    delete: () => { op = 'delete'; return q; },
     upsert: (p: Row, o: { onConflict: string }) => { op = 'upsert'; patch = p; onConflict = o.onConflict.split(','); return q; },
     eq: (k: string, v: unknown) => { f.push(r => r[k] === v); return q; },
     in: (k: string, vs: unknown[]) => { f.push(r => vs.includes(r[k])); return q; },
@@ -127,11 +131,13 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
   r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '500' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review');
   assert.equal(db.user_products.length, 0, 'underpaid -> not activated');
-  payments['501'] = { valid: true, amount: 250 };
-  r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '501', CustomerID: '42', 'RecurringCustomerItemIDs[0]': '9001' } } as any, r);
+  payments['501'] = { valid: true, amount: 250, cust: 42 };
+  r = res(); await subscriptionReturn({ query: { ref: sub.id, 'OG-PaymentID': '501', CustomerID: '666', 'RecurringCustomerItemIDs[0]': '9001' } } as any, r);
   assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok');
   assert.equal(db.seo_subscriptions[0].status, 'active');
-  assert.equal(db.seo_subscriptions[0].sumit_customer_id, '42'); assert.equal(db.seo_subscriptions[0].sumit_recurring_item_id, '9001');
+  // The browser's CustomerID / item id are ignored: the customer is the one SUMIT says paid.
+  assert.equal(db.seo_subscriptions[0].sumit_customer_id, '42'); assert.equal(db.seo_subscriptions[0].sumit_recurring_item_id ?? null, null);
+  db.seo_subscriptions[0].sumit_recurring_item_id = '9001';   // as if the standing order had been created
   const end1 = new Date(db.seo_subscriptions[0].current_period_end).getTime();
   assert.ok(end1 > Date.now() + 27 * 86400000 && end1 < Date.now() + 32 * 86400000, 'about one month');
   assert.deepEqual({ ...db.user_products[0] }, { email: EMAIL, product: 'seo_autopilot', status: 'active', current_period_end: db.seo_subscriptions[0].current_period_end, source: 'sumit' });
@@ -448,16 +454,24 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
         assert.equal(sub.status, 'active');
         return sub;
       };
-      // SUMIT's documented return parameter is OG-CustomerID
-      let sub = await pay('c1@x.co', { 'OG-CustomerID': '4242' });
-      assert.equal(sub.sumit_customer_id, '4242', 'customer id taken from OG-CustomerID');
+      // the browser's OG-CustomerID is never trusted (security audit 16.11): the verified payment's customer wins
+      let sub = await pay('c1@x.co', { 'OG-CustomerID': '4242' }, 4343);
+      assert.equal(sub.sumit_customer_id, '4343', 'customer id taken from the verified payment, not the URL');
       // not in the redirect: fall back to the customer id of the verified payment
       sub = await pay('c2@x.co', {}, 5151);
       assert.equal(sub.sumit_customer_id, '5151', 'customer id taken from the verified payment');
       // a monthly plan with no standing order id is flagged loudly; with one it is not
       assert.ok(errors.some(e => e.includes('ALERT monthly payment verified but SUMIT returned NO standing order id')), 'alert when no standing order id');
+      // a standing order id in the browser's URL is ignored; only SUMIT itself (the webhook) may name one
       sub = await pay('c3@x.co', { 'OG-CustomerID': '1', 'RecurringCustomerItemIDs[0]': '777' });
-      assert.equal(sub.sumit_recurring_item_id, '777');
+      assert.equal(sub.sumit_recurring_item_id ?? null, null, 'item id from the URL is not trusted');
+      process.env.SEO_SUBSCRIPTION_WEBHOOK_SECRET = 'topsecret';
+      const wsub = db.seo_subscriptions.find(x => x.email === 'c3@x.co')!;
+      wsub.status = 'pending'; wsub.current_period_end = null;
+      const wid = String(++pid); payments[wid] = { valid: true, amount: 250, ext: wsub.id };
+      errors.length = 0;
+      r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { ExternalIdentifier: wsub.id, PaymentID: wid, 'RecurringCustomerItemIDs[0]': '777' } } as any, r);
+      assert.equal(wsub.sumit_recurring_item_id, '777');
       assert.ok(!errors.some(e => e.includes('NO standing order id')), 'no alert when SUMIT returned the standing order id');
 
       // the request: Duration_Months only by default; the experiments appear only when configured
@@ -475,6 +489,96 @@ const req = (extra: Row = {}) => ({ authEmail: EMAIL, query: {}, body: {}, ...ex
       assert.equal(begin().Items[0].Recurrence, undefined); assert.equal(begin().Items[0].Duration_Months, undefined);
     } finally { console.error = origErr; }
     db.user_products.length = 0;
+  }
+
+  // 12. renewals and stopping charges (audit 16.11)
+  {
+    const origErr = console.error; console.error = () => {};
+    try {
+      process.env.SEO_SUBSCRIPTION_WEBHOOK_SECRET = 'topsecret';
+      const DAY = 86400000;
+      const mk = (email: string, extra: Row = {}) => {
+        const row = { id: `10000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, email, status: 'active', amount: 250, plan_id: 'monthly', cycle: 'month', with_page: true,
+          cancel_at_period_end: false, needs_manual_cancel: false, sumit_customer_id: null, sumit_recurring_item_id: null, current_period_end: new Date(Date.now() + 10 * DAY).toISOString(), ...extra };
+        db.seo_subscriptions.push(row); return row;
+      };
+
+      // a. an EXPIRED manual grant (a beta that ended) gives way to the payment
+      db.user_products.push({ email: 'beta@x.co', product: 'seo_autopilot', status: 'active', source: 'manual', current_period_end: new Date(Date.now() - DAY).toISOString() });
+      const b = mk('beta@x.co', { status: 'pending', current_period_end: null });
+      payments['12001'] = { valid: true, amount: 250 };
+      r = res(); await subscriptionReturn({ query: { ref: b.id, 'OG-PaymentID': '12001' } } as any, r);
+      const bp = db.user_products.find(x => x.email === 'beta@x.co')!;
+      assert.equal(bp.source, 'sumit'); assert.equal((await getEntitlements('beta@x.co')).seo_autopilot, true, 'paid after an expired beta -> has the product');
+      //    an ACTIVE manual grant is still never overwritten
+      db.user_products.push({ email: 'gift@x.co', product: 'seo_autopilot', status: 'active', source: 'manual', current_period_end: null });
+      const g = mk('gift@x.co', { status: 'pending', current_period_end: null });
+      payments['12002'] = { valid: true, amount: 250 };
+      r = res(); await subscriptionReturn({ query: { ref: g.id, 'OG-PaymentID': '12002' } } as any, r);
+      assert.equal(db.user_products.find(x => x.email === 'gift@x.co')!.source, 'manual');
+
+      // b. a renewal charge reported WITHOUT our reference is matched by the SUMIT customer
+      const rn = mk('renew@x.co', { sumit_customer_id: '555', sumit_recurring_item_id: '9555' });
+      const before = new Date(rn.current_period_end).getTime();
+      payments['12003'] = { valid: true, amount: 250, cust: 555 };
+      r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { PaymentID: '12003' } } as any, r);
+      assert.equal(r.body.applied, 'activated');
+      assert.ok(new Date(rn.current_period_end).getTime() > before + 27 * DAY, 'renewal extends the period by a month');
+      r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { PaymentID: '12003' } } as any, r);
+      assert.equal(r.body.applied, 'duplicate', 'the same renewal twice extends once');
+      payments['12004'] = { valid: true, amount: 250, cust: 999 };
+      r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { PaymentID: '12004' } } as any, r);
+      assert.equal(r.body.applied, 'no_ref', 'unknown customer -> nothing applied');
+      payments['12005'] = { valid: true, amount: 250, cust: 555, ext: 'someone-else' };
+      r = res(); await subscriptionWebhook({ query: { secret: 'topsecret' }, body: { PaymentID: '12005' } } as any, r);
+      assert.equal(r.body.applied, 'binding_mismatch', 'a charge naming another reference is refused');
+
+      // c. the sweep that ends a monthly subscription also stops its standing order
+      const ex = mk('ends@x.co', { status: 'past_due', sumit_customer_id: '556', sumit_recurring_item_id: '9556', current_period_end: new Date(Date.now() - 8 * DAY).toISOString() });
+      cancelOk = true;
+      await sweepSubscriptions();
+      assert.equal(ex.status, 'canceled'); assert.equal(ex.sumit_recurring_item_id, null, 'order stopped and its id cleared');
+      assert.ok(sumitCalls.some(c => c.path === '/billing/recurring/cancel/' && String(c.body.RecurringCustomerItemID ?? JSON.stringify(c.body)).includes('9556')));
+      const ex2 = mk('ends2@x.co', { status: 'past_due', sumit_customer_id: '557', sumit_recurring_item_id: '9557', current_period_end: new Date(Date.now() - 8 * DAY).toISOString() });
+      cancelOk = false;
+      await sweepSubscriptions();
+      assert.equal(ex2.status, 'canceled'); assert.equal(ex2.needs_manual_cancel, true, 'stop failed -> flagged for a human');
+      assert.equal(ex2.sumit_recurring_item_id, '9557');
+
+      // d. the customer can still stop that order themselves from a canceled subscription
+      cancelOk = true;
+      r = res(); await cancel(req({ authEmail: 'ends2@x.co' }), r);
+      assert.equal(r.code, 200); assert.equal(ex2.sumit_recurring_item_id, null);
+      r = res(); await cancel(req({ authEmail: 'ends2@x.co' }), r);
+      assert.equal(r.code, 404, 'nothing left to stop');
+
+      // e. cancelling an active monthly clears the stopped id (a later re-subscription gets a fresh order)
+      const ac = mk('cx@x.co', { sumit_customer_id: '558', sumit_recurring_item_id: '9558' });
+      r = res(); await cancel(req({ authEmail: 'cx@x.co' }), r);
+      assert.equal(ac.cancel_at_period_end, true); assert.equal(ac.sumit_recurring_item_id, null);
+
+      // f. the card: no promised next charge without a standing order; renewal day is not "failed"
+      mk('noso@x.co');
+      r = res(); await getStatus(req({ authEmail: 'noso@x.co' }), r);
+      assert.equal(r.body.subscription.renews, false);
+      mk('rday@x.co', { status: 'past_due', sumit_recurring_item_id: '9560', current_period_end: new Date(Date.now() - 3600000).toISOString() });
+      r = res(); await getStatus(req({ authEmail: 'rday@x.co' }), r);
+      assert.equal(r.body.subscription.renewalPending, true);
+      mk('late@x.co', { status: 'past_due', sumit_recurring_item_id: '9561', current_period_end: new Date(Date.now() - 3 * DAY).toISOString() });
+      r = res(); await getStatus(req({ authEmail: 'late@x.co' }), r);
+      assert.equal(r.body.subscription.renewalPending, false);
+
+      // g. the state could not be saved -> the payment id is released, the retry activates
+      const sv = mk('save@x.co', { status: 'pending', current_period_end: null });
+      payments['12006'] = { valid: true, amount: 250 };
+      failSubUpdate = true;
+      r = res(); await subscriptionReturn({ query: { ref: sv.id, 'OG-PaymentID': '12006' } } as any, r);
+      failSubUpdate = false;
+      assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=review');
+      assert.equal(sv.status, 'pending');
+      r = res(); await subscriptionReturn({ query: { ref: sv.id, 'OG-PaymentID': '12006' } } as any, r);
+      assert.equal(r.redirected, 'https://app.test/dashboard?seo_subscription=ok'); assert.equal(sv.status, 'active');
+    } finally { console.error = origErr; cancelOk = true; failSubUpdate = false; }
   }
 
   // 10. migration not run yet: every endpoint degrades, nothing throws

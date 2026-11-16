@@ -501,7 +501,9 @@ export async function paymentReturn(req: Request, res: Response): Promise<void> 
 
   if (pay.status === 'paid') { res.redirect(clientUrl('success')); return; }  // idempotent
   if (cancel) {
-    await supabase.from('payments').update({ status: 'failed' }).eq('id', ref);
+    // Only a checkout that is still pending: a processing / needs_review row is never rewritten by an
+    // unauthenticated cancel link (it would become re-claimable).
+    await supabase.from('payments').update({ status: 'failed' }).eq('id', ref).eq('status', 'pending');
     res.redirect(clientUrl('cancelled'));
     return;
   }

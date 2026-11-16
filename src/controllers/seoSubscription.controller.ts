@@ -10,10 +10,11 @@ import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import { diagLog, keysOf } from '../services/sumitDiag';
 import {
-  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, getSubscription, planOf, startSubscription,
+  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, findBySumitCustomer, getSubscription, planOf, startSubscription,
 } from '../services/seoSubscription.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+const RENEWAL_DAY_MS = 2 * 24 * 60 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function fail(res: Response, e: unknown): void {
@@ -55,7 +56,13 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         planId: planOf(row).id,
         cycle: planOf(row).cycle,
         withPage: planOf(row).withPage,
-        renews: autoRenews(row),   // annual: false, it ends on its date unless a new plan is bought
+        // Annual: false, it ends on its date. Monthly: true only while SUMIT holds a standing order we know of,
+        // so the screen never promises a next charge that nothing will make.
+        renews: autoRenews(row) && Boolean(row.sumit_recurring_item_id) && !row.cancel_at_period_end,
+        // The renewal day itself: SUMIT charges some time during the day, so a just-ended period is not
+        // yet a failed charge. The card says "being renewed" instead of "re-enter your card".
+        renewalPending: row.status === 'past_due' && Boolean(row.sumit_recurring_item_id) && !!row.current_period_end
+          && Date.now() < new Date(row.current_period_end).getTime() + RENEWAL_DAY_MS,
         page: await pageState(row),
       };
     }
@@ -91,7 +98,12 @@ export async function cancel(req: Request, res: Response): Promise<void> {
 }
 
 /** Verifies the payment with SUMIT server-to-server, then applies it. Never trusts the caller. */
-async function verifyAndApply(subscriptionId: string, bag: Record<string, unknown>): Promise<string> {
+/**
+ * `fromSumit` is true only for the secret-authenticated webhook. The return URL is opened by the BROWSER,
+ * so nothing in it but the payment id (verified with SUMIT) and our own reference is trusted: a payer who
+ * rewrote it could otherwise attach someone else's SUMIT customer or standing order to their subscription.
+ */
+async function verifyAndApply(subscriptionId: string, bag: Record<string, unknown>, fromSumit = false): Promise<string> {
   const sumitPaymentId = pickField(bag, 'OG-PaymentID', 'OGPaymentID', 'PaymentID', 'Payment.ID');
   diagLog('return/webhook keys', keysOf(bag));   // SUMIT_DIAG=true only; names of the parameters, never values
   if (!sumitPaymentId) return 'no_payment_id';
@@ -109,12 +121,35 @@ async function verifyAndApply(subscriptionId: string, bag: Record<string, unknow
     subscriptionId,
     { sumitPaymentId, valid: verified.valid, amount: verified.amount },
     {
-      // SUMIT's redirect sends OG-CustomerID (its documented return parameters are OG-*); a webhook may send
-      // CustomerID; failing both, the customer id of the verified payment itself.
-      sumitCustomerId: pickField(bag, 'OG-CustomerID', 'CustomerID', 'Customer.ID') ?? verified.customerId,
-      sumitRecurringItemId: pickField(bag, 'RecurringCustomerItemIDs[0]', 'OG-RecurringCustomerItemIDs', 'RecurringCustomerItemID', 'RecurringItemID'),
+      // The customer comes from the VERIFIED payment. Only the webhook (SUMIT itself) may fill it in when the
+      // payment record has none, or name a standing order.
+      sumitCustomerId: verified.customerId ?? (fromSumit ? pickField(bag, 'CustomerID', 'Customer.ID', 'OG-CustomerID') : undefined),
+      sumitRecurringItemId: fromSumit ? pickField(bag, 'RecurringCustomerItemIDs[0]', 'OG-RecurringCustomerItemIDs', 'RecurringCustomerItemID', 'RecurringItemID') : undefined,
     },
   );
+}
+
+/**
+ * A standing-order charge may reach us without our reference (SUMIT copies ExternalIdentifier onto the
+ * customer, not necessarily onto each recurring charge). The SUMIT customer id, read from the VERIFIED
+ * payment, then identifies the subscription; a payment that names a different reference is refused.
+ */
+async function applyByCustomer(bag: Record<string, unknown>): Promise<string> {
+  const sumitPaymentId = pickField(bag, 'OG-PaymentID', 'OGPaymentID', 'PaymentID', 'Payment.ID', 'ID');
+  if (!sumitPaymentId) return 'no_ref';
+  const verified = await getPayment(sumitPaymentId);
+  if (!verified) return 'unverified';
+  const customerId = verified.customerId ?? pickField(bag, 'CustomerID', 'Customer.ID', 'OG-CustomerID');
+  const row = customerId ? await findBySumitCustomer(customerId) : null;
+  if (!row) {
+    if (verified.valid) console.error('[SUBSCRIPTION] ALERT a SUMIT charge arrived that matches no subscription — check it by hand', { payment: sumitPaymentId });
+    return 'no_ref';
+  }
+  if (verified.externalIdentifiers.length && !evaluateBinding(verified.externalIdentifiers, row.id).ok) {
+    console.error('[SUBSCRIPTION] payment names another reference — refusing', { subscriptionId: row.id, payment: sumitPaymentId });
+    return 'binding_mismatch';
+  }
+  return applyVerifiedPayment(row.id, { sumitPaymentId, valid: verified.valid, amount: verified.amount }, { sumitCustomerId: customerId });
 }
 
 /** GET /api/seo/subscription/return — the browser comes back from SUMIT's payment page. */
@@ -147,10 +182,10 @@ function secretOk(given: unknown): boolean {
 export async function subscriptionWebhook(req: Request, res: Response): Promise<void> {
   if (!secretOk(req.query.secret)) { res.status(401).json({ error: 'unauthorized' }); return; }
   const bag: Record<string, unknown> = { ...(req.query as Record<string, unknown>), ...(typeof req.body === 'object' && req.body ? req.body : {}) };
+  diagLog('webhook keys', keysOf(bag));   // SUMIT_DIAG=true only; names, never values
   const ref = pickField(bag, 'ExternalIdentifier', 'ref');
-  if (!ref || !UUID.test(ref)) { res.status(200).json({ ok: true, applied: 'no_ref' }); return; }
   try {
-    const applied = await verifyAndApply(ref, bag);
+    const applied = ref && UUID.test(ref) ? await verifyAndApply(ref, bag, true) : await applyByCustomer(bag);
     void recordHeartbeat('sumit_webhook', null);
     res.status(200).json({ ok: true, applied });
   } catch (e) {
