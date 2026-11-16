@@ -11,11 +11,16 @@ export function autoAvailable(auto: Autopilot): boolean {
 
 export const isApproved = (auto: Autopilot) => auto.truth.status === 'ok' && !!auto.truth.data?.approvedAt;
 
-/** The old home (feature closed), a skeleton, the first step alone, or the automatic home. */
-export type HomeMode = 'legacy' | 'loading' | 'pending' | 'approved';
+/**
+ * The old home (feature closed), a skeleton, the first step alone, the automatic home, or 'error': the
+ * business details could not be loaded right now. An error is never "not approved": a customer who
+ * finished setup must not be sent back into it because one request failed.
+ */
+export type HomeMode = 'legacy' | 'loading' | 'error' | 'pending' | 'approved';
 export function homeMode(auto: Autopilot): HomeMode {
   if (!autoAvailable(auto)) return 'legacy';
   if (auto.truth.status === 'loading') return 'loading';
+  if (auto.truth.status === 'error') return 'error';
   return isApproved(auto) ? 'approved' : 'pending';
 }
 

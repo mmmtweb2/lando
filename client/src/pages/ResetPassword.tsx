@@ -59,7 +59,7 @@ export default function ResetPassword() {
       >
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800">Pagey ✦</h1>
-          <p className="text-sm text-slate-500 mt-1">בונה דפי נחיתה חכם</p>
+          <p className="text-sm text-slate-500 mt-1">דפי נחיתה וקידום העסק בגוגל</p>
         </div>
 
         <div className="rounded-2xl bg-white shadow-lg shadow-slate-200/60 px-6 py-8">

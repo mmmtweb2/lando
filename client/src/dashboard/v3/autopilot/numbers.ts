@@ -8,7 +8,9 @@ import type { GoogleNumbers } from './types';
 // ONE period per number. Google gives calls and direction requests for 30 days. Our own counters
 // (`summary`) are month-to-date, but the inquiries list that arrives with them (GET
 // /api/landing/my-leads, the newest 500, each with its time) lets us count the same 30 days here.
-// So normally everything is "ב-30 הימים האחרונים" and the big number is the sum of the four tiles.
+// So normally everything is "ב-30 הימים האחרונים" and the big number is the direct inquiries: calls,
+// WhatsApp, forms and e-mail. A direction request is shown as its own tile but is not an inquiry, so it
+// is never added to the big number (audit 16.11).
 // Only when the list is cut before it reaches 30 days back (500 inquiries in less than a month) the
 // two periods are shown apart, each under its own label, and nothing from different periods is summed.
 
@@ -20,6 +22,8 @@ export interface HomeNumbers {
   totalLabel: string;
   groups: NumberGroup[];
   note: string;
+  /** how many times Google showed the listing (30 days), when Google gave a number */
+  impressions: number | null;
 }
 
 export interface OwnNumbers { call: number; whatsapp: number; form: number; email: number }
@@ -41,13 +45,15 @@ export function last30(items: readonly LeadFeedItem[], now: number = Date.now(),
   return n;
 }
 
-const sum = (tiles: Tile[]) => tiles.reduce((n, t) => n + t.value, 0);
+/** Direct inquiries only: a direction request is not someone who contacted the business. */
+const sum = (tiles: Tile[]) => tiles.reduce((n, t) => (t.key === 'dir' ? n : n + t.value), 0);
 
 /**
  * `own` = last30(items); null means our counters are known month-to-date only (`s`).
  * `g` = Google's 30 days of calls and direction requests, when the listing is connected.
  */
 export function homeNumbers(s: LeadsSummary, own: OwnNumbers | null, g: GoogleNumbers | null): HomeNumbers {
+  const impressions = g?.impressions ? g.impressions : null;
   if (own) {
     const tiles: Tile[] = [
       { key: 'calls', label: HOME.numCalls, value: own.call + (g?.calls ?? 0), Icon: Phone },
@@ -55,7 +61,7 @@ export function homeNumbers(s: LeadsSummary, own: OwnNumbers | null, g: GoogleNu
       { key: 'forms', label: HOME.numForms, value: own.form, Icon: FileText },
       g ? { key: 'dir', label: HOME.numDirections, value: g.directions, Icon: MapPin } : { key: 'mail', label: HOME.numEmail, value: own.email, Icon: Mail },
     ];
-    return { total: sum(tiles), totalLabel: HOME.hero30, groups: [{ key: '30', label: HOME.period30, tiles }], note: g ? HOME.note30Google : HOME.note30Own };
+    return { total: sum(tiles), totalLabel: HOME.hero30, groups: [{ key: '30', label: HOME.period30, tiles }], note: g ? HOME.note30Google : HOME.note30Own, impressions };
   }
   const month: Tile[] = [
     { key: 'wa', label: HOME.numWhatsapp, value: s.month_whatsapp, Icon: MessageCircle },
@@ -63,7 +69,7 @@ export function homeNumbers(s: LeadsSummary, own: OwnNumbers | null, g: GoogleNu
     { key: 'calls-own', label: HOME.numCallsOwn, value: s.month_call, Icon: Phone },
     { key: 'mail', label: HOME.numEmail, value: s.month_email, Icon: Mail },
   ];
-  if (!g) return { total: sum(month), totalLabel: HOME.heroMonth, groups: [{ key: 'month', label: HOME.periodMonth, tiles: month }], note: HOME.noteMonth };
+  if (!g) return { total: sum(month), totalLabel: HOME.heroMonth, groups: [{ key: 'month', label: HOME.periodMonth, tiles: month }], note: HOME.noteMonth, impressions };
   const google: Tile[] = [
     { key: 'calls', label: HOME.numCallsGoogle, value: g.calls, Icon: Phone },
     { key: 'dir', label: HOME.numDirections, value: g.directions, Icon: MapPin },
@@ -72,5 +78,6 @@ export function homeNumbers(s: LeadsSummary, own: OwnNumbers | null, g: GoogleNu
     total: sum(google), totalLabel: HOME.heroGoogle30,
     groups: [{ key: '30', label: HOME.period30Google, tiles: google }, { key: 'month', label: HOME.periodMonthOwn, tiles: month }],
     note: HOME.noteSplit,
+    impressions,
   };
 }

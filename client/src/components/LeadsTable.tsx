@@ -108,7 +108,7 @@ function WhatsAppButton({ phone }: { phone: string }) {
       href={toWhatsAppHref(phone)}
       target="_blank"
       rel="noopener noreferrer"
-      title="פתח שיחה ב-WhatsApp"
+      title="פתיחת שיחה בוואטסאפ"
       className="inline-flex items-center justify-center w-6 h-6 rounded-md border border-slate-200 bg-white hover:bg-slate-50 transition flex-shrink-0"
     >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366" aria-hidden>

@@ -17,6 +17,8 @@ interface Props {
   /** the automatic product's reviews area: its own heading, and a calm line instead of hiding when nothing waits */
   title?: string;
   emptyText?: string;
+  /** the line under the heading, when the default ("unanswered for a few days") does not describe the product */
+  hint?: string;
 }
 
 function Row({ d, canPublish, onDone, fetcher }: { d: Draft; canPublish: boolean; onDone: (id: string, msg: string) => void; fetcher: Fetcher }) {
@@ -41,8 +43,11 @@ function Row({ d, canPublish, onDone, fetcher }: { d: Draft; canPublish: boolean
     <li className="rounded-lg border border-slate-200 p-4 flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="font-medium text-slate-800">{d.reviewer ?? 'לקוח/ה'}</span>
-        <span className="flex items-center gap-0.5 text-amber-500" aria-label={`${d.rating} כוכבים`}>
-          {Array.from({ length: d.rating }, (_, i) => <Star key={i} size={14} fill="currentColor" />)}
+        <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-0.5 text-amber-500" aria-hidden>
+            {Array.from({ length: 5 }, (_, i) => <Star key={i} size={14} fill={i < d.rating ? 'currentColor' : 'none'} className={i < d.rating ? '' : 'text-slate-300'} />)}
+          </span>
+          <span className="text-xs font-medium text-slate-600">{d.rating} מתוך 5</span>
         </span>
       </div>
       {d.reviewText && <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{d.reviewText}</p>}
@@ -69,7 +74,7 @@ function Row({ d, canPublish, onDone, fetcher }: { d: Draft; canPublish: boolean
   );
 }
 
-export default function ReviewDraftsCard({ onChange, fetcher = authFetch, title, emptyText }: Props = {}) {
+export default function ReviewDraftsCard({ onChange, fetcher = authFetch, title, emptyText, hint }: Props = {}) {
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [note, setNote] = useState('');
   const [canPublish, setCanPublish] = useState(false);
@@ -91,9 +96,9 @@ export default function ReviewDraftsCard({ onChange, fetcher = authFetch, title,
         <h3 className="text-base font-semibold text-slate-900">{title ?? 'ביקורות שמחכות לתשובה'}</h3>
         {(!always || list.length > 0) && (
           <p className="mt-1 text-sm text-slate-500">
-            {canPublish
+            {hint ?? (canPublish
               ? 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. התשובה נשלחת לגוגל רק כשאתם לוחצים על "פרסום", בדיוק בנוסח שבתיבה.'
-              : 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. אפשר לערוך אותה, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.'}
+              : 'הכנו טיוטה לכל ביקורת שלא נענתה כמה ימים. אפשר לערוך אותה, להעתיק ולהדביק בכרטיס העסק שלכם בגוגל.')}
           </p>
         )}
       </div>

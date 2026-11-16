@@ -489,7 +489,7 @@ export default function MarketingLanding() {
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl font-extrabold">מחיר פשוט והוגן</h2>
           <GlowBar />
-          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים — פעם אחת, בלי מנוי.</p>
+          <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים, בלי חיוב אוטומטי.</p>
         </div>
 
         {/* Single page (unchanged, 250₪ one-time) + two one-time page bundles.
@@ -503,7 +503,7 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">{fmt(PRICING.singlePage.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ דף, חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ דף, כולל שנה באוויר</span>
             </div>
             <ul className="mt-6 space-y-3 text-sm flex-1">
               {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', `${PRICING.singlePage.aiCredits} קרדיטי AI במתנה לעריכות`, `עד ${PRICING.singlePage.createAllowance} יצירות דפים כלולות`, 'טופס לידים ואזור אישי', `חידוש שנתי — ${PRICING.renewal.base} ₪ בלבד`].map((f) => (
@@ -520,7 +520,7 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">{fmt(PRICING.bundle5.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ תשלום אחד</span>
             </div>
             <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle5')} לדף — חיסכון של {savingPercent('bundle5')}%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">
@@ -539,7 +539,7 @@ export default function MarketingLanding() {
             <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">{fmt(PRICING.bundle10.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ חד־פעמי</span>
+              <span className="text-sm text-slate-600 mr-1">/ תשלום אחד</span>
             </div>
             <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle10')} לדף — חיסכון של כ-{savingPercent('bundle10')}%</p>
             <ul className="mt-6 space-y-3 text-sm flex-1">

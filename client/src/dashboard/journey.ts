@@ -67,7 +67,7 @@ export function deriveSetup(i: OverviewInput): SetupItem[] {
     { id: 'profile_verified', title: 'אימות הכרטיס', who: 'you', manual: true, view: 'profile', cta: 'איך מאמתים',
       how: 'גוגל מבקשת לוודא שהעסק באמת שלך. בלי אימות הכרטיס מוגבל.', done: t('profile_verified') },
     { id: 'review_link_shared', title: 'בקשת ביקורת ראשונה', who: 'you', manual: true, view: 'reviews', cta: 'לבקשות ביקורת',
-      how: 'שולחים ללקוח מרוצה בקשה לביקורת בלחיצה אחת מהוואטסאפ.', done: t('review_link_shared') },
+      how: 'שולחים ללקוח בקשה לביקורת בלחיצה אחת מהוואטסאפ.', done: t('review_link_shared') },
   ];
 }
 
@@ -117,7 +117,7 @@ export function deriveOngoingNext(i: OverviewInput): NextStep {
   if (i.subscriptionStatus === 'past_due') return pastDue();
   if (i.monthLeads === 0) {
     return {
-      title: 'שלחו את קישור הביקורות ללקוחות מרוצים', urgent: false, view: 'reviews', cta: 'לקישור הביקורות',
+      title: 'שלחו את קישור הביקורות ללקוחות שלכם', urgent: false, view: 'reviews', cta: 'לקישור הביקורות',
       body: 'עדיין אין פניות החודש. ביקורות חדשות משפיעות על המקום שלכם בגוגל מפות, ומביאות פניות.',
     };
   }

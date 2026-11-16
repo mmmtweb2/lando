@@ -105,7 +105,7 @@ export const serverApi: AutopilotApi = {
   googleNumbers: async () => {
     try {
       const b = await call<{ totals?: Partial<GoogleNumbers> }>('/api/seo/gbp/stats');
-      return b.totals ? { calls: Number(b.totals.calls) || 0, directions: Number(b.totals.directions) || 0 } : null;
+      return b.totals ? { calls: Number(b.totals.calls) || 0, directions: Number(b.totals.directions) || 0, impressions: Number(b.totals.impressions) || 0 } : null;
     } catch { return null; }
   },
 };
