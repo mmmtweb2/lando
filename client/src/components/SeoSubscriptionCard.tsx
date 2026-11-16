@@ -101,7 +101,7 @@ export default function SeoSubscriptionCard() {
           <>
             <span className="text-sm text-slate-700">
               {annualPlan
-                ? 'לבטל? הביטול מבטל חידוש בלבד, בלי החזר על חודשים שנותרו. הגישה תימשך עד סוף התקופה ששולמה.'
+                ? 'לבטל? הביטול מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול שלכם לפי דין. הגישה תימשך עד סוף התקופה ששולמה.'
                 : 'לבטל? לא יהיו חיובים נוספים והגישה תימשך עד סוף התקופה ששולמה.'}
             </span>
             <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/cancel')}
