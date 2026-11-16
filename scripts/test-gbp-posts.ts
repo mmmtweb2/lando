@@ -106,7 +106,8 @@ const GOOD = 'נזילה קטנה מתחת לכיור יכולה להפוך תו
       for (const r of rows) {
         if (r.owner_email !== email || r.status !== 'scheduled') continue;
         const stale = !r.approved && r.created_at < new Date(now.getTime() - 14 * 86_400_000).toISOString();
-        if (r.location_name !== location || stale || (keepId && !r.approved && r.id !== keepId)) r.status = 'skipped';
+        const young = r.created_at > new Date(now.getTime() - 48 * 3_600_000).toISOString();
+        if (r.location_name !== location || stale || (keepId && !r.approved && r.id !== keepId && !young)) r.status = 'skipped';
       }
     },
     log: async (_e, kind) => { log.push(kind); },
@@ -171,8 +172,21 @@ const GOOD = 'נזילה קטנה מתחת לכיור יכולה להפוך תו
   // A revoked connection fails at once (the customer has to reconnect).
   rows = []; await run(NOW, deps);
   sendFail = new GbpError('revoked');
+  log.length = 0;
   await run('2026-11-12T10:30:00Z', deps);
   assert.equal(rows[0].status, 'failed');
+  assert.deepEqual(log, ['post_failed'], 'a post that gave up is written in the customer\'s log (audit 16.11)');
+  log.length = 0;
+
+  // Approved on a Sunday: Monday starts a new week, but the promised first post is not replaced.
+  rows = []; sendFail = null; sent.length = 0;
+  await run('2026-11-15T07:00:00Z');                       // Sunday W46, due Tuesday 09:00 Israel
+  res = await run('2026-11-16T07:00:00Z');                 // Monday W47
+  assert.deepEqual([res.planned, rows.length, rows[0].status], [0, 1, 'scheduled'], 'no new week\'s post while the first one waits');
+  res = await run('2026-11-17T07:30:00Z');                 // Tuesday: due
+  assert.deepEqual([res.published, sent[0], rows[0].status], [1, 'p1', 'published'], 'the first post goes out as promised');
+  res = await run('2026-11-17T10:30:00Z');
+  assert.deepEqual([res.planned, rows.length], [1, 2], 'and then the week gets its own post');
 
   // Google accepted the post but our database write failed: the post is NOT sent again.
   rows = []; sendFail = null; sent.length = 0;

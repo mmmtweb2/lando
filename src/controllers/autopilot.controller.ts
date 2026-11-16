@@ -8,6 +8,7 @@ import { buildChildContent, generateChildText } from '../services/seoChildPage';
 import { childUrl, getOwnedParentPage, insertChild, listChildren } from '../services/seoChildStore';
 import { underKitLimit } from './seoContent.controller';
 import { logActivity } from '../services/automation.service';
+import { businessPageId } from '../services/seoPageAddon.service';
 import { TruthError, approve, getTruth, saveEdit, syncFromGoogle, writeBackToGoogle } from '../services/businessTruth.service';
 import { POSTS_MODES, REPLIES_MODES, autopilotEnabled, getAutomation, listActivity, setAutomation } from '../services/automation.service';
 import { PostError, editPost, listPosts, planPostFor, publishNow, skipPost } from '../services/gbpPosts.service';
@@ -135,8 +136,9 @@ export async function getActivity(req: Request, res: Response): Promise<void> {
  * POST /api/seo/truth/landing — "צרו לי דף נחיתה": one press creates a complete draft page from
  * the business card, through the same creation code as the wizard (same limits, same writer, same
  * checks). Nothing is published and nothing is charged here: the customer reads the draft and
- * publishes it from the page itself. An account that already has a page gets that page back
- * instead of a second one.
+ * publishes it from the page itself. An account whose business already has its page (the included
+ * page, or one made here before) gets that page back instead of a second one. Any other page the
+ * account owns (e.g. a Pagey page for another business) is never taken for it.
  */
 export async function createPageFromCard(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
@@ -145,11 +147,13 @@ export async function createPageFromCard(req: Request, res: Response): Promise<v
     const t = await getTruth(email);
     if (!t) { fail(res, new TruthError('not_found')); return; }
     if (!t.readiness.ready) { fail(res, new TruthError('not_ready')); return; }
-    const { data: mine, error } = await supabase.from('landing_pages').select('id, slug, status')
-      .eq('owner_email', email).is('parent_id', null).order('created_at', { ascending: false }).limit(1);
-    if (error) throw new Error(error.message);
-    const have = ((mine ?? []) as { id: string; slug: string; status: string }[])[0];
-    if (have) { res.json({ existing: true, id: have.id, slug: have.slug, status: have.status }); return; }
+    const pageId = await businessPageId(email);
+    if (pageId) {
+      const { data: have, error } = await supabase.from('landing_pages').select('id, slug, status').eq('id', pageId).maybeSingle();
+      if (error) throw new Error(error.message);
+      const h = have as { id: string; slug: string; status: string } | null;
+      if (h) { res.json({ existing: true, id: h.id, slug: h.slug, status: h.status }); return; }
+    }
 
     req.body = landingInputFromCard(t.card);
     (req as { files?: unknown }).files = {};
@@ -164,11 +168,9 @@ export async function createPageFromCard(req: Request, res: Response): Promise<v
 
 // ── Search-phrase pages (docs/mvp-plan.md, C2) ───────────────────────────────
 
-/** The account's landing page (newest root page), which phrase pages hang under. */
+/** The business's own landing page (businessPageId), which phrase pages hang under. Never "the newest page". */
 async function parentOf(email: string) {
-  const { data, error } = await supabase.from('landing_pages').select('id').eq('owner_email', email).is('parent_id', null).order('created_at', { ascending: false }).limit(1);
-  if (error) throw new Error(error.message);
-  const id = ((data ?? []) as { id: string }[])[0]?.id;
+  const id = await businessPageId(email);
   return id ? getOwnedParentPage(email, id) : null;
 }
 

@@ -6,7 +6,7 @@ import { supabase } from '../src/config/supabase';
 import { publishIncludedPage } from '../src/controllers/landing.controller';
 import { cancel, start, subscriptionReturn, getStatus } from '../src/controllers/seoSubscription.controller';
 import { sweepSubscriptions } from '../src/services/seoSubscription.service';
-import { addonPageIds, canUseAddon, reconcileAddonPage } from '../src/services/seoPageAddon.service';
+import { addonPageIds, businessPageId, canUseAddon, reconcileAddonPage } from '../src/services/seoPageAddon.service';
 import { checkRenewEligibility } from '../src/services/renewal.service';
 
 type Row = Record<string, any>;
@@ -45,6 +45,8 @@ let seq = 0;
     upsert: (p: Row, o: { onConflict: string }) => { op = 'upsert'; patch = p; onConflict = o.onConflict.split(','); return q; },
     eq: (k: string, v: unknown) => { f.push(r => r[k] === v); return q; },
     in: (k: string, vs: unknown[]) => { f.push(r => vs.includes(r[k])); return q; },
+    is: (k: string, v: unknown) => { f.push(r => (r[k] ?? null) === v); return q; },
+    like: (k: string, pat: string) => { f.push(r => String(r[k] ?? '').startsWith(pat.replace(/%$/, ''))); return q; },
     maybeSingle: async () => { const r = run(); return { data: r.data?.[0] ?? null, error: r.error }; },
     single: async () => { const r = run(); return { data: r.data?.[0] ?? null, error: r.error }; },
     then: (ok: any) => ok(run()),
@@ -180,6 +182,24 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
   assert.equal((await addonPageIds()).size, 0);
   assert.equal(await reconcileAddonPage(E, { active: false, periodEnd: null }), 'none');
   (supabase as any).from = real;
+
+  // The business's own page (audit 16.11): never "the account's newest page".
+  {
+    const B = 'biz@x.co';
+    db.landing_pages.push({ id: 'pg-other', owner_email: B, status: 'published', parent_id: null });      // a Pagey page for another business
+    assert.equal(await businessPageId(B), null, 'an unrelated page is not the business page');
+    db.landing_pages.push({ id: 'pg-card', owner_email: B, status: 'draft', parent_id: null });
+    db.seo_activity = [{ owner_email: B, kind: 'page_created', ref: 'phrase:pg-x' }, { owner_email: B, kind: 'page_created', ref: 'page:pg-card' }];
+    db.landing_pages.push({ id: 'pg-newer', owner_email: B, status: 'draft', parent_id: null });            // made later, not from the card
+    assert.equal(await businessPageId(B), 'pg-card', 'the page made from the business card');
+    db.seo_activity.push({ owner_email: B, kind: 'page_created', ref: 'page:pg-gone' });
+    assert.equal(await businessPageId(B), 'pg-card', 'a page that no longer exists is skipped');
+    db.seo_activity.push({ owner_email: B, kind: 'page_created', ref: 'page:pg-foreign' });
+    db.landing_pages.push({ id: 'pg-foreign', owner_email: 'someone@x.co', status: 'draft', parent_id: null });
+    assert.equal(await businessPageId(B), 'pg-card', 'a page of another account is never taken');
+    db.seo_addon_pages.push({ email: B, page_id: 'pg-other', subscription_id: null });
+    assert.equal(await businessPageId(B), 'pg-other', 'the claimed included page wins');
+  }
 
   console.log('seo page add-on checks passed');
 })().catch(e => { console.error(e); process.exit(1); });

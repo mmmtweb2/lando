@@ -1,4 +1,4 @@
-import { ClipboardCheck, FileText, MessageSquare, Pencil, PencilLine, RefreshCw, Send, SkipForward, Sparkles, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, FileText, MessageSquare, Pencil, PencilLine, RefreshCw, Send, SkipForward, Sparkles, type LucideIcon } from 'lucide-react';
 import { Skeleton } from '../../ui';
 import { ACTIVITY, ACTIVITY_LABEL, ACTIVITY_LABEL_OTHER } from '../autopilotCopy';
 import { LoadError } from './bits';
@@ -9,7 +9,7 @@ import type { Activity, ActivityKind, Loadable } from './types';
 
 const ICON: Record<ActivityKind, LucideIcon> = {
   card_synced: RefreshCw, card_approved: ClipboardCheck,
-  post_planned: PencilLine, post_published: Send, post_skipped: SkipForward,
+  post_planned: PencilLine, post_published: Send, post_skipped: SkipForward, post_failed: AlertTriangle,
   reply_published: MessageSquare, reply_drafted: Pencil,
   page_created: FileText,
 };

@@ -119,11 +119,45 @@ export async function reconcileAddonPage(email: string, access: AddonAccess): Pr
   return 'unchanged';
 }
 
-/** What the dashboard shows about the included page. */
+/**
+ * THE business's own landing page, the one the one-click page and the search-phrase pages belong to
+ * (audit 16.11: never "the account's newest page", which could be a page for another business):
+ *   1. the included page the account claimed (published as part of the subscription), else
+ *   2. the page created from the business card ("צרו לי דף נחיתה"), recorded in the activity log
+ *      as `page:<id>` when it was created.
+ * Only a root page that still exists and belongs to the account counts. Null: there is none yet.
+ */
+export async function businessPageId(email: string): Promise<string | null> {
+  const owner = email.trim().toLowerCase();
+  const ok = async (id: string | null | undefined): Promise<boolean> => {
+    if (!id) return false;
+    const { data } = await supabase.from('landing_pages').select('id, owner_email, parent_id').eq('id', id).maybeSingle();
+    const p = data as { owner_email: string | null; parent_id: string | null } | null;
+    return !!p && (p.owner_email ?? '').toLowerCase() === owner && !p.parent_id;
+  };
+  try {
+    const claim = await getClaim(owner);
+    if (claim && (await ok(claim.page_id))) return claim.page_id;
+    const { data, error } = await supabase.from('seo_activity').select('ref').eq('owner_email', owner).eq('kind', 'page_created')
+      .order('created_at', { ascending: false }).limit(20);
+    if (error) return null;
+    for (const r of (data ?? []) as { ref: string | null }[]) {
+      if (!r.ref?.startsWith('page:')) continue;   // 'phrase:<id>' rows are search-phrase pages
+      const id = r.ref.slice('page:'.length);
+      if (await ok(id)) return id;
+    }
+  } catch (e) {
+    // Never fails the screen that asked: "no page found" is the safe answer.
+    console.error('[ADDON] business page lookup failed:', e instanceof Error ? e.message.slice(0, 120) : 'unknown');
+  }
+  return null;
+}
+
+/** What the dashboard shows about the included page: the claimed one, else the business's own page. */
 export async function addonPageInfo(email: string): Promise<{ pageId: string | null; status: string | null }> {
-  const claim = await getClaim(email);
-  if (!claim) return { pageId: null, status: null };
-  const { data } = await supabase.from('landing_pages').select('id, status').eq('id', claim.page_id).maybeSingle();
+  const id = await businessPageId(email);
+  if (!id) return { pageId: null, status: null };
+  const { data } = await supabase.from('landing_pages').select('id, status').eq('id', id).maybeSingle();
   const page = data as { id: string; status: string } | null;
   return page ? { pageId: page.id, status: page.status } : { pageId: null, status: null };
 }

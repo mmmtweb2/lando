@@ -15,6 +15,21 @@ import { supabase } from '../config/supabase';
 import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendDraftReminder, DraftReminderKind } from './draft.mailer';
 import { draftOptedOut, draftUnsubUrl } from './draftOptOut';
+import { isEntitled } from './entitlements.service';
+
+/**
+ * Accounts that have the Google-promotion product. Their drafts are never reminded about or deleted
+ * here: their one-click page (and the search-phrase pages under it) is part of the subscription, and a
+ * "your draft will be deleted" mail contradicts "we do everything for you" (audit 16.11).
+ * Null when it cannot be read: the sweep then does nothing rather than risk a subscriber's page.
+ */
+export async function promotionAccounts(now: Date): Promise<Set<string> | null> {
+  const { data, error } = await supabase.from('user_products').select('email, status, current_period_end').eq('product', 'seo_autopilot');
+  if (error) { console.error('[DRAFTS] product read failed, skipping this sweep:', error.message); return null; }
+  return new Set(((data ?? []) as { email: string; status: string; current_period_end: string | null }[])
+    .filter((r) => isEntitled(r, now)).map((r) => r.email.trim().toLowerCase()));
+}
+const isPromo = (promo: Set<string>, owner: string | null) => !!owner && promo.has(owner.trim().toLowerCase());
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BATCH_LIMIT = 200;
@@ -37,7 +52,7 @@ interface DraftRow {
   draft_warning_30d_at: string | null;
 }
 
-export async function sendDueDraftReminders(now: Date): Promise<number> {
+export async function sendDueDraftReminders(now: Date, promo: Set<string> = new Set()): Promise<number> {
   let sent = 0;
 
   for (let i = 0; i < STAGES.length; i++) {
@@ -65,6 +80,7 @@ export async function sendDueDraftReminders(now: Date): Promise<number> {
     const optedOut = await draftOptedOut([...new Set(rows.map((r) => r.owner_email).filter((e): e is string => !!e))]);
 
     for (const row of rows) {
+      if (isPromo(promo, row.owner_email)) continue;
       const stamp = new Date().toISOString();
       const marks: Record<string, string> = { [column]: stamp };
       for (const c of lessUrgent) {
@@ -101,7 +117,7 @@ export async function sendDueDraftReminders(now: Date): Promise<number> {
   return sent;
 }
 
-async function deleteAbandonedDrafts(now: Date): Promise<number> {
+async function deleteAbandonedDrafts(now: Date, promo: Set<string>): Promise<number> {
   const cutoff = new Date(now.getTime() - DRAFT_DELETE_DAYS * DAY_MS);
 
   const { data, error } = await supabase
@@ -119,6 +135,7 @@ async function deleteAbandonedDrafts(now: Date): Promise<number> {
 
   let deleted = 0;
   for (const row of (data ?? []) as { id: string; slug: string; owner_email: string | null }[]) {
+    if (isPromo(promo, row.owner_email)) continue;
     // Leads first — leads_landing_page_id_fkey has no ON DELETE clause.
     const leadsErr = await deleteLeadsForPageTree(row.id);
     if (leadsErr) {
@@ -148,10 +165,11 @@ async function deleteAbandonedDrafts(now: Date): Promise<number> {
   return deleted;
 }
 
-export async function runDraftSweep(): Promise<{ reminded: number; deleted: number }> {
-  const now = new Date();
-  const reminded = await sendDueDraftReminders(now);
-  const deleted = await deleteAbandonedDrafts(now);
+export async function runDraftSweep(now = new Date()): Promise<{ reminded: number; deleted: number }> {
+  const promo = await promotionAccounts(now);
+  if (!promo) return { reminded: 0, deleted: 0 };
+  const reminded = await sendDueDraftReminders(now, promo);
+  const deleted = await deleteAbandonedDrafts(now, promo);
   if (reminded || deleted) console.log('[DRAFTS] draft sweep done', { reminded, deleted });
   return { reminded, deleted };
 }
