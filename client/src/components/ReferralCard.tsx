@@ -34,8 +34,8 @@ export default function ReferralCard({ user }: Props) {
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900">הזמנת חברים</h3>
           <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">
-            על כל חבר שיירשם ויפרסם דף ראשון דרך הלינק שלך, תקבל{' '}
-            <span className="font-semibold text-slate-900">10 קרדיטים</span> לארנק שלך,
+            על כל חבר שיירשם ויפרסם דף ראשון דרך הקישור שלכם, תקבלו{' '}
+            <span className="font-semibold text-slate-900">10 קרדיטים</span> לארנק שלכם,
             והוא יקבל <span className="font-semibold text-slate-900">5 קרדיטים</span> משלו
           </p>
         </div>
@@ -57,14 +57,14 @@ export default function ReferralCard({ user }: Props) {
           }`}
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? 'הקישור הועתק' : 'העתק קישור'}
+          {copied ? 'הקישור הועתק' : 'העתקת קישור'}
         </button>
         <button
           onClick={shareWhatsApp}
           className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
         >
           <MessageCircle size={14} className="text-[#25D366]" />
-          שיתוף ב-WhatsApp
+          שיתוף בוואטסאפ
         </button>
       </div>
     </section>

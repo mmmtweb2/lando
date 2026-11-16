@@ -45,6 +45,7 @@ export function HomeHero({ auto, numbers }: { auto: Autopilot; numbers: HomeNumb
       <div className="dv4-hero-text">
         <h2 id="dv4-hero"><span className="dv4-pulse" aria-hidden />{HOME.heroTitle}</h2>
         {at && <p>{HOME.heroSince(shortDate(at))}</p>}
+        {numbers.impressions !== null && <p>{HOME.heroSeen(numbers.impressions)}</p>}
       </div>
       <p className="dv4-hero-num">
         <strong className="tabular-nums">{numbers.total}</strong>

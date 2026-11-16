@@ -173,7 +173,7 @@ function BalanceCard({ plan, onBuyBundle }: { plan: AccountStatus; onBuyBundle: 
           <p className="mt-2 text-sm leading-relaxed text-slate-500 max-w-xl">
             {hasBalance
               ? 'כל פרסום של דף מנכה דף אחד מהיתרה. היתרה אינה פגה ואינה מתחדשת חודשית — מה שרכשתם נשאר עד שתשתמשו בו.'
-              : `פרסום דף בודד עולה ₪${PRICING.singlePage.price}, חד־פעמי. בחבילת דפים המחיר לדף יורד ל־₪${perPage('bundle5')} (${PRICING.bundle5.pages} דפים) או ₪${perPage('bundle10')} (${PRICING.bundle10.pages} דפים).`}
+              : `פרסום דף בודד עולה ₪${PRICING.singlePage.price} וכולל שנה באוויר, בלי חיוב אוטומטי (חידוש לשנה נוספת ₪${PRICING.renewal.base}, רק אם תבחרו). בחבילת דפים המחיר לדף יורד ל־₪${perPage('bundle5')} (${PRICING.bundle5.pages} דפים) או ₪${perPage('bundle10')} (${PRICING.bundle10.pages} דפים).`}
           </p>
         </div>
         <button onClick={onBuyBundle} className={`${btnSecondary} flex-shrink-0`}>
@@ -797,7 +797,7 @@ export default function Dashboard() {
               </div>
               <div className="p-6 flex flex-col gap-4">
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3.5 text-sm text-red-700 leading-relaxed">
-                  פעולה זו תמחק לצמיתות את כל הדפים שלכם ({pages.length}), את כל הלידים שהתקבלו דרכם, ואת כל היתרה הבלתי מנוצלת (קרדיטים ודפים לתשלום). <span className="font-semibold">לא ניתן לבטל או לשחזר.</span> תשלומים וחשבוניות עבר נשארים ברשומות שלנו לצורכי הנהלת חשבונות בלבד.
+                  פעולה זו תמחק לצמיתות את כל הדפים שלכם ({pages.length}), את כל הלידים שהתקבלו דרכם, ואת כל היתרה הבלתי מנוצלת (קרדיטים ודפים לתשלום). אם יש לכם מנוי לקידום בגוגל, הוא יבוטל והחיבור לכרטיס העסק ינותק. <span className="font-semibold">לא ניתן לבטל או לשחזר.</span> תשלומים וחשבוניות עבר נשארים ברשומות שלנו לצורכי הנהלת חשבונות בלבד.
                 </div>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-sm text-slate-600">
@@ -894,8 +894,8 @@ export default function Dashboard() {
               </div>
               <div className="p-6 flex flex-col gap-4">
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  דף בודד עולה ₪{singlePagePrice}, חד־פעמי. חבילת דפים היא רכישה חד־פעמית שמוזילה את המחיר לדף —
-                  בלי מנוי, בלי חידוש, בלי תאריך תפוגה. היתרה נשארת בחשבון עד שתשתמשו בה.
+                  דף בודד עולה ₪{singlePagePrice} וכולל שנה באוויר. חבילת דפים היא תשלום אחד שמוזיל את המחיר לדף,
+                  בלי חיוב אוטומטי. יתרת הדפים לא פגה ונשארת בחשבון עד שתשתמשו בה; כל דף שמתפרסם נשאר באוויר שנה, ואפשר לחדש אותו.
                 </p>
                 {plan && plan.pageCredits > 0 && (
                   <p className="text-sm rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2.5 leading-relaxed">
@@ -922,7 +922,7 @@ export default function Dashboard() {
                             ) : (
                               <span className="text-xl font-semibold tracking-tight text-slate-900">₪{b.price.toLocaleString()}</span>
                             )}
-                            <span className="text-xs text-slate-400"> חד־פעמי</span>
+                            <span className="text-xs text-slate-400"> תשלום אחד</span>
                           </span>
                         </div>
                         <p className="text-xs font-medium text-emerald-700 tabular-nums">₪{perPage} לדף — חיסכון של {savePct}%</p>
@@ -1018,7 +1018,7 @@ export default function Dashboard() {
                   <div className="flex flex-col gap-0.5 min-w-0">
                     <span className="text-sm font-medium text-slate-900">נתקלתם בבעיה? יש שאלה?</span>
                     <span className="text-xs text-slate-500 leading-relaxed">
-                      אנחנו כאן בשבילכם — אל תהססו לפנות בכל נושא, קטן כגדול.
+                      אנחנו כאן בשבילכם. אפשר לפנות בכל נושא, קטן כגדול.
                     </span>
                   </div>
                 </div>
@@ -1035,7 +1035,7 @@ export default function Dashboard() {
                     rel="noopener noreferrer"
                     className={btnSecondary}
                   >
-                    <MessageCircle size={14} className="text-slate-400" /> WhatsApp
+                    <MessageCircle size={14} className="text-slate-400" /> וואטסאפ
                   </a>
                 </div>
               </div>
@@ -1045,7 +1045,7 @@ export default function Dashboard() {
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium text-red-700">מחיקת חשבון</span>
                   <span className="text-xs text-red-500/80 leading-relaxed max-w-md">
-                    מוחק לצמיתות את כל הדפים, הלידים והיתרה שלכם (קרדיטים ודפים לא מנוצלים). לא ניתן לשחזר. חשבוניות ותשלומי עבר נשמרים לצורכי הנהלת חשבונות.
+                    מוחק לצמיתות את כל הדפים, הלידים והיתרה שלכם (קרדיטים ודפים לא מנוצלים). אם יש לכם מנוי לקידום בגוגל, הוא יבוטל והחיבור לכרטיס העסק ינותק. לא ניתן לשחזר. חשבוניות ותשלומי עבר נשמרים לצורכי הנהלת חשבונות.
                   </span>
                 </div>
                 <button

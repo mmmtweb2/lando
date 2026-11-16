@@ -116,6 +116,7 @@
 .dv3-chip-none { background: var(--v3-mint); color: var(--v3-mint-ink); border-color: var(--v3-mint-line); }
 .dv3-chip-approve, .dv3-chip-one { background: var(--tint); color: var(--accent-strong); border-color: #C9D6F6; }
 .dv3-chip-need { background: var(--blue); color: #fff; }
+.dv3-chip-working { background: #F1F3F7; color: #475069; border-color: #DCE0EA; }
 
 /* ---------- setup layout: rail beside the task ---------- */
 .dv3-setup { display: flex; flex-direction: column; }

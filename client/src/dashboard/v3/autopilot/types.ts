@@ -53,7 +53,7 @@ export interface PhraseIdea { phrase: string; service: string; area: string }
 export interface Phrases { hasPage: boolean; parentPublished: boolean; pages: PhrasePage[]; ideas: PhraseIdea[]; cap: number; left: number }
 
 /** Clicks from the Google listing in the last 30 days (GET /api/seo/gbp/stats); null when Google has nothing to give. */
-export interface GoogleNumbers { calls: number; directions: number }
+export interface GoogleNumbers { calls: number; directions: number; /** times the listing was shown in Search and Maps; 0 when Google gave none */ impressions?: number }
 
 /** "צרו לי דף נחיתה" (POST /api/seo/truth/landing): the new draft, or the page the account already has. */
 export type PageStatus = 'draft' | 'published' | 'frozen';

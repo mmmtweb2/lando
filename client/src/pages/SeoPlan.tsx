@@ -4,13 +4,13 @@ import { ArrowLeft } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { LandoMark } from '../components/Lando';
-import { PRICING, fmt } from '../config/pricing';
+import { fmt } from '../config/pricing';
 import { cycleUnit, pageLine, pickPlan, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
 import '../ui/ui-v3.css';
 
 // /seo-plan — where a customer picks and starts a plan of the Google-promotion product:
-// monthly or annual, with or without an included landing page (4 plans, docs/billing-spec.md §1).
-// Everything shown comes from the server (plan name, the four plans and their prices, whether
+// monthly or annual; the landing page is included in both (12.11.2026).
+// Everything shown comes from the server (plan name, the plans and their prices, whether
 // selling is open); no price is typed here. Nothing here can charge anyone: the button only asks
 // the server to open SUMIT's payment page for the chosen plan id, and the subscription is
 // activated by the server after it has verified the payment with SUMIT.
@@ -140,11 +140,11 @@ export default function SeoPlan() {
             <p className="uv3-sum-price">₪{fmt(price)} <small>{cycleUnit(cycle)}, כולל מע״מ</small></p>
             {annual && <p className="uv3-opt-sub" style={{ marginTop: 4 }}>זה בערך <bdi>₪{fmt(Math.round(plan.pricePerMonth))}</bdi> לחודש. משלמים על 10 חודשים במקום 12.</p>}
             <ul className="uv3-checks">
-              <li>בדיקת כרטיס העסק שלכם בגוגל מפות והשוואה לעסקים דומים באזור.</li>
-              <li>קישור וקוד QR לביקורות, וקוד להצגת הביקורות באתר.</li>
-              <li>פוסט שבועי בכרטיס העסק ותשובות לביקורות, שאנחנו כותבים ומפרסמים בשבילכם.</li>
-              <li>דף נחיתה לעסק ודפים לחיפושים של לקוחות באזור שלכם, כלולים במנוי כל עוד הוא פעיל.</li>
-              <li>דוח חודשי: מה עשינו, וכמה פניות הגיעו.</li>
+              <li>כל שבוע אנחנו כותבים ומפרסמים פוסט בכרטיס העסק שלכם.</li>
+              <li>עונים בשבילכם לביקורות טובות; לביקורת שלילית מכינים טיוטה לאישורכם.</li>
+              <li>דף נחיתה ודפים לחיפושים באזור שלכם, כלולים במנוי כל עוד הוא פעיל.</li>
+              <li>דוח חודשי: מה עשינו ואיך הגיעו הפניות.</li>
+              <li>ערכה לבקשת ביקורות (קישור, QR והודעת וואטסאפ), ובדיקה של הכרטיס מול עסקים דומים באזור.</li>
             </ul>
           </div>
         )}
@@ -152,13 +152,13 @@ export default function SeoPlan() {
         <div className="uv3-terms">
           {annual ? (
             <>
-              <p>חיוב אחד לתקופה של 12 חודשים. המנוי לא מתחדש אוטומטית ופג בתאריך הסיום שלו; נשלח תזכורת כ-14 יום לפני כן. ביטול מנוי שנתי מבטל חידוש בלבד, בלי החזר על חודשים שנותרו, והגישה נשארת עד סוף התקופה ששולמה.</p>
+              <p>חיוב אחד לתקופה של 12 חודשים. המנוי לא מתחדש אוטומטית ופג בתאריך הסיום שלו; נשלח תזכורת כ-14 יום לפני כן. ביטול מנוי שנתי מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול לפי דין. הגישה נשארת עד סוף התקופה ששולמה.</p>
             </>
           ) : (
             <p>המנוי מתחדש אוטומטית בכל חודש. אפשר לבטל בכל רגע מהדשבורד, והגישה נשארת עד סוף התקופה ששולמה.</p>
           )}
           {withPage && (
-            <p style={{ marginTop: 6 }}>ביטול המנוי מקפיא את הדף (הוא יורד מהאוויר, והתוכן והפניות נשמרים) עד שתחדשו. דף נוסף נקנה בנפרד, במחיר דף בודד (<bdi>₪{fmt(PRICING.singlePage.price)}</bdi>).</p>
+            <p style={{ marginTop: 6 }}>דף הנחיתה של העסק כלול. כשהמנוי מסתיים הדף יורד מהאוויר, והתוכן והפניות נשמרים עד שתחדשו. דפי נחיתה נוספים, למבצע או לשירות אחר, נקנים בנפרד.</p>
           )}
           <p style={{ marginTop: 6 }}>התשלום מתבצע בעמוד מאובטח של SUMIT. פרטים מלאים ב<Link to="/terms" style={{ textDecoration: 'underline' }}>תנאי השימוש</Link>.</p>
         </div>
@@ -166,7 +166,7 @@ export default function SeoPlan() {
         {annual && (
           <label className="uv3-ack">
             <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />
-            <span>קראתי והבנתי: ביטול מנוי שנתי מבטל חידוש בלבד, ואין החזר על חודשים שנותרו.</span>
+            <span>קראתי והבנתי: ביטול מנוי שנתי מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול לפי דין.</span>
           </label>
         )}
 
@@ -176,8 +176,10 @@ export default function SeoPlan() {
             <button type="button" className="uv3-btn uv3-btn-block" disabled={busy || !plan || (annual && !ack)} onClick={() => start('go')}>
               {busy ? 'פותחים תשלום…' : sub ? 'חידוש המנוי' : `מעבר לתשלום${plan ? ` · ₪${fmt(plan.price)}` : ''}`}
             </button>
-            <button type="button" className="uv3-btn uv3-btn-ghost uv3-btn-block" style={{ marginTop: 10 }} disabled={busy || !plan || (annual && !ack)} onClick={() => start('copy')}>
-              העתקת קישור לתשלום
+            {/* Paying from another device: a quiet text link, not a second big button next to the payment. */}
+            <button type="button" disabled={busy || !plan || (annual && !ack)} onClick={() => start('copy')}
+              style={{ marginTop: 10, minHeight: 44, width: '100%', background: 'none', border: 0, color: 'var(--u-muted)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>
+              רוצים לשלם ממכשיר אחר? העתקת קישור לתשלום
             </button>
             {payLink && (
               <div className="uv3-terms" role="status">
@@ -203,7 +205,7 @@ export default function SeoPlan() {
       <main className="uv3-main">
         <header className="uv3-hero">
           <h1>{plans?.planName ?? st?.planName ?? 'קידום העסק בגוגל'}</h1>
-          <p className="uv3-sub">בוחרים תקופה ואם רוצים דף נחיתה, ורואים מיד כמה זה עולה.</p>
+          <p className="uv3-sub">מנוי אחד, חודשי או שנתי. דף הנחיתה כלול.</p>
         </header>
         <div className="uv3-card">{body}</div>
         <nav className="uv3-nav" aria-label="מסמכים משפטיים">

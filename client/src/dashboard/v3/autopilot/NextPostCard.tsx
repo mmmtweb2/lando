@@ -1,4 +1,5 @@
 import { useCallback, useId, useState } from 'react';
+import { Wrench } from 'lucide-react';
 import { Skeleton } from '../../ui';
 import { NeedChip } from '../parts';
 import { POST } from '../autopilotCopy';
@@ -16,7 +17,9 @@ const MAX_POST = 1500;
 const CLAMP_FROM = 150;
 
 /** When the post really goes out: the server's `expectedAt` when it sent one, else the end of the edit window. */
-function whenLine(p: Post, a: Automation | null): string {
+function whenLine(p: Post, a: Automation | null, reconnect: boolean): string {
+  // The Google connection is gone: nothing can go out until the owner reconnects, whatever the schedule says.
+  if (reconnect) return POST.whenReconnect;
   if (p.problem === 'quota_pending') return POST.whenQuota;
   if (p.problem === 'failed') return POST.whenFailed;
   if (a && !a.live) return POST.whenNotLive;
@@ -93,18 +96,23 @@ export default function NextPostCard({ auto, approved, title = POST.title }: { a
   const next = [...list].filter((p) => p.status === 'scheduled').sort((x, y) => y.createdAt.localeCompare(x.createdAt))[0] ?? null;
   const waits = !!next && a?.postsMode === 'approve' && a.live;
   const noneText = !approved ? POST.noneUnapproved : a?.postsMode === 'off' ? POST.noneOff : POST.none;
+  const reconnect = !!auto.gbp?.needsReconnect;
+  // A post Google refused for now is our job, not the owner's: a neutral tag, not "nothing needed" in green.
+  const working = !!next && !reconnect && (next.problem === 'failed' || next.problem === 'quota_pending');
 
   return (
     <section className="dv4-card dv4-post" aria-labelledby="dv3-post">
       <div className="dv4-card-head">
         <h3 id="dv3-post" tabIndex={-1}>{title}</h3>
-        {posts.status === 'ok' && <NeedChip kind={waits ? 'approve' : 'none'} />}
+        {posts.status === 'ok' && (reconnect && next ? <NeedChip kind="need" />
+          : working ? <span className="dv3-chip dv3-chip-working"><Wrench size={15} strokeWidth={2.6} aria-hidden />{POST.chipWorking}</span>
+          : <NeedChip kind={waits ? 'approve' : 'none'} />)}
       </div>
       {posts.status === 'loading' && <div aria-busy="true" aria-label="טוען"><Skeleton className="h-32 !rounded-[16px]" /></div>}
       {posts.status === 'error' && <LoadError text={POST.error} onRetry={auto.reload} />}
       {posts.status === 'ok' && next && (
         <>
-          <p className="dv4-post-when"><strong>{whenLine(next, a)}</strong> <span>{POST.topic(next.topic)}{next.edited ? `. ${POST.edited}.` : ''}</span></p>
+          <p className="dv4-post-when"><strong>{whenLine(next, a, reconnect)}</strong> <span>{POST.topic(next.topic)}{next.edited ? `. ${POST.edited}.` : ''}</span></p>
           <PostText key={next.id + next.body} post={next} />
           <Actions key={`a${next.id}${next.body}`} post={next} auto={auto} waits={waits} />
         </>

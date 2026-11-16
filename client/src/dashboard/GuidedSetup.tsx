@@ -253,7 +253,7 @@ export function StepBody({ id, input, onSaved, onScore, onAutoDone, onSent }: {
     case 'review_link_shared':
       return (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-[var(--muted)]">מוסיפים לקוח מרוצה ולוחצים ״שליחה בוואטסאפ״. ההודעה יוצאת מהוואטסאפ שלך. שלחו רק ללקוחות שהיו אצלך בפועל.</p>
+          <p className="text-sm text-[var(--muted)]">מוסיפים לקוח ולוחצים ״שליחה בוואטסאפ״. ההודעה יוצאת מהוואטסאפ שלכם. שלחו לכל לקוח שהיה אצלכם בפועל, לא רק למי שהיה מרוצה.</p>
           <ReviewRequestsCard onSent={onSent} />
         </div>
       );

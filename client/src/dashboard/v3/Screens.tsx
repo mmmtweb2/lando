@@ -20,6 +20,7 @@ import { ViewShell } from './Views';
 import { VIEW_LABEL, type View } from '../journey';
 import { VIEW_HINT } from './copy';
 import type { HomeMode } from './autopilot/mode';
+import PastDueBanner from '../PastDueBanner';
 
 /* ---------- loading: the shape of the new home (summary + rows), not a spinner ---------- */
 
@@ -196,15 +197,7 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
   return (
     <div className="dv3-overview">
       <DoneFlash message={flash} />
-      {pastDue && (
-        <section className="dv3-pastdue" role="alert">
-          <div>
-            <p><strong>התשלום החודשי לא עבר</strong></p>
-            <p>כדי שהקידום ימשיך בלי הפרעה, כדאי לעדכן את אמצעי התשלום בימים הקרובים.</p>
-          </div>
-          <button type="button" className="dv3-btn" onClick={goPlan}>לפרטי המנוי <ArrowLeft size={16} aria-hidden /></button>
-        </section>
-      )}
+      {pastDue && <PastDueBanner className="dv3-pastdue" buttonClass="dv3-btn" onDetails={goPlan} />}
       {mode === 'loading' && (
         <div className="flex flex-col gap-4" aria-busy="true" aria-label="טוען">
           <Skeleton className="h-24 !rounded-[24px]" /><Skeleton className="h-44 !rounded-[24px]" /><Skeleton className="h-44 !rounded-[24px]" />
@@ -224,7 +217,7 @@ export function OverviewV3({ tasks, summary, input, email, flash, pastDue, goPla
           <Leads summary={summary} />
         </>
       )}
-      {(mode === 'approved' || mode === 'pending') && home}
+      {(mode === 'approved' || mode === 'pending' || mode === 'error') && home}
       {mode === 'legacy' && <button type="button" className="dv3-linkbtn" onClick={onRetry}>רענון הנתונים</button>}
     </div>
   );

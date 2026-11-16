@@ -28,8 +28,8 @@ export interface MonthlyCopy {
 export const MONTHLY_COPY: Record<MonthlyId, MonthlyCopy> = {
   review_requests: {
     id: 'review_requests', title: 'שלוש בקשות ביקורת', who: 'you', auto: true, minutes: 5, cta: 'סיימתי',
-    what: `שולחים בקשת ביקורת לשלושה לקוחות מרוצים מהחודש, בלחיצה מהוואטסאפ.`,
-    why: 'ביקורות חדשות מראות ללקוחות שהעסק פעיל ושמרוצים ממנו.',
+    what: `שולחים בקשת ביקורת לשלושה לקוחות מהחודש, בלחיצה מהוואטסאפ.`,
+    why: 'ביקורות חדשות מראות ללקוחות שהעסק פעיל.',
   },
   review_replies: {
     id: 'review_replies', title: 'מענה לביקורות שמחכות', who: 'you', auto: true, minutes: 5, cta: 'סיימתי',

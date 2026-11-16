@@ -4,6 +4,7 @@ import { LandoBot } from '../components/Lando';
 import type { LeadsSummary } from '../components/LeadsTable';
 import { Check, SectionTitle, Segments, Skeleton, SoonChip, Who } from './ui';
 import MonthlyTask from './MonthlyTask';
+import PastDueBanner from './PastDueBanner';
 import WhatPromotes from './WhatPromotes';
 import GoogleDraftLink from './GoogleDraftLink';
 import type { Monthly } from './useMonthly';
@@ -37,15 +38,7 @@ export function OverviewSkeleton() {
 }
 
 function PastDue({ go }: { go: (v: View) => void }) {
-  return (
-    <section className="dv2-card-flat flex flex-wrap items-center justify-between gap-3 border-[#F3B7B0] bg-[#FFF4F2] p-4" role="alert">
-      <div>
-        <p className="font-bold text-[var(--warn-ink)]">התשלום החודשי לא עבר</p>
-        <p className="text-sm text-[var(--ink)]">כדי שהקידום ימשיך בלי הפרעה, כדאי לעדכן את אמצעי התשלום בימים הקרובים.</p>
-      </div>
-      <button type="button" className="dv2-btn" onClick={() => go('plan')}>לפרטי המנוי <ArrowLeft size={16} aria-hidden /></button>
-    </section>
-  );
+  return <PastDueBanner className="dv2-card-flat flex flex-wrap items-center justify-between gap-3 border-[#F3B7B0] bg-[#FFF4F2] p-4 text-sm text-[var(--ink)]" buttonClass="dv2-btn" onDetails={() => go('plan')} />;
 }
 
 /* ---------- Stage 1: the setup checklist ---------- */

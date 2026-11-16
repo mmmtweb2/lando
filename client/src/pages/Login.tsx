@@ -137,7 +137,7 @@ export default function Login() {
       >
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-slate-800">Pagey ✦</h1>
-          <p className="text-sm text-slate-500 mt-1">בונה דפי נחיתה חכם</p>
+          <p className="text-sm text-slate-500 mt-1">דפי נחיתה וקידום העסק בגוגל</p>
         </div>
 
         <div className="rounded-2xl bg-white shadow-lg shadow-slate-200/60 px-6 py-8">
@@ -291,11 +291,11 @@ export default function Login() {
                   <div className="mt-4 text-center text-sm text-slate-500">
                     {mode === 'signin' ? (
                       <button onClick={() => { setMode('signup'); setError(null); }} className="text-[#2E63F6] hover:text-[#0E2148] transition">
-                        אין לכם חשבון? הרשמה →
+                        אין לכם חשבון? הרשמה ←
                       </button>
                     ) : (
                       <button onClick={() => { setMode('signin'); setError(null); }} className="text-[#2E63F6] hover:text-[#0E2148] transition">
-                        כבר יש לכם חשבון? התחברות →
+                        כבר יש לכם חשבון? התחברות ←
                       </button>
                     )}
                   </div>

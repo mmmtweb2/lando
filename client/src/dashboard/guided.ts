@@ -58,7 +58,7 @@ export const GUIDED_COPY: Record<GuidedId, StepCopy> = {
   },
   review_link_shared: {
     id: 'review_link_shared', skippable: true, title: 'בקשת ביקורת ראשונה', who: 'you', auto: false, minutes: 3, cta: 'סיימתי',
-    what: 'שולחים ללקוח מרוצה בקשה לביקורת, בלחיצה אחת מהוואטסאפ שלך.',
+    what: 'שולחים ללקוח בקשה לביקורת, בלחיצה אחת מהוואטסאפ שלכם.',
     why: 'ביקורות אמיתיות הן מה שלקוחות חדשים קוראים לפני שהם בוחרים עסק.',
   },
 };

@@ -27,7 +27,7 @@ import SiteScreen from './autopilot/SiteScreen';
 import ActivityFeed from './autopilot/ActivityFeed';
 import { PostHistory } from './autopilot/NextPostCard';
 import { AutoHome, FirstStep } from './autopilot/AutoHome';
-import { SampleBanner } from './autopilot/bits';
+import { LoadError, SampleBanner } from './autopilot/bits';
 import { homeMode, setupStep } from './autopilot/mode';
 import { sampleFlag, sampleItems, samplePendingReplies, sampleSummary } from './autopilot/sample';
 import ShortSetup from './autopilot/ShortSetup';
@@ -35,7 +35,7 @@ import ReviewKit from './autopilot/ReviewKit';
 import ReviewsEmbed from './autopilot/ReviewsEmbed';
 import { sampleReviewsFetcher } from './autopilot/sampleReviews';
 import { clearFinish, readFinish, writeFinish } from './autopilot/finishFlag';
-import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS, KIT, REVIEWS_AREA } from './autopilotCopy';
+import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS, HOME, KIT, REVIEWS_AREA } from './autopilotCopy';
 import { useAutopilot } from './autopilot/useAutopilot';
 import type { AreaId, PromoArea, PromoMode } from '../shell/areas';
 import type { PromoBridge } from '../shell/bridge';
@@ -140,7 +140,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const hmode = homeMode(auto);
-  const isAuto = hmode === 'pending' || hmode === 'approved';
+  const isAuto = hmode === 'pending' || hmode === 'approved' || hmode === 'error';
   // The automatic product has its own short setup (three steps: connect, approve, "from here we work").
   // It runs until the details are approved, and its last screen shows right after the approval and stays
   // until the customer presses "לבית": it is remembered per account in this browser, so a reload keeps it.
@@ -271,6 +271,8 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
                       onRefresh={() => { data.reload(); auto.reload(); }}
                     />
                   </>
+                ) : hmode === 'error' ? (
+                  <LoadError text={HOME.loadError} onRetry={() => { data.reload(); auto.reload(); }} />
                 ) : (
                   <>
                     {auto.preview && <SampleBanner />}
@@ -301,7 +303,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
                 <>
                   {/* one order, nothing twice: what waits for you, asking for reviews, the widget */}
                   {auto.preview && <SampleBanner />}
-                  <div className="dv4-touch"><ReviewDraftsCard fetcher={reviewsFetch} title={REVIEWS_AREA.draftsTitle} emptyText={REVIEWS_AREA.draftsEmpty} /></div>
+                  <div className="dv4-touch"><ReviewDraftsCard fetcher={reviewsFetch} title={REVIEWS_AREA.draftsTitle} emptyText={REVIEWS_AREA.draftsEmpty} hint={REVIEWS_AREA.draftsHint} /></div>
                   <ReviewKit
                     auto={auto} onBusiness={() => go('business')}
                     personal={<ReviewRequestsCard fetcher={reviewsFetch} embedded={{ title: KIT.personalTitle, lead: KIT.personalLead }} />}
