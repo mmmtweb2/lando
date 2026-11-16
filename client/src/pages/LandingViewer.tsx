@@ -3915,6 +3915,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     }
   }
 
+  // Shown under every lead form (privacy audit 16.11): who gets the details and that they are optional.
+  const leadPrivacyNote = `הפרטים נמסרים ל${business_name || 'בעל העסק'} לצורך חזרה אליכם, ונשמרים במערכת Pagey המשמשת אותו. מסירתם אינה חובה.`;
+
   function renderLeadForm(v3 = false) {
     // Design V3 (Pinkas): same state and submit handler, drawn in the page's paper and ink (landingV3.css).
     if (v3) {
@@ -3952,6 +3955,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                 </div>
                 {leadError && <p className="lp3-lead-err" role="alert">{leadError}</p>}
                 <button type="submit" className="lp3-submit" disabled={isDraft || leadSubmitting}>{leadSubmitting ? 'שולח…' : 'שליחה'}</button>
+                <p className="lp3-lead-privacy" style={{ fontSize: 13, opacity: 0.75, marginTop: 8 }}>{leadPrivacyNote}</p>
               </form>
             </>
           )}
@@ -4042,6 +4046,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                     </>
                   ) : 'שליחה'}
                 </button>
+                <p className="text-xs text-slate-500 leading-relaxed mt-2">{leadPrivacyNote}</p>
               </form>
             </>
           )}

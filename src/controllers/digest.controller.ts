@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { setDraftReminders, verifyDraftUnsub } from '../services/draftOptOut';
 import { buildDigest, digestEnabled, gatherStats, realDeps, setDigestPref, unsubUrl, verifyUnsub } from '../services/digest.service';
 
 const page = (title: string, body: string) => `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title>
@@ -22,6 +23,27 @@ export async function unsubscribeApply(req: Request, res: Response): Promise<voi
     res.send(page('בוטל', `<h2>בוצע</h2><p>לא נשלח אליכם עוד סיכום חודשי.</p><p><a href="${APP}/dashboard">לדשבורד</a></p>`));
   } catch (e) {
     console.error('[DIGEST] unsubscribe failed:', e instanceof Error ? e.message : e);
+    res.status(503).send(page('שגיאה', '<h2>לא הצלחנו לעדכן כרגע</h2><p>נסו שוב בעוד כמה דקות.</p>'));
+  }
+}
+
+/** GET /api/users/email/drafts/unsubscribe?t=… — confirm page for stopping draft reminders (changes nothing). */
+export function draftUnsubscribePage(req: Request, res: Response): void {
+  res.setHeader('Cache-Control', 'no-store');
+  const t = typeof req.query.t === 'string' ? req.query.t : '';
+  if (!verifyDraftUnsub(t)) { res.status(400).send(page('קישור לא תקין', '<h2>הקישור לא תקין</h2><p>אפשר לפנות אלינו מכל מקום באתר.</p>')); return; }
+  res.send(page('הפסקת תזכורות', `<h2>להפסיק לקבל תזכורות על דפים שלא פורסמו?</h2><form method="post" action="/api/users/email/drafts/unsubscribe?t=${encodeURIComponent(t)}"><button type="submit">כן, להפסיק</button></form>`));
+}
+
+/** POST /api/users/email/drafts/unsubscribe?t=… — the button above, and mail clients' one-click unsubscribe. */
+export async function draftUnsubscribeApply(req: Request, res: Response): Promise<void> {
+  const email = verifyDraftUnsub(typeof req.query.t === 'string' ? req.query.t : '');
+  if (!email) { res.status(400).send(page('קישור לא תקין', '<h2>הקישור לא תקין</h2>')); return; }
+  try {
+    await setDraftReminders(email, false);
+    res.send(page('בוטל', `<h2>בוצע</h2><p>לא נשלח אליכם עוד תזכורות על דפים שלא פורסמו. הדפים עצמם לא נפגעים.</p><p><a href="${APP}/dashboard">לדשבורד</a></p>`));
+  } catch (e) {
+    console.error('[DRAFTS] unsubscribe failed:', e instanceof Error ? e.message : e);
     res.status(503).send(page('שגיאה', '<h2>לא הצלחנו לעדכן כרגע</h2><p>נסו שוב בעוד כמה דקות.</p>'));
   }
 }

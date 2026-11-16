@@ -2,23 +2,25 @@ import { Link } from 'react-router-dom';
 import LegalLayout, { LegalSection, LegalList } from './LegalLayout';
 import { TERMS_REFUND_CLAUSE } from '../../legal/refundPolicy';
 import { PRICING, fmt } from '../../config/pricing';
+import { OPERATOR, OPERATOR_LINE } from '../../config/operator';
 
 // תנאי השימוש של Pagey. Prices mirror src/config/billing.ts and the lifecycle
 // mirrors src/services/renewal.service.ts — if either changes, this changes.
-const SUPPORT_EMAIL = 'tirnoer.digital@gmail.com';
+const SUPPORT_EMAIL = OPERATOR.email;
 
 export default function Terms() {
   return (
     <LegalLayout
       title="תנאי שימוש"
-      updated="6 בספטמבר 2026"
+      updated="16 בנובמבר 2026"
       intro={
         <>
           <p>
-            ברוכים הבאים ל-Pagey. תנאים אלה מסדירים את השימוש באתר pagey.co.il ובשירות בניית דפי הנחיתה
-            המופעל בו (להלן: "השירות"), ומהווים הסכם מחייב ביניכם לבין Pagey. השימוש בשירות, לרבות יצירת
-            דף גם ללא תשלום, מהווה הסכמה לתנאים אלה.
+            ברוכים הבאים ל-Pagey. תנאים אלה מסדירים את השימוש באתר pagey.co.il ובשני השירותים המופעלים בו
+            (להלן יחד: "השירות"): בניית דפי נחיתה בעזרת בינה מלאכותית, ומנוי "קידום העסק בגוגל" (סעיף 5א). התנאים
+            מהווים הסכם מחייב ביניכם לבין Pagey. השימוש בשירות, לרבות יצירת דף גם ללא תשלום, מהווה הסכמה לתנאים אלה.
           </p>
+          <p>מפעיל השירות: {OPERATOR_LINE}.</p>
           <p>
             התנאים מנוסחים בלשון זכר מטעמי נוחות בלבד ומתייחסים לכל המגדרים. לצד תנאים אלה חלה גם{' '}
             <Link to="/privacy" className="font-semibold text-[#2E63F6] hover:underline">מדיניות הפרטיות</Link>.
@@ -107,7 +109,7 @@ export default function Terms() {
           <><span className="font-semibold">פרסום בשמכם.</span> תוכן מתפרסם בכרטיס העסק שלכם רק אחרי שחיברתם אותו ואישרתם את פרטי העסק, ולפי ההגדרות שבחרתם. אתם יכולים לערוך, לעצור או לכבות כל פרסום אוטומטי בכל עת. האחריות לנכונות פרטי העסק שמסרתם היא שלכם.</>,
           <><span className="font-semibold">בלי הבטחת תוצאה.</span> איננו מבטיחים מיקום בתוצאות החיפוש, מספר פניות או כל תוצאה עסקית אחרת. ההצגה בגוגל נקבעת על ידי גוגל בלבד.</>,
           <><span className="font-semibold">תלות בגוגל.</span> השירות נשען על חיבור לחשבון Google Business Profile שלכם ועל שירותים של גוגל. שינוי, הגבלה או הפסקה מצד גוגל, או ניתוק החיבור, עלולים להגביל חלק מהשירות.</>,
-          <><span className="font-semibold">תשלום שנכשל.</span> אם חיוב חודשי נכשל, השירות ממשיך לתקופת חסד קצרה. אם התשלום לא מוסדר בה, השירות מופסק והדף הכלול מוקפא.</>,
+          <><span className="font-semibold">תשלום שנכשל.</span> אם חיוב חודשי נכשל, השירות ממשיך לתקופת חסד של 7 ימים מתום התקופה ששולמה. אם התשלום לא מוסדר בה, השירות מופסק והדף הכלול מוקפא.</>,
         ]} />
       </LegalSection>
 

@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { authUser, purchaseCredits, getCredits, getPlan, deleteAccount } from '../controllers/user.controller';
 import { rateLimit } from '../middleware/rateLimit';
 import { requireAuth } from '../middleware/auth.middleware';
+import { draftUnsubscribeApply, draftUnsubscribePage } from '../controllers/digest.controller';
 
 const router = Router();
 
@@ -17,5 +18,10 @@ router.get('/credits', requireAuth, getCredits);
 router.get('/plan', requireAuth, getPlan);
 router.post('/credits/purchase', purchaseLimiter, requireAuth, purchaseCredits);
 router.delete('/me', requireAuth, deleteAccount);
+
+// One-click unsubscribe from draft reminder emails. Public by nature (a signed token, no login).
+const unsubLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'יותר מדי בקשות.' });
+router.get('/email/drafts/unsubscribe', unsubLimiter, draftUnsubscribePage);
+router.post('/email/drafts/unsubscribe', unsubLimiter, express.urlencoded({ extended: false, limit: '2kb' }), draftUnsubscribeApply);
 
 export default router;
