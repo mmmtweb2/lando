@@ -159,7 +159,7 @@ const GOOGLE = {
   await patchLocation('AT', 'locations/123', wb.body, wb.mask, mk(200, {}));
   assert.equal(calls[0].url, 'https://mybusinessbusinessinformation.googleapis.com/v1/locations/123?updateMask=serviceItems');
   assert.equal(calls[0].init.method, 'PATCH');
-  await assert.rejects(patchLocation('AT', 'locations/123', { title: 'שם אחר' }, ['title'], mk(200, {})), /bad_mask/, 'we never write the name, address, category, phone or hours');
+  await assert.rejects(patchLocation('AT', 'locations/123', { title: 'שם אחר' }, ['title'], mk(200, {})), /bad_mask/, 'we never write the name, address or category');
   await assert.rejects(patchLocation('AT', 'locations/123', {}, [], mk(200, {})), /bad_mask/);
   await assert.rejects(patchLocation('AT', 'locations/123', wb.body, wb.mask, mk(403, { error: { status: 'PERMISSION_DENIED' } })), /patch:http_403:PERMISSION_DENIED/);
 

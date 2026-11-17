@@ -977,6 +977,9 @@ export async function publishPageById(id: string): Promise<PublishedPage | null>
       console.error('[PUBLISH] referral bonus grant threw', { id, error: err instanceof Error ? err.message : err });
     });
     logFunnelEvent('page_published', { userEmail: ownerEmail, meta: { pageId: id } });
+    // The business's own page becomes the website in its Google listing (docs/gbp-sync-spec.md).
+    // Fire-and-forget: never fails or delays a publish; onPagePublished never throws.
+    void import('../services/gbpSync.service').then((m) => m.onPagePublished(ownerEmail, id)).catch(() => undefined);
   }
 
   return data as PublishedPage;

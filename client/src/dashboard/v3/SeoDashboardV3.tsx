@@ -238,7 +238,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
     <div className="dv2 dv3 dv4" dir="rtl">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={area + (openTask ?? '')} {...motionProps}>
-          {area === 'business' && <BusinessCardScreen auto={auto} onSettings={() => go('automation')} onProfile={() => go('profile')} />}
+          {area === 'business' && <BusinessCardScreen auto={auto} onSettings={() => go('automation')} onProfile={() => go('profile')} pageSlug={bridge.page?.slug ?? null} />}
           {area === 'automation' && <AutomationScreen auto={auto} onCard={() => go('business')} />}
           {area === 'site' && <SiteScreen auto={auto} page={bridge.page} onBusiness={() => go('business')} onPlan={() => go('settings')} morePagesLink={bridge.morePagesLink} />}
           {area === 'activity' && (

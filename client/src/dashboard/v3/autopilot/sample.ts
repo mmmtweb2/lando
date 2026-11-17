@@ -144,6 +144,6 @@ export function buildSample(variant: SampleVariant): SampleState {
     read: !first, truth, posts, page, phrases,
     activity: variant === 'quiet' ? activity.filter((a) => a.kind !== 'reply_drafted') : activity,
     gbp: { enabled: true, connected: !first, needsReconnect: false },
-    automation: { postsMode: 'auto', repliesMode: 'auto_positive', consentAt: approved ? ago(380) : null, live: approved, editWindowHours: 48 },
+    automation: { postsMode: 'auto', repliesMode: 'auto_positive', websiteMode: 'auto', consentAt: approved ? ago(380) : null, live: approved, editWindowHours: 48 },
   };
 }

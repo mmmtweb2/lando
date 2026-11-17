@@ -14,6 +14,7 @@ import { startReplySweep } from './services/autoReplies.service';
 import { startHealthAlertSweep } from './services/adminHealth.service';
 import { warnIfAuditSaltMissing } from './services/auditLeads.service';
 import { startAuditLeadPurge } from './services/auditLeads.service';
+import { startProfileSweep } from './services/gbpSync.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -46,6 +47,8 @@ async function start() {
   startPostsSweep();
   startReplySweep();
   startHealthAlertSweep();
+  // Weekly re-read of each connected Google listing (docs/gbp-sync-spec.md). No-op unless AUTOPILOT_ENABLED=true.
+  startProfileSweep();
   // Free-check leads are kept for 30 days (privacy policy).
   startAuditLeadPurge();
 }

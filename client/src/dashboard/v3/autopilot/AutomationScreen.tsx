@@ -4,6 +4,7 @@ import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
 import { AUTOMATION, POSTS_OPTIONS, REPLIES_OPTIONS } from '../autopilotCopy';
 import { LoadError, Notice, SampleBanner } from './bits';
+import { WEBSITE_LEGEND, WEBSITE_OPTIONS } from './profileCopy';
 import type { Autopilot } from './useAutopilot';
 import type { AutomationPatch } from './types';
 
@@ -52,6 +53,7 @@ export default function AutomationScreen({ auto, onCard }: { auto: Autopilot; on
           ) : !a.data.live && <Notice kind="info">{AUTOMATION.notLive}</Notice>}
           <Choice legend={AUTOMATION.postsLegend} options={POSTS_OPTIONS} value={a.data.postsMode} disabled={busy} onPick={(v) => void pick({ postsMode: v })} />
           <Choice legend={AUTOMATION.repliesLegend} options={REPLIES_OPTIONS} value={a.data.repliesMode} disabled={busy} onPick={(v) => void pick({ repliesMode: v })} />
+          {a.data.websiteMode && <Choice legend={WEBSITE_LEGEND} options={WEBSITE_OPTIONS} value={a.data.websiteMode} disabled={busy} onPick={(v) => void pick({ websiteMode: v })} />}
           <div className="dv3-a-always">
             <ShieldCheck size={20} aria-hidden />
             <p><strong>{AUTOMATION.always}</strong></p>
