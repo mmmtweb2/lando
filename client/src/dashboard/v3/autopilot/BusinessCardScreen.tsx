@@ -4,6 +4,9 @@ import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
 import { CARD, RETRY } from '../autopilotCopy';
 import CardSteps, { type CardNotice, type Step } from './CardSteps';
+import { GoogleProfileBody } from './GoogleProfile';
+import { PROFILE } from './profileCopy';
+import { useGbpProfile } from './useGbpProfile';
 import { LoadError, SampleBanner } from './bits';
 import type { Autopilot } from './useAutopilot';
 
@@ -14,15 +17,22 @@ interface Props {
   auto: Autopilot; onSettings: () => void; onProfile: () => void;
   /** inside the short setup: the three steps only, without the page heading and the links that lead away */
   bare?: boolean;
+  /** the business's own landing page, for "מדף הנחיתה" in the photos */
+  pageSlug?: string | null;
 }
 
-export default function BusinessCardScreen({ auto, onSettings, onProfile, bare = false }: Props) {
+export default function BusinessCardScreen({ auto, onSettings, onProfile, bare = false, pageSlug = null }: Props) {
   const { truth, gbp } = auto;
   const [notice, setNotice] = useState<CardNotice>(null);
   // An account that already approved comes here to update details; a new one starts from what we found.
   const [step, setStep] = useState<Step | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const tried = useRef(false);
+  // Approved: the screen is the Google listing itself ("הכרטיס שלכם בגוגל", docs/gbp-sync-spec.md).
+  // The three steps stay for a new account, and for the details that only feed the posts (areas, notes).
+  const approved = truth.status === 'ok' && !!truth.data?.approvedAt && !bare;
+  const showProfile = approved && step === null;
+  const profile = useGbpProfile(auto.preview, showProfile);
   const empty = truth.status === 'ok' && truth.data === null && !auto.notReady;
   const canRead = empty && !!gbp && gbp.enabled && gbp.connected && !gbp.needsReconnect;
 
@@ -72,12 +82,21 @@ export default function BusinessCardScreen({ auto, onSettings, onProfile, bare =
           key={auto.truthVersion} truth={t} auto={auto} step={cur} notice={notice} onNotice={setNotice} onSettings={onSettings}
           onStep={(n) => { setStep(n); if (n !== cur) setNotice((x) => (x?.kind === 'ok' ? x : null)); }}
         />
+        {!bare && t.approvedAt && <button type="button" className="dv3-linkbtn" onClick={() => setStep(null)}>{PROFILE.back}</button>}
         {!bare && <button type="button" className="dv3-linkbtn" onClick={onProfile}>{CARD.toProfile}</button>}
       </>
     );
   }
 
   if (bare) return <div className="dv3-skin">{body}</div>;
+  if (showProfile) {
+    return (
+      <ViewShell title={PROFILE.title} hint={PROFILE.hint}>
+        {auto.preview && <SampleBanner />}
+        <GoogleProfileBody state={profile} pageSlug={pageSlug} onMore={() => setStep(2)} />
+      </ViewShell>
+    );
+  }
   return (
     <ViewShell title={CARD.title} hint={CARD.hint}>
       {auto.preview && <SampleBanner />}

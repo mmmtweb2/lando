@@ -1,10 +1,14 @@
-import { ArrowLeft, Check, ChevronLeft, FileCheck, Link2Off, MessageSquare, type LucideIcon } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { ArrowLeft, Check, ChevronLeft, FileCheck, Globe, Link2Off, MessageSquare, type LucideIcon } from 'lucide-react';
 import type { LeadFeedItem, LeadsSummary } from '../../../components/LeadsTable';
 import { Skeleton } from '../../ui';
 import { CARD, HOME } from '../autopilotCopy';
 import { ActivityLines } from './ActivityFeed';
 import NextPostCard from './NextPostCard';
-import { LoadError } from './bits';
+import { LoadError, Notice } from './bits';
+import { WEBSITE } from './profileCopy';
+import { useWebsiteSuggestion } from './useGbpProfile';
+import './dashboard-v3-profile.css';
 import { shortDate } from './format';
 import { autoAvailable, isApproved } from './mode';
 import { homeNumbers, last30, type HomeNumbers } from './numbers';
@@ -78,31 +82,50 @@ export function Waiting({ auto, pendingReplies, onReviews, onProfile }: WaitingP
   const posts = auto.posts.status === 'ok' ? auto.posts.data : [];
   const postWaits = !!a && a.live && a.postsMode === 'approve' && posts.some((p) => p.status === 'scheduled');
   const lost = !!auto.gbp && auto.gbp.enabled && (auto.gbp.needsReconnect || !auto.gbp.connected);
-  const items: { key: string; Icon: LucideIcon; title: string; sub: string; cta: string; onClick: () => void }[] = [];
+  // Our published page could be the website on the Google listing (docs/gbp-sync-spec.md).
+  const site = useWebsiteSuggestion(auto.preview, isApproved(auto) && !lost);
+  const [siteBusy, setSiteBusy] = useState(false);
+  const [siteNote, setSiteNote] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const acceptSite = async () => {
+    setSiteBusy(true);
+    const e = await site.accept();
+    setSiteBusy(false);
+    setSiteNote(e ? { kind: 'error', text: e } : { kind: 'ok', text: WEBSITE.done });
+  };
+  const items: { key: string; Icon: LucideIcon; title: string; sub: ReactNode; cta: string; onClick: () => void; busy?: boolean }[] = [];
+  if (site.suggestion) {
+    const s = site.suggestion;
+    items.push({ key: 'website', Icon: Globe, title: WEBSITE.title, sub: s.current ? <>{WEBSITE.subReplaceBefore}:<span dir="ltr" className="dv4-url">{s.current}</span>{WEBSITE.subReplaceAfter}</> : WEBSITE.subNone, cta: WEBSITE.cta, onClick: () => void acceptSite(), busy: siteBusy });
+  }
   if (lost) items.push({ key: 'gbp', Icon: Link2Off, title: HOME.reconnect, sub: HOME.reconnectSub, cta: HOME.reconnectCta, onClick: onProfile });
   if (pendingReplies > 0) items.push({ key: 'replies', Icon: MessageSquare, title: HOME.replies(pendingReplies), sub: HOME.repliesSub, cta: HOME.repliesCta, onClick: onReviews });
   if (postWaits) items.push({ key: 'post', Icon: FileCheck, title: HOME.post, sub: HOME.postSub, cta: HOME.postCta, onClick: toPost });
 
+  const noteEl = siteNote && <div aria-live="polite"><Notice kind={siteNote.kind}>{siteNote.text}</Notice></div>;
   if (items.length === 0) {
     return (
+      <>
+      {noteEl}
       <p className="dv4-calm" role="status">
         <span className="dv4-calm-mark" aria-hidden><Check size={14} strokeWidth={3} /></span>
         <span><strong>{HOME.nothing}.</strong> {HOME.nothingSub}</span>
       </p>
+      </>
     );
   }
   return (
     <section className="dv4-card dv4-waiting" aria-labelledby="dv3-waiting">
       <div className="dv4-card-head"><h3 id="dv3-waiting">{HOME.waitingTitle}</h3></div>
       <ul>
-        {items.map(({ key, Icon, title, sub, cta, onClick }) => (
+        {items.map(({ key, Icon, title, sub, cta, onClick, busy }) => (
           <li key={key}>
             <span className="dv4-icon" aria-hidden><Icon size={20} /></span>
             <div className="dv4-waiting-text"><strong>{title}</strong><small>{sub}</small></div>
-            <button type="button" className="dv3-btn dv3-a-small" onClick={onClick}>{cta} <ChevronLeft size={16} aria-hidden /></button>
+            <button type="button" className="dv3-btn dv3-a-small" disabled={busy} onClick={onClick}>{cta} <ChevronLeft size={16} aria-hidden /></button>
           </li>
         ))}
       </ul>
+      {noteEl}
     </section>
   );
 }
