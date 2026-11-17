@@ -11,6 +11,8 @@ export const DAY_HE: Record<Day, string> = { SUNDAY: 'ראשון', MONDAY: 'שנ
 
 export interface TruthService { name: string; description: string; source: 'google' | 'customer' }
 export interface TruthHours { day: Day; open: string; close: string }
+/** A holiday or other one-off day: closed, or open at other hours. `date` is YYYY-MM-DD. */
+export interface TruthSpecialHours { date: string; closed: boolean; open: string; close: string }
 export interface TruthCard {
   name: string; phone: string; website: string; address: string; city: string;
   category: string; categories: string[];
@@ -18,6 +20,10 @@ export interface TruthCard {
   services: TruthService[];
   areas: string[];
   hours: TruthHours[];
+  /** Holidays and one-off days (Google: specialHours). */
+  specialHours: TruthSpecialHours[];
+  /** Up to two phone numbers besides the main one (Google: phoneNumbers.additionalPhones). */
+  extraPhones: string[];
   /** false when Google marks the business closed (temporarily or permanently). */
   open: boolean;
   reviewUrl: string; mapsUrl: string;
@@ -29,10 +35,12 @@ export const MAX_SERVICES = 20;
 export const MAX_AREAS = 10;
 export const MAX_DESCRIPTION = 750; // Google's own limit for the profile description
 export const MAX_NOTES = 1000;
+export const MAX_SPECIAL_HOURS = 40;
+export const MAX_EXTRA_PHONES = 2;
 
 export const emptyCard = (): TruthCard => ({
   name: '', phone: '', website: '', address: '', city: '', category: '', categories: [], description: '',
-  services: [], areas: [], hours: [], open: true, reviewUrl: '', mapsUrl: '', notes: '',
+  services: [], areas: [], hours: [], specialHours: [], extraPhones: [], open: true, reviewUrl: '', mapsUrl: '', notes: '',
 });
 
 /** One line of plain text: no control or bidi-override characters, collapsed spaces, capped. */
@@ -61,6 +69,19 @@ const hhmm = (t: any): string | null => {
 };
 
 const TIME_RE = /^([01]\d|2[0-4]):[0-5]\d$/;
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const PHONE_RE = /^[+\d][\d\s()-]{6,28}$/;
+
+/** A real calendar date "YYYY-MM-DD", or ''. */
+export function isoDate(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const m = DATE_RE.exec(v);
+  if (!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? v : '';
+}
+const googleDate = (d: any): string => (d && Number.isInteger(d.year) && Number.isInteger(d.month) && Number.isInteger(d.day)
+  ? isoDate(`${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`) : '');
 
 function dedupe<T>(items: T[], key: (x: T) => string): T[] {
   const seen = new Set<string>();
@@ -110,6 +131,17 @@ export function parseLocation(raw: any): TruthCard {
     if (DAYS.includes(p?.openDay) && open && close) hours.push({ day: p.openDay, open, close });
   }
   c.hours = hours.slice(0, 21);
+  c.extraPhones = dedupe((Array.isArray(raw.phoneNumbers?.additionalPhones) ? raw.phoneNumbers.additionalPhones : []).map((x: unknown) => line(x, 30)), (x: string) => x)
+    .filter((x: string) => x && x !== c.phone).slice(0, MAX_EXTRA_PHONES);
+  const special: TruthSpecialHours[] = [];
+  for (const p of (Array.isArray(raw.specialHours?.specialHourPeriods) ? raw.specialHours.specialHourPeriods : [])) {
+    const date = googleDate(p?.startDate);
+    if (!date) continue;
+    if (p?.closed) { special.push({ date, closed: true, open: '', close: '' }); continue; }
+    const open = hhmm(p?.openTime), close = hhmm(p?.closeTime);
+    if (open && close) special.push({ date, closed: false, open, close });
+  }
+  c.specialHours = dedupe(special.sort((a, b) => a.date.localeCompare(b.date)), (x) => `${x.date}|${x.open}`).slice(0, MAX_SPECIAL_HOURS);
   c.open = raw.openInfo?.status ? raw.openInfo.status === 'OPEN' : true;
   c.reviewUrl = httpsUrl(raw.metadata?.newReviewUri);
   c.mapsUrl = httpsUrl(raw.metadata?.mapsUri);
@@ -130,6 +162,8 @@ export function mergeFromGoogle(prev: TruthCard | null, fresh: TruthCard): Truth
     website: fresh.website || prev.website,
     description: fresh.description || prev.description,
     hours: fresh.hours.length ? fresh.hours : prev.hours,
+    specialHours: fresh.specialHours.length ? fresh.specialHours : (prev.specialHours ?? []),
+    extraPhones: fresh.extraPhones.length ? fresh.extraPhones : (prev.extraPhones ?? []),
     services: dedupe([...fresh.services, ...mine], (s) => s.name).slice(0, MAX_SERVICES),
     areas: dedupe([...fresh.areas, ...prev.areas], (x) => x).slice(0, MAX_AREAS),
     notes: prev.notes,
@@ -152,8 +186,16 @@ export function applyEdit(base: TruthCard, input: any): TruthCard {
   const out: TruthCard = { ...base };
   if ('phone' in input) {
     const p = line(input.phone, 30);
-    if (p && !/^[+\d][\d\s()-]{6,28}$/.test(p)) throw new CardInputError('phone');
+    if (p && !PHONE_RE.test(p)) throw new CardInputError('phone');
     out.phone = p;
+  }
+  if ('extraPhones' in input) {
+    if (!Array.isArray(input.extraPhones) || input.extraPhones.length > MAX_EXTRA_PHONES) throw new CardInputError('extraPhones');
+    out.extraPhones = dedupe(input.extraPhones.map((x: unknown) => {
+      const p = line(x, 30);
+      if (!PHONE_RE.test(p)) throw new CardInputError('extraPhones');
+      return p;
+    }), (x: string) => x).filter((x: string) => x !== out.phone);
   }
   if ('website' in input) {
     const w = line(input.website, 300);
@@ -193,6 +235,16 @@ export function applyEdit(base: TruthCard, input: any): TruthCard {
       if (!DAYS.includes(h?.day) || !TIME_RE.test(h?.open) || !TIME_RE.test(h?.close)) throw new CardInputError('hours');
       return { day: h.day, open: h.open, close: h.close };
     });
+  }
+  if ('specialHours' in input) {
+    if (!Array.isArray(input.specialHours) || input.specialHours.length > MAX_SPECIAL_HOURS) throw new CardInputError('specialHours');
+    out.specialHours = input.specialHours.map((h: any): TruthSpecialHours => {
+      const date = isoDate(h?.date);
+      if (!date) throw new CardInputError('specialHours');
+      if (h?.closed === true) return { date, closed: true, open: '', close: '' };
+      if (!TIME_RE.test(h?.open) || !TIME_RE.test(h?.close)) throw new CardInputError('specialHours');
+      return { date, closed: false, open: h.open, close: h.close };
+    }).sort((a: TruthSpecialHours, b: TruthSpecialHours) => a.date.localeCompare(b.date));
   }
   return out;
 }

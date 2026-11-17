@@ -16,6 +16,8 @@ import { createKit, deleteKit, getPlan, savePlan, suggest } from '../controllers
 import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
 import * as auto from '../controllers/autopilot.controller';
+import * as profile from '../controllers/gbpProfile.controller';
+import { handlePhotoUpload } from '../middleware/upload.middleware';
 import { sendFeedback } from '../controllers/feedback.controller';
 import { unsubscribeApply, unsubscribePage } from '../controllers/digest.controller';
 import { addRequest, deleteRequest, listRequests, reviewedRequest, sentRequest } from '../controllers/reviewRequests.controller';
@@ -144,5 +146,18 @@ router.put('/posts/:id', ...autoGated, auto.putPost);
 router.post('/posts/:id/publish', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), auto.publishPost);
 router.post('/posts/:id/skip', ...autoGated, auto.skipPostNow);
 router.get('/activity', ...autoGated, auto.getActivity);
+
+// The customer's Google listing, edited from here (docs/gbp-sync-spec.md; migration 050). Writes reach
+// Google only with GBP_WRITEBACK_ENABLED=true; Google allows 10 edits a minute per listing.
+const profileLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+const profileGated = [profileLimiter, requireAuth, requireProduct('seo_autopilot')];
+const photoLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, message: 'הגעתם למגבלת התמונות לשעה. נסו שוב מאוחר יותר.', key: (req) => `photo:${req.authEmail ?? req.ip}` });
+router.get('/gbp/profile', ...profileGated, profile.getProfileView);
+router.post('/gbp/profile/website-from-page', ...profileGated, profile.useWebsiteFromPage);
+router.put('/gbp/profile/:field', ...profileGated, profile.putField);
+router.post('/gbp/profile/:field/resolve', ...profileGated, profile.resolve);
+router.get('/gbp/photos', ...profileGated, profile.getPhotos);
+router.post('/gbp/photos', ...profileGated, photoLimiter, handlePhotoUpload, profile.postPhoto);
+router.delete('/gbp/photos/:id', ...profileGated, profile.deletePhoto);
 
 export default router;

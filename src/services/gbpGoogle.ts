@@ -187,7 +187,7 @@ export async function postReply(access: string, account: string, location: strin
 // ── Location details (Business Information API v1) ──
 // The full profile of ONE location: what the customer wrote in their Google card. Parsed by
 // businessTruth.ts. UNVERIFIED against live Google for every field: covered by tests with fake responses.
-export const LOCATION_DETAIL_MASK = 'name,title,phoneNumbers,categories,storefrontAddress,websiteUri,regularHours,serviceArea,profile,serviceItems,metadata,openInfo';
+export const LOCATION_DETAIL_MASK = 'name,title,phoneNumbers,categories,storefrontAddress,websiteUri,regularHours,specialHours,serviceArea,profile,serviceItems,metadata,openInfo';
 
 export async function fetchLocationDetail(access: string, location: string, f: Fetch = fetch): Promise<Record<string, any>> {
   if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
@@ -225,22 +225,124 @@ export async function createLocalPost(access: string, account: string, location:
 }
 
 // ── Updating a location (Business Information API v1) ──
-/** The only fields we ever write to a customer's listing. Anything else in a mask is refused here. */
-export const WRITABLE_MASKS = ['profile.description', 'serviceItems'] as const;
+// Sources: https://developers.google.com/my-business/reference/businessinformation/rest/v1/locations/patch
+//          https://developers.google.com/my-business/content/limits (10 edits per minute per profile)
+/**
+ * The only fields we ever write to a customer's listing (docs/gbp-sync-spec.md, phase 1). Identity
+ * fields (title, storefrontAddress, categories, openInfo) are deliberately absent: changing them can
+ * send a listing to re-verification or suspension. Anything else in a mask is refused here.
+ */
+export const WRITABLE_MASKS = ['profile.description', 'serviceItems', 'websiteUri', 'phoneNumbers', 'regularHours', 'specialHours'] as const;
+export type WritableMask = (typeof WRITABLE_MASKS)[number];
+
+/** Google refused the content itself (HTTP 400): the message is Google's, shown to the customer. */
+export class GbpRejected extends Error {
+  constructor(public readonly googleMessage: string) { super('google_rejected'); }
+}
+/** Still 429 after the retries. */
+export class GbpQuota extends Error { constructor() { super('quota'); } }
+
+export interface RetryOpts { tries?: number; sleep?: (ms: number) => Promise<void>; random?: () => number }
+const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * PATCHes the customer's listing. Called only after the customer approved their business details,
- * and only for the fields in WRITABLE_MASKS. UNVERIFIED against live Google.
+ * One request with up to `tries` attempts on HTTP 429 (Google allows 10 edits per minute per
+ * profile), waiting 1s, 2s… plus random jitter. Any other status is returned as is.
  */
-export async function patchLocation(access: string, location: string, body: Record<string, unknown>, mask: string[], f: Fetch = fetch): Promise<void> {
+export async function withQuotaRetry(call: () => Promise<Response>, o: RetryOpts = {}): Promise<Response> {
+  const tries = o.tries ?? 3, sleep = o.sleep ?? realSleep, random = o.random ?? Math.random;
+  let r = await call();
+  for (let i = 1; i < tries && r.status === 429; i++) {
+    await sleep(1000 * 2 ** (i - 1) + Math.floor(random() * 750));
+    r = await call();
+  }
+  return r;
+}
+
+async function googleError(r: Response, step: string): Promise<never> {
+  const b = (await r.json().catch(() => ({}))) as Record<string, any>;
+  if (r.status === 401) throw new GbpError('revoked');
+  if (r.status === 429) throw new GbpQuota();
+  const msg = typeof b?.error?.message === 'string' ? b.error.message.replace(/\s+/g, ' ').slice(0, 300) : '';
+  // 400 = Google refused the value (bad phone, link in description…): the customer can fix it.
+  if (r.status === 400) throw new GbpRejected(msg || 'Google refused the change');
+  throw new GbpError('google', `${step}:http_${r.status}${b?.error?.status ? ':' + b.error.status : ''}`);
+}
+
+/**
+ * PATCHes the customer's listing, only for the fields in WRITABLE_MASKS. With `validateOnly` Google
+ * checks the change and saves nothing. Retries 429 (withQuotaRetry). UNVERIFIED against live Google.
+ */
+export async function patchLocation(access: string, location: string, body: Record<string, unknown>, mask: string[], f: Fetch = fetch, opts: { validateOnly?: boolean } & RetryOpts = {}): Promise<void> {
   if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
   if (!mask.length || mask.some((m) => !(WRITABLE_MASKS as readonly string[]).includes(m))) throw new GbpError('google', 'bad_mask');
-  const r = await f(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}?updateMask=${mask.join(',')}`, {
+  const q = `updateMask=${mask.join(',')}${opts.validateOnly ? '&validateOnly=true' : ''}`;
+  const r = await withQuotaRetry(() => f(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}?${q}`, {
     method: 'PATCH', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' }, body: JSON.stringify(body),
-  });
-  if (r.status === 401) throw new GbpError('revoked');
-  if (!r.ok) {
-    const b = (await r.json().catch(() => ({}))) as Record<string, any>;
-    throw new GbpError('google', `patch:http_${r.status}${b?.error?.status ? ':' + b.error.status : ''}`);
+  }), opts);
+  if (!r.ok) await googleError(r, 'patch');
+}
+
+/**
+ * Which fields differ between what Google shows and what the owner set (`diffMask`), and which are
+ * still being reviewed by Google (`pendingMask`). Source:
+ * https://developers.google.com/my-business/content/accept-or-reject-updates
+ */
+export async function getGoogleUpdated(access: string, location: string, f: Fetch = fetch, o: RetryOpts = {}): Promise<{ diffMask: string[]; pendingMask: string[] }> {
+  if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  const r = await withQuotaRetry(() => f(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}:getGoogleUpdated?readMask=${WRITABLE_MASKS.join(',')}`, { headers: { authorization: `Bearer ${access}` } }), o);
+  if (!r.ok) await googleError(r, 'updated');
+  const b = (await r.json().catch(() => ({}))) as Record<string, any>;
+  const split = (v: unknown) => (typeof v === 'string' && v ? v.split(',').map((x) => x.trim()).filter(Boolean) : []);
+  return { diffMask: split(b.diffMask), pendingMask: split(b.pendingMask) };
+}
+
+// ── Photos (My Business API v4 media: still the only photo API) ──
+// Sources: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.media
+//          https://developers.google.com/my-business/content/upload-photos
+export const PHOTO_CATEGORIES = ['COVER', 'PROFILE', 'EXTERIOR', 'INTERIOR', 'PRODUCT', 'AT_WORK', 'TEAMS', 'ADDITIONAL'] as const;
+export type PhotoCategory = (typeof PHOTO_CATEGORIES)[number];
+export interface GbpPhoto { id: string; url: string; thumbUrl: string; category: string; createdAt: string | null; state: 'live' | 'processing' }
+
+const MEDIA_ID = /^[\w-]{4,200}$/;
+const httpsOnly = (v: unknown): string => (typeof v === 'string' && /^https:\/\/[^\s"'<>]+$/.test(v) ? v : '');
+
+export function parseMedia(resp: any): GbpPhoto[] {
+  const out: GbpPhoto[] = [];
+  for (const m of (resp?.mediaItems ?? []) as any[]) {
+    const id = (typeof m?.name === 'string' ? /^accounts\/[\w-]+\/locations\/[\w-]+\/media\/([\w-]+)$/.exec(m.name)?.[1] : '') ?? '';
+    if (!MEDIA_ID.test(id) || (m?.mediaFormat && m.mediaFormat !== 'PHOTO')) continue;
+    const url = httpsOnly(m?.googleUrl), thumbUrl = httpsOnly(m?.thumbnailUrl) || url;
+    out.push({
+      id, url, thumbUrl, category: typeof m?.locationAssociation?.category === 'string' ? m.locationAssociation.category : 'ADDITIONAL',
+      createdAt: typeof m?.createTime === 'string' ? m.createTime : null, state: url ? 'live' : 'processing',
+    });
   }
+  return out;
+}
+
+export async function listMedia(access: string, account: string, location: string, f: Fetch = fetch): Promise<GbpPhoto[]> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  return parseMedia(await getJson(`https://mybusiness.googleapis.com/v4/${account}/${location}/media?pageSize=100`, access, f, 'media'));
+}
+
+/** Adds a photo that Google fetches from `sourceUrl` (must be public). Returns Google's media id. */
+export async function createMedia(access: string, account: string, location: string, sourceUrl: string, category: PhotoCategory, f: Fetch = fetch, o: RetryOpts = {}): Promise<string | null> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  if (!httpsOnly(sourceUrl) || !(PHOTO_CATEGORIES as readonly string[]).includes(category)) throw new GbpError('google', 'bad_media');
+  const r = await withQuotaRetry(() => f(`https://mybusiness.googleapis.com/v4/${account}/${location}/media`, {
+    method: 'POST', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ mediaFormat: 'PHOTO', locationAssociation: { category }, sourceUrl }),
+  }), o);
+  if (!r.ok) await googleError(r, 'media');
+  const b = (await r.json().catch(() => ({}))) as Record<string, any>;
+  return typeof b.name === 'string' ? b.name.split('/').pop() ?? null : null;
+}
+
+export async function deleteMedia(access: string, account: string, location: string, id: string, f: Fetch = fetch, o: RetryOpts = {}): Promise<void> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location) || !MEDIA_ID.test(id)) throw new GbpError('google', 'bad_location');
+  const r = await withQuotaRetry(() => f(`https://mybusiness.googleapis.com/v4/${account}/${location}/media/${id}`, {
+    method: 'DELETE', headers: { authorization: `Bearer ${access}` },
+  }), o);
+  if (!r.ok && r.status !== 404) await googleError(r, 'media_delete');
 }

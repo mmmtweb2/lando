@@ -1334,3 +1334,43 @@ quota cap there.
 - **דף שהיה כלול במנוי שהסתיים** נקנה בחזרה בדרך הרגילה (חידוש שנתי של דף). כל עוד המנוי פעיל, הדף ממשיך לחיות עם המנוי ולא נמכר בנפרד. אחרי החידוש הדף כבר לא קשור למנוי, ולכן סריקת המנויים לא מקפיאה אותו שוב. `checkRenewEligibility` / `grantRenewal` ב-`renewal.service.ts`.
 - **לידים מהבדיקה החינמית נמחקים אחרי 30 יום,** בסריקה יומית (`purgeOldAuditLeads`). מדיניות הפרטיות עודכנה בהתאם.
 - בדיקות: `scripts/test-lead-retention.ts`, סעיף חדש ב-`scripts/test-seo-page-addon.ts`.
+
+## חלק 132: סנכרון מלא מול כרטיס העסק בגוגל, צד השרת (`docs/gbp-sync-spec.md`)
+
+נדרשת **מיגרציה 050** (`migrations/050_gbp_sync.sql`). הכתיבה לגוגל עדיין מאחורי `GBP_WRITEBACK_ENABLED`: כשהוא כבוי, השמירה נשארת אצלנו בלבד.
+
+- **שדות שנשלחים לגוגל:** אתר, תיאור, טלפון ראשי ועד שני נוספים, שעות פעילות, שעות בחגים ובימים מיוחדים, שירותים.
+  - כל שמירה עוברת `validateOnly`, שליחה אמיתית וקריאה חוזרת. כרטיס האמת מתעדכן רק אחרי שגוגל קיבלה.
+  - ערך ריק לא מוחק כלום בגוגל.
+  - רשימת השירותים בגוגל לא מאבדת פריטים: מה שקיים שם נשלח בחזרה כפי שנקרא, והשירותים שלנו מתווספים אחריו.
+  - שם, כתובת, קטגוריות וסטטוס פתוח/סגור לא נכתבים, כי הם עלולים לגרום לאימות מחדש או להשעיה (`WRITABLE_MASKS`).
+- **סטטוס לכל שדה:**
+  - `live`: זהה בגוגל.
+  - `pending`: ממתין לבדיקת גוגל, לפי `pendingMask`.
+  - `google_changed`: הערך בגוגל שונה משלנו. אפשר להשאיר את מה שבגוגל או להחזיר את שלנו.
+  - `local_only`: הסנכרון כבוי, או שגוגל דחתה (עם הסיבה של גוגל).
+- **האתר מתעדכן בפרסום הדף:** כשהדף של העסק מתפרסם (`publishPageById`) ובגוגל אין אתר, הכתובת הציבורית שלו נשלחת לגוגל. אם בגוגל יש אתר אחר, מוצגת הצעה בלבד. ההגדרה `website_mode` (`auto` / `ask` / `off`) נקבעת דרך `PUT /api/seo/automation {websiteMode}`.
+- **קריאה שבועית:** סריקה יומית (`gbp_profile`, רק כש-`AUTOPILOT_ENABLED=true`) קוראת כל כרטיס פעם בשבוע.
+  - שדה שהשתנה בגוגל ולא אצלנו מאומץ לכרטיס האמת, עם שורה ביומן "עדכנו מגוגל".
+  - כשל של חשבון אחד לא עוצר את האחרים.
+- **תמונות:** רשימה, העלאה ומחיקה.
+  - כל קובץ (JPG/PNG/WEBP עד 10MB) מומר ל-JPEG של עד 5MB. לפחות 250 פיקסלים בצד הקצר; מתחת ל-720 מסומן `small`.
+  - הקובץ נשמר בדלי הציבורי תחת `gbp/`, וגוגל מושכת אותו (`media.create` עם `sourceUrl`).
+  - אפשר גם לבחור תמונה מדף הנחיתה. נמשכת רק כתובת שהדף עצמו מחזיק, מאחסון שלנו, מ-Unsplash או מ-fal.ai, בלי הפניות.
+- **נתיבים** (כולם עם `requireAuth` + `requireProduct`):
+  - `GET /gbp/profile`
+  - `PUT /gbp/profile/:field {value}`: מחזיר `{ field, syncEnabled }`. כשהסנכרון כבוי, 200 עם `code: 'sync_off'` ו-`message`.
+  - `POST /gbp/profile/:field/resolve {keep}`
+  - `POST /gbp/profile/website-from-page`
+  - `GET /gbp/photos`
+  - `POST /gbp/photos` (multipart `file` + `category`, או JSON `{fromPageImage, category}`)
+  - `DELETE /gbp/photos/:id`
+- **שגיאות:** `invalid` (400, עם `field`), `google_rejected` (422, עם `googleMessage`), `quota` (503), `not_connected` (409), `sync_off` (409, בתמונות בלבד).
+- **מכסה:** על 429 יש עד 3 ניסיונות, עם המתנה של 1 ואחר כך 2 שניות ותוספת אקראית. גוגל מתירה 10 עריכות בדקה לכרטיס.
+- **לא אומת מול גוגל האמיתי.** הכול נבדק מול תשובות מדומות ב-`scripts/test-gbp-sync.ts`.
+- **מקורות:**
+  - [locations.patch](https://developers.google.com/my-business/reference/businessinformation/rest/v1/locations/patch)
+  - [accept or reject Google updates](https://developers.google.com/my-business/content/accept-or-reject-updates)
+  - [media](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.media)
+  - [upload photos](https://developers.google.com/my-business/content/upload-photos)
+  - [limits](https://developers.google.com/my-business/content/limits)

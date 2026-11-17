@@ -92,10 +92,12 @@ export async function uploadImage(
   buffer: Buffer,
   filename: string,
   contentType = 'image/webp',
+  prefix: string = UPLOAD_PREFIX,
 ): Promise<string> {
   await ensureBucket();
 
-  const objectPath = `${UPLOAD_PREFIX}/${filename}`;
+  // `prefix`: 'uploads' for page images; 'gbp' for photos sent to a Google listing (gbpPhotos.ts).
+  const objectPath = `${prefix}/${filename}`;
 
   const { error } = await supabase.storage
     .from(ASSETS_BUCKET)
