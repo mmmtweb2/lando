@@ -15,6 +15,8 @@ export const PRICING = {
     small: { credits: 10, price: 50 },
     large: { credits: 100, price: 400 },
   },
+  /** The Google-promotion subscription (server: src/config/seoCatalog.ts). The landing page is included. */
+  seoSubscription: { monthly: 250, annual: 2500 },
 } as const;
 
 export type BundleId = 'bundle5' | 'bundle10';
