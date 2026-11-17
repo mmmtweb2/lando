@@ -135,11 +135,12 @@ async function mirrorEntitlement(email: string, s: SubState): Promise<void> {
   const mirror = toEntitlementRow(s);
   if (!mirror) return;
   const { data: existing, error: readErr } = await supabase
-    .from('user_products').select('source, status').eq('email', email).eq('product', 'seo_autopilot').maybeSingle();
+    .from('user_products').select('source, status, current_period_end').eq('email', email).eq('product', 'seo_autopilot').maybeSingle();
   if (readErr) { console.error('[SUBSCRIPTION] entitlement read failed:', readErr.message); return; }
-  const ex = existing as { source: string; status: string } | null;
-  // A manual grant (pilot customer, gift) is never overwritten by a payment event.
-  if (ex && ex.source !== 'sumit' && ex.status === 'active') return;
+  const ex = existing as { source: string; status: string; current_period_end: string | null } | null;
+  // A manual grant (pilot customer, gift) is never overwritten by a payment event while it still gives
+  // access. An EXPIRED grant (a beta that ended) must give way, or a customer who then pays gets nothing.
+  if (ex && ex.source !== 'sumit' && isEntitled(ex)) return;
   const { error } = await supabase.from('user_products').upsert(
     { email, product: 'seo_autopilot', status: mirror.status, current_period_end: mirror.current_period_end, source: 'sumit' },
     { onConflict: 'email,product' },
@@ -173,7 +174,9 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   }
   // A customer whose last charge failed re-enters their card through a NEW standing order.
   // Stop the old one first, or both could charge them once the card works again.
-  if (existing?.status === 'past_due' && existing.sumit_recurring_item_id) {
+  // A canceled row can still carry the id of an order that was never stopped: stop it too, or the stale
+  // id would also block the new standing order after this payment.
+  if ((existing?.status === 'past_due' || existing?.status === 'canceled') && existing.sumit_recurring_item_id) {
     const stopped = await cancelRecurring(existing.sumit_customer_id, existing.sumit_recurring_item_id);
     if (!stopped) throw new SubError('sumit', 'לא הצלחנו לעדכן את המנוי הקודם. נסו שוב או פנו אלינו.');
     await supabase.from('seo_subscriptions').update({ sumit_recurring_item_id: null }).eq('id', existing.id);
@@ -252,6 +255,13 @@ export async function applyVerifiedPayment(
     throw dbError(evErr);
   }
 
+  // A subscription belongs to ONE SUMIT customer: a payment by a different customer never moves it.
+  if (row.sumit_customer_id && extra.sumitCustomerId && String(row.sumit_customer_id) !== String(extra.sumitCustomerId)) {
+    console.error('[SUBSCRIPTION] ALERT payment from a different SUMIT customer than this subscription — refusing', { id: row.id, payment: payment.sumitPaymentId });
+    await supabase.from('seo_subscription_events').delete().eq('subscription_id', row.id).eq('sumit_payment_id', payment.sumitPaymentId);
+    return 'conflict';
+  }
+
   const current = stateOf(row);
   if (sufficient) {
     const { state, ignored } = applyChargeOk(current, now, planOf(row).months);
@@ -259,11 +269,18 @@ export async function applyVerifiedPayment(
       console.error('[SUBSCRIPTION] payment on a canceled subscription — needs a human (refund?)', { id: row.id, payment: payment.sumitPaymentId });
       return 'ignored';
     }
-    await saveState(row, state, {
-      needs_manual_cancel: false,
-      ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
-      ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
-    });
+    try {
+      await saveState(row, state, {
+        needs_manual_cancel: false,
+        ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
+        ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
+      });
+    } catch (e) {
+      // The payment id was claimed above but nothing was applied. Release the claim so SUMIT's retry (or
+      // the customer reloading the return page) applies it, instead of being answered "duplicate" forever.
+      await supabase.from('seo_subscription_events').delete().eq('subscription_id', row.id).eq('sumit_payment_id', payment.sumitPaymentId);
+      throw e;
+    }
     // A monthly plan is only a subscription if SUMIT holds a standing order. Without its id nothing will charge
     // next month and we cannot cancel it automatically: say so loudly (task #39), the customer still got the month they paid for.
     const customerId = extra.sumitCustomerId ?? row.sumit_customer_id;
@@ -304,7 +321,14 @@ export async function subscriptionIdExists(id: string): Promise<boolean> {
 
 export async function cancelSubscription(email: string, now = new Date()): Promise<SubRow> {
   const row = await getSubscription(email);
-  if (!row || row.status === 'canceled') throw new SubError('no_subscription');
+  if (!row) throw new SubError('no_subscription');
+  if (row.status === 'canceled') {
+    // Access already ended, but SUMIT may still hold the standing order (a stop that failed earlier):
+    // the customer must always be able to stop the charges themselves.
+    if (!row.sumit_recurring_item_id || !autoRenews(row)) throw new SubError('no_subscription');
+    if (!(await stopStandingOrder(row))) throw new SubError('sumit', 'לא הצלחנו לעצור את החיוב. נסו שוב או פנו אלינו.');
+    return (await getById(row.id)) as SubRow;
+  }
 
   // Stop the charges at SUMIT first. If that fails, the customer's cancellation is still
   // honoured here (access ends at period end) and a human is told to stop it at SUMIT.
@@ -318,9 +342,32 @@ export async function cancelSubscription(email: string, now = new Date()): Promi
   }
 
   const next = applyCancel(stateOf(row), now);
-  await saveState(row, next, { needs_manual_cancel: !stopped });
+  // A stopped order's id is cleared, so a later re-subscription creates a new one instead of trusting a dead id.
+  await saveState(row, next, { needs_manual_cancel: !stopped, ...(stopped && row.sumit_recurring_item_id ? { sumit_recurring_item_id: null } : {}) });
   await supabase.from('seo_subscription_events').insert({ subscription_id: row.id, kind: 'canceled' });
   return (await getById(row.id)) as SubRow;
+}
+
+/**
+ * Stops the SUMIT standing order of a monthly subscription and clears its id. On failure the row is
+ * marked needs_manual_cancel (admin health panel) and false is returned. Never throws.
+ */
+async function stopStandingOrder(row: SubRow): Promise<boolean> {
+  if (!row.sumit_recurring_item_id) return true;
+  const ok = await cancelRecurring(row.sumit_customer_id, row.sumit_recurring_item_id).catch(() => false);
+  const { error } = await supabase.from('seo_subscriptions')
+    .update(ok ? { sumit_recurring_item_id: null, needs_manual_cancel: false } : { needs_manual_cancel: true }).eq('id', row.id);
+  if (error) console.error('[SUBSCRIPTION] standing order stop not recorded:', row.id, error.message);
+  if (!ok) console.error('[SUBSCRIPTION] ALERT could not stop the standing order in SUMIT — stop it by hand', { id: row.id, email: row.email });
+  return ok;
+}
+
+/** The subscription that owns this SUMIT customer (a renewal charge reported without our reference). */
+export async function findBySumitCustomer(customerId: string): Promise<SubRow | null> {
+  const { data, error } = await supabase.from('seo_subscriptions').select(COLS).eq('sumit_customer_id', customerId).limit(2);
+  if (error) throw dbError(error);
+  const rows = (data ?? []) as SubRow[];
+  return rows.length === 1 ? rows[0] : null;   // ambiguous -> nobody: a human looks
 }
 
 // ─── Time-driven housekeeping ────────────────────────────────────────────────
@@ -346,6 +393,9 @@ export async function sweepSubscriptions(
     try {
       await saveState(row, next);
       changed += 1;
+      // Access ended: nothing may be charged any more. (A renewal that SUMIT did charge but never
+      // reported would otherwise keep billing a customer who no longer has the product.)
+      if (next.status === 'canceled' && autoRenews(row)) await stopStandingOrder(row);
       await syncAddonPage(row.email);
     } catch (e) {
       console.error('[SUBSCRIPTION] sweep update failed:', row.id, e instanceof Error ? e.message : e);

@@ -14,7 +14,7 @@ interface Status {
   price: number | null;
   catalog?: Catalog;
   subscription: {
-    status: 'active' | 'past_due' | 'canceled'; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean;
+    status: 'active' | 'past_due' | 'canceled'; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; renewalPending?: boolean;
     planId?: SeoPlanId; cycle?: SeoCycle; withPage?: boolean; renews?: boolean;
     page?: { included: boolean; pageId: string | null; status: string | null };
   } | null;
@@ -58,7 +58,9 @@ export default function SeoSubscriptionCard() {
   let line: string;
   if (sub.status === 'canceled') line = `המנוי הסתיים${end ? ` ב-${end}` : ''}.`;
   else if (sub.cancelAtPeriodEnd) line = `המנוי בוטל ולא יחודש. הגישה נשארת עד ${end}.`;
+  else if (sub.renewalPending) line = 'החיוב החודשי מתבצע בימים אלה. אין צורך לעשות דבר.';
   else if (sub.status === 'past_due') line = 'החיוב האחרון לא עבר. כדי להמשיך ללא הפסקה, הזינו כרטיס מחדש.';
+  else if (sub.renews === false && sub.cycle !== 'year') line = `המנוי פעיל${end ? ` עד ${end}` : ''}.`;
   else if (sub.renews === false) line = `המנוי השנתי פעיל${end ? ` ותקף עד ${end}` : ''}, ולא מתחדש אוטומטית. נשלח תזכורת לפני שהוא מסתיים.`;
   else {
     // The plan's own price (the catalog carries all four), not the base monthly price.
@@ -69,7 +71,7 @@ export default function SeoSubscriptionCard() {
   const pl = pageLine(sub.page);
   const annualPlan = sub.cycle === 'year';
 
-  const canRenew = sub.status === 'past_due' || sub.status === 'canceled' || sub.cancelAtPeriodEnd;
+  const canRenew = (sub.status === 'past_due' && !sub.renewalPending) || sub.status === 'canceled' || sub.cancelAtPeriodEnd;
   const canCancel = (sub.status === 'active' || sub.status === 'past_due') && !sub.cancelAtPeriodEnd;
 
   return (
@@ -99,7 +101,7 @@ export default function SeoSubscriptionCard() {
           <>
             <span className="text-sm text-slate-700">
               {annualPlan
-                ? 'לבטל? הביטול מבטל חידוש בלבד, בלי החזר על חודשים שנותרו. הגישה תימשך עד סוף התקופה ששולמה.'
+                ? 'לבטל? הביטול מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול שלכם לפי דין. הגישה תימשך עד סוף התקופה ששולמה.'
                 : 'לבטל? לא יהיו חיובים נוספים והגישה תימשך עד סוף התקופה ששולמה.'}
             </span>
             <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/cancel')}

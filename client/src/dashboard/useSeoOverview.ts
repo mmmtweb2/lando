@@ -65,7 +65,7 @@ export function useSeoOverview(): SeoOverview {
       const [biz, leads, sub, gbp, premium, setup] = await Promise.all([
         json<{ businesses?: { id: string; name: string; google_place_id?: string | null; landing_page_id?: string | null }[] }>('/api/seo/businesses'),
         json<{ items?: LeadFeedItem[]; summary?: LeadsSummary }>('/api/landing/my-leads'),
-        json<{ subscription?: { status: 'active' | 'past_due' | 'canceled' } | null }>('/api/seo/subscription'),
+        json<{ subscription?: { status: 'active' | 'past_due' | 'canceled'; renewalPending?: boolean } | null }>('/api/seo/subscription'),
         json<{ enabled?: boolean }>('/api/seo/gbp/status'),
         json<{ premium?: boolean; expectedBy?: string | null }>('/api/seo/premium'),
         authFetch('/api/seo/setup').then(async (r) => ({ status: r.status, body: r.ok ? ((await r.json()) as { steps?: string[] }) : null })).catch(() => ({ status: 0, body: null })),
@@ -111,7 +111,7 @@ export function useSeoOverview(): SeoOverview {
           landingLinked: first ? !!first.landing_page_id : undefined,
           contentCount,
           monthLeads: summary.month_total,
-          subscriptionStatus: sub?.subscription?.status ?? null,
+          subscriptionStatus: sub?.subscription?.renewalPending ? 'active' : (sub?.subscription?.status ?? null),
           ticks,
         },
       });

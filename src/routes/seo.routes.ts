@@ -39,7 +39,8 @@ router.post('/subscription/cancel', subLimiter, requireAuth, cancelSub);
 // Same reasoning as payments /return (routes/payment.routes.ts): each hit can cost a SUMIT call.
 const subReturnLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, message: 'יותר מדי בקשות. נסו שוב בעוד כמה דקות.' });
 router.get('/subscription/return', subLimiter, subReturnLimiter, subscriptionReturn);
-router.post('/subscription/webhook', subLimiter, express.urlencoded({ extended: true, limit: '20kb' }), subscriptionWebhook);
+const webhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, message: 'too many requests' });
+router.post('/subscription/webhook', webhookLimiter, express.urlencoded({ extended: true, limit: '20kb' }), subscriptionWebhook);
 
 // Any signed-in account may run the Audit (it is the on-ramp to the product), so these
 // routes are NOT gated by requireProduct. Cost control: per-IP burst limit here plus a
