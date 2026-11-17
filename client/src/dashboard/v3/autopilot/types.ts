@@ -25,8 +25,10 @@ export type TruthPatch = Partial<Pick<TruthCard, 'phone' | 'website' | 'descript
 
 export type PostsMode = 'auto' | 'approve' | 'off';
 export type RepliesMode = 'auto_positive' | 'approve' | 'off';
-export interface Automation { postsMode: PostsMode; repliesMode: RepliesMode; consentAt: string | null; live: boolean; editWindowHours: number }
-export type AutomationPatch = { postsMode?: PostsMode; repliesMode?: RepliesMode };
+export type WebsiteMode = 'auto' | 'ask' | 'off';
+/** `websiteMode` (docs/gbp-sync-spec.md): absent on a server without the Google sync, and then not offered */
+export interface Automation { postsMode: PostsMode; repliesMode: RepliesMode; websiteMode?: WebsiteMode; consentAt: string | null; live: boolean; editWindowHours: number }
+export type AutomationPatch = { postsMode?: PostsMode; repliesMode?: RepliesMode; websiteMode?: WebsiteMode };
 
 export interface Post {
   id: string; topic: string; body: string;
@@ -37,7 +39,8 @@ export interface Post {
   problem: null | 'quota_pending' | 'failed';
 }
 
-export type ActivityKind = 'card_synced' | 'card_approved' | 'post_planned' | 'post_published' | 'post_skipped' | 'post_failed' | 'reply_published' | 'reply_drafted' | 'page_created';
+export type ActivityKind = 'card_synced' | 'card_approved' | 'post_planned' | 'post_published' | 'post_skipped' | 'post_failed' | 'reply_published' | 'reply_drafted' | 'page_created'
+  | 'card_field_synced' | 'photo_added' | 'photo_removed';
 export interface Activity { id: string; kind: ActivityKind | (string & {}); title: string; detail: string | null; createdAt: string }
 
 export interface GbpStatus { enabled: boolean; connected: boolean; needsReconnect: boolean }

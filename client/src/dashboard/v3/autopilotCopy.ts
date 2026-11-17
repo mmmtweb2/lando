@@ -132,6 +132,8 @@ export const ACTIVITY_LABEL: Record<ActivityKind, string> = {
   post_planned: 'פוסט', post_published: 'פוסט', post_skipped: 'פוסט', post_failed: 'פוסט',
   reply_published: 'ביקורת', reply_drafted: 'ביקורת',
   page_created: 'דף',
+  card_field_synced: 'הכרטיס בגוגל',
+  photo_added: 'תמונות', photo_removed: 'תמונות',
 };
 export const ACTIVITY_LABEL_OTHER = 'פעולה';
 
