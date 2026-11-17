@@ -11,6 +11,7 @@ import { adminSeoOverview, adminSeoFunnel, adminSeoUsers, adminSeoRevenue, admin
 import { adminPreview, adminTest } from '../controllers/digest.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
+import { adminList as ratingsAdminList, adminReview as ratingsAdminReview } from '../controllers/ratings.controller';
 import { rateLimit } from '../middleware/rateLimit';
 
 const router = Router();
@@ -53,6 +54,10 @@ router.get('/digest/preview', adminPreview);
 router.post('/digest/test', adminTest);
 // Feedback from testers (migration 034).
 router.get('/feedback', adminListFeedback);
+// Customer ratings (migration 052): approve or reject; we never edit a customer's words.
+router.get('/ratings', ratingsAdminList);
+router.post('/ratings/:id/approve', ratingsAdminReview('approved'));
+router.post('/ratings/:id/reject', ratingsAdminReview('rejected'));
 router.post('/feedback/:id/seen', adminMarkSeen);
 
 // Admin tabs of the Google-promotion product (task #10, migration 040).

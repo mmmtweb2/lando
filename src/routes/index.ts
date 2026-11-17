@@ -7,6 +7,7 @@ import paymentRouter from './payment.routes';
 import siteRouter from './site.routes';
 import seoRouter from './seo.routes';
 import publicAuditRouter from './publicAudit.routes';
+import ratingsRouter from './ratings.routes';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/payments', paymentRouter);
 router.use('/site', siteRouter);
 router.use('/seo', seoRouter);
 router.use('/public', publicAuditRouter);
+router.use('/ratings', ratingsRouter);
 
 export default router;

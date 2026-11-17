@@ -22,6 +22,7 @@ import SetPasswordCard from '../components/SetPasswordCard';
 import SeoProductPanel from '../components/SeoProductPanel';
 import SeoSubscriptionCard from '../components/SeoSubscriptionCard';
 import SeoReturnBanner from '../components/SeoReturnBanner';
+import RatingAsk from '../components/ratings/RatingAsk';
 import SeoDashboardV2 from '../dashboard/v3/SeoDashboardEntry';   // v2, or v3 with ?dash=v3
 import { dashV2Enabled } from '../dashboard/flag';
 import { dashV3Enabled } from '../dashboard/v3/flag';
@@ -981,11 +982,15 @@ export default function Dashboard() {
 
           <JourneyBanner />
 
+          {/* One quiet ask to rate us, only at the right moment and never after "not now". */}
+          {area !== 'settings' && <RatingAsk />}
+
           {kind === null ? (
             <div className="dsh-load" aria-busy="true" aria-label="טוען"><span /><span /><span /></div>
           ) : area === 'settings' ? (
             /* ── Settings and billing: the subscription, the password, support, the account ── */
             <div className="flex flex-col gap-4">
+              <RatingAsk variant="settings" />
               {hasSeo && (
                 <section className="dsh-section" aria-label="המנוי לקידום בגוגל">
                   <SeoSubscriptionCard />
