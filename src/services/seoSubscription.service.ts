@@ -16,6 +16,8 @@ import { beginRecurringRedirect, beginSinglePaymentRedirect, cancelRecurring, cr
 import {
   SubState, SubStatus, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow,
 } from './subscriptionState';
+import { ChargeEvent, RefundOffer, refundOffer } from './seoRefund';
+import { sendRefundMails } from './refundMail';
 
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -319,9 +321,67 @@ export async function subscriptionIdExists(id: string): Promise<boolean> {
 
 // ─── Cancel ─────────────────────────────────────────────────────────────────
 
-export async function cancelSubscription(email: string, now = new Date()): Promise<SubRow> {
+/**
+ * Would cancelling now return the first payment (decision 17.11, seoRefund.ts)? Before migration 051
+ * (no refund table) the answer is always no: nothing is offered that the server cannot record.
+ */
+export async function refundOfferFor(row: SubRow, now = new Date()): Promise<RefundOffer> {
+  const unavailable: RefundOffer = { eligible: false, amount: null, paymentId: null, until: null, reason: 'unavailable' };
+  const { data: prior, error: pErr } = await supabase.from('seo_refund_requests').select('id').eq('email', row.email).limit(1);
+  if (pErr) return unavailable;
+  const { data: ev, error: eErr } = await supabase.from('seo_subscription_events')
+    .select('kind, sumit_payment_id, amount, created_at').eq('subscription_id', row.id);
+  if (eErr) return unavailable;
+  return refundOffer(row.status, (ev ?? []) as ChargeEvent[], ((prior ?? []) as unknown[]).length > 0, now);
+}
+
+/**
+ * Cancel within the refund window: the request is recorded FIRST (the unique index on email makes it
+ * once per account even under a double click), then the standing order is stopped and access ends now.
+ * Nothing is refunded by the server: the owner refunds in SUMIT and marks it in the admin panel.
+ * Returns null when the request could not be claimed (another one exists): the caller falls back to
+ * the ordinary cancel.
+ */
+async function cancelWithRefund(row: SubRow, offer: RefundOffer, now: Date): Promise<(SubRow & { refunded: number }) | null> {
+  const { data: req, error: rErr } = await supabase.from('seo_refund_requests').insert({
+    email: row.email, subscription_id: row.id, sumit_payment_id: offer.paymentId, amount: offer.amount, requested_at: now.toISOString(),
+  }).select('id').maybeSingle();
+  if (rErr) {
+    if ((rErr as { code?: string }).code === '23505') return null;
+    throw dbError(rErr);
+  }
+  const reqId = (req as { id?: string } | null)?.id ?? null;
+  try {
+    const stopped = autoRenews(row) && row.sumit_recurring_item_id ? await stopStandingOrder(row) : true;
+    await saveState(row, { status: 'canceled', currentPeriodEnd: now, cancelAtPeriodEnd: false },
+      { needs_manual_cancel: !stopped, ...(stopped && row.sumit_recurring_item_id ? { sumit_recurring_item_id: null } : {}) });
+  } catch (e) {
+    // Nothing changed for the customer: release the request so they can try again.
+    if (reqId) await supabase.from('seo_refund_requests').delete().eq('id', reqId);
+    throw e;
+  }
+  await supabase.from('seo_subscription_events').insert({ subscription_id: row.id, kind: 'canceled' });
+  await syncAddonPage(row.email);
+  console.error('[SUBSCRIPTION] ALERT refund owed — refund it in SUMIT and mark it in the admin panel', { email: row.email, amount: offer.amount, payment: offer.paymentId });
+  await sendRefundMails({ email: row.email, amount: offer.amount ?? 0, paymentId: offer.paymentId, cycle: row.cycle === 'year' ? 'year' : 'month' });
+  return { ...((await getById(row.id)) as SubRow), refunded: offer.amount ?? 0 };
+}
+
+/**
+ * Cancels the account's subscription. With `refund: true` (the customer's own cancel button) a cancel
+ * inside the refund window ends the subscription now and records a full refund; otherwise (and for an
+ * account deletion) it is the ordinary cancel: renewal stops, access lasts to the end of the period.
+ */
+export async function cancelSubscription(email: string, now = new Date(), opts: { refund?: boolean } = {}): Promise<SubRow & { refunded?: number }> {
   const row = await getSubscription(email);
   if (!row) throw new SubError('no_subscription');
+  if (opts.refund && row.status !== 'canceled') {
+    const offer = await refundOfferFor(row, now);
+    if (offer.eligible) {
+      const done = await cancelWithRefund(row, offer, now);
+      if (done) return done;
+    }
+  }
   if (row.status === 'canceled') {
     // Access already ended, but SUMIT may still hold the standing order (a stop that failed earlier):
     // the customer must always be able to stop the charges themselves.
@@ -360,6 +420,31 @@ async function stopStandingOrder(row: SubRow): Promise<boolean> {
   if (error) console.error('[SUBSCRIPTION] standing order stop not recorded:', row.id, error.message);
   if (!ok) console.error('[SUBSCRIPTION] ALERT could not stop the standing order in SUMIT — stop it by hand', { id: row.id, email: row.email });
   return ok;
+}
+
+// ─── Refund requests (admin) ─────────────────────────────────────────────────
+
+export interface RefundRequestRow {
+  id: string; email: string; subscription_id: string | null; sumit_payment_id: string | null;
+  amount: number; requested_at: string; status: 'pending' | 'refunded' | 'rejected'; handled_at: string | null; note: string | null;
+}
+
+/** Newest first. Throws SubError('not_migrated') before migration 051. */
+export async function listRefundRequests(limit = 100): Promise<RefundRequestRow[]> {
+  const { data, error } = await supabase.from('seo_refund_requests')
+    .select('id, email, subscription_id, sumit_payment_id, amount, requested_at, status, handled_at, note')
+    .order('requested_at', { ascending: false }).limit(limit);
+  if (error) throw dbError(error);
+  return (data ?? []) as RefundRequestRow[];
+}
+
+/** The admin marks a request refunded (or rejected) after handling it in SUMIT. Only a pending one changes. */
+export async function markRefundRequest(id: string, status: 'refunded' | 'rejected', note: string | null, now = new Date()): Promise<boolean> {
+  const { data, error } = await supabase.from('seo_refund_requests')
+    .update({ status, handled_at: now.toISOString(), note: note ? note.slice(0, 500) : null })
+    .eq('id', id).eq('status', 'pending').select('id');
+  if (error) throw dbError(error);
+  return ((data ?? []) as unknown[]).length > 0;
 }
 
 /** The subscription that owns this SUMIT customer (a renewal charge reported without our reference). */

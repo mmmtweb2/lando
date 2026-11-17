@@ -17,6 +17,8 @@ interface Status {
     status: 'active' | 'past_due' | 'canceled'; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; renewalPending?: boolean;
     planId?: SeoPlanId; cycle?: SeoCycle; withPage?: boolean; renews?: boolean;
     page?: { included: boolean; pageId: string | null; status: string | null };
+    /** Cancelling now returns the first payment in full (14 days from it, once per account). */
+    refund?: { eligible: boolean; amount: number | null; until: string | null };
   } | null;
 }
 
@@ -30,6 +32,7 @@ export default function SeoSubscriptionCard() {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [err, setErr] = useState('');
+  const [done, setDone] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -46,6 +49,9 @@ export default function SeoSubscriptionCard() {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(body.error ?? 'משהו השתבש. נסו שוב.'); return; }
       if (body.redirectUrl) { window.location.href = body.redirectUrl; return; }
+      if (typeof body.refunded === 'number' && body.refunded > 0) {
+        setDone(`המנוי בוטל. ₪${fmt(body.refunded)} יוחזרו לאמצעי התשלום שלכם בימים הקרובים, ושלחנו לכם אישור במייל.`);
+      }
       setConfirming(false);
       await load();
     } catch { setErr('משהו השתבש. נסו שוב.'); } finally { setBusy(false); }
@@ -72,7 +78,15 @@ export default function SeoSubscriptionCard() {
   const annualPlan = sub.cycle === 'year';
 
   const canRenew = (sub.status === 'past_due' && !sub.renewalPending) || sub.status === 'canceled' || sub.cancelAtPeriodEnd;
-  const canCancel = (sub.status === 'active' || sub.status === 'past_due') && !sub.cancelAtPeriodEnd;
+  const refund = sub.refund?.eligible && sub.refund.amount ? sub.refund : null;
+  // Inside the refund window the customer can still take the refund even after a plain "stop renewal".
+  const canCancel = (sub.status === 'active' || sub.status === 'past_due') && (!sub.cancelAtPeriodEnd || !!refund);
+  const refundUntil = refund ? dateHe(refund.until) : '';
+  const confirmText = refund
+    ? `לבטל? אתם בתוך 14 הימים מהתשלום הראשון, ולכן תקבלו החזר מלא של ₪${fmt(refund.amount as number)} לאמצעי התשלום. המנוי יסתיים מיד, הפוסטים והתשובות ייעצרו, ולא יהיו חיובים נוספים.`
+    : annualPlan
+      ? 'לבטל? הביטול מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול שלכם לפי דין. הגישה תימשך עד סוף התקופה ששולמה.'
+      : 'לבטל? לא יהיו חיובים נוספים והגישה תימשך עד סוף התקופה ששולמה. אין החזר על החודש שכבר שולם, בכפוף לזכויות הביטול שלכם לפי דין.';
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-3">
@@ -80,6 +94,10 @@ export default function SeoSubscriptionCard() {
       {kind && <p className="text-xs font-medium text-slate-500">{kind}</p>}
       <p className="text-sm text-slate-700">{line}</p>
       {pl && <p className="text-sm text-slate-700">{pl}</p>}
+      {refund && !confirming && (
+        <p className="text-xs text-slate-500">ביטול עד {refundUntil}: החזר מלא של ₪{fmt(refund.amount as number)}.</p>
+      )}
+      {done && <p role="status" className="text-sm text-emerald-700">{done}</p>}
       {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {canRenew && st.enabled && (
@@ -99,13 +117,11 @@ export default function SeoSubscriptionCard() {
         )}
         {canCancel && confirming && (
           <>
-            <span className="text-sm text-slate-700">
-              {annualPlan
-                ? 'לבטל? הביטול מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול שלכם לפי דין. הגישה תימשך עד סוף התקופה ששולמה.'
-                : 'לבטל? לא יהיו חיובים נוספים והגישה תימשך עד סוף התקופה ששולמה.'}
-            </span>
+            <span className="text-sm text-slate-700">{confirmText}</span>
             <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/cancel')}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">כן, לבטל</button>
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {refund ? 'כן, לבטל ולקבל החזר' : 'כן, לבטל'}
+            </button>
             <button type="button" onClick={() => setConfirming(false)}
               className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700">לא, להשאיר</button>
           </>

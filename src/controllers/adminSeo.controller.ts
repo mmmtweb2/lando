@@ -7,6 +7,7 @@ import {
   type AuditContactR, type BusinessNameR, type EventR, type JourneyR, type PremiumR, type ProductR, type SubEventR, type SubR,
 } from '../services/adminOps';
 import { healthSnapshot } from '../services/adminHealth.service';
+import { SubError, listRefundRequests, markRefundRequest } from '../services/seoSubscription.service';
 import { allowRun, runDiagnosis } from '../services/gbpDiagnose.service';
 
 const missing = (m?: string) => /does not exist|schema cache|42P01|PGRST205/i.test(m ?? '');
@@ -121,4 +122,33 @@ export async function adminGbpDiagnose(req: Request, res: Response): Promise<voi
   if (!/^[^\s@]{1,64}@[^\s@]{1,255}$/.test(email)) { res.status(400).json({ error: 'מייל לא תקין.' }); return; }
   if (!allowRun()) { res.status(429).json({ error: 'אבחון רץ לפני רגע. חכו 10 שניות.' }); return; }
   try { res.json(await runDiagnosis(email)); } catch (e) { fail(res, e); }
+}
+
+// ─── Refund requests (decision 17.11, migration 051) ─────────────────────────
+// A customer who cancelled within 14 days of the first payment. The server never refunds: Moshe refunds
+// in the SUMIT dashboard and marks the request here. Admin-gated by the router (session + is_admin + panel password).
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const refundTableMissing = (e: unknown) => e instanceof SubError && (e.code === 'not_migrated' || /seo_refund_requests|42P01|does not exist|schema cache/.test(e.message));
+
+export async function adminListRefunds(_req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ refunds: await listRefundRequests() });
+  } catch (e) {
+    if (refundTableMissing(e)) { res.status(503).json({ error: 'חסרה מיגרציה 051.', code: 'not_migrated' }); return; }
+    fail(res, e);
+  }
+}
+
+export async function adminMarkRefund(req: Request, res: Response): Promise<void> {
+  const id = String(req.params.id ?? '');
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: 'מזהה לא תקין.' }); return; }
+  const body = (req.body ?? {}) as { status?: unknown; note?: unknown };
+  if (body.status !== 'refunded' && body.status !== 'rejected') { res.status(400).json({ error: 'סטטוס לא תקין.' }); return; }
+  const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : null;
+  try {
+    const ok = await markRefundRequest(id, body.status, note);
+    if (!ok) { res.status(409).json({ error: 'הבקשה כבר טופלה או לא נמצאה.' }); return; }
+    res.json({ ok: true });
+  } catch (e) { fail(res, e); }
 }

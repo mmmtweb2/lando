@@ -49,6 +49,8 @@ interface PageRow {
   expires_at: string | null;
   frozen_at: string | null;
   renewal_count: number | null;
+  /** The owner chose not to renew (migration 051). Renewal is never automatic either way. */
+  renewal_opt_out_at?: string | null;
   // Minimal v1 page analytics (migrations/019_page_analytics.sql) — plain
   // counters, no dashboard/charts yet, just "does this page get traffic".
   view_count: number | null;
@@ -273,6 +275,47 @@ function RenewalNotice({
   );
 }
 
+/**
+ * "Don't renew this page" (decision 17.11): renewal is never charged automatically, so this only stops
+ * the reminder emails and says plainly what will happen. Reversible. Not shown for the page included in
+ * the promotion subscription, which lives with the subscription.
+ */
+function RenewalChoice({
+  page, onToggle, busy,
+}: { page: PageRow; onToggle: (id: string, optOut: boolean) => void; busy: boolean }) {
+  if (page.status !== 'published' || !page.expires_at) return null;
+  const until = formatDate(page.expires_at);
+  if (page.renewal_opt_out_at) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+        <p>
+          בחרתם לא לחדש. הדף יישאר באוויר עד {until} ועוד 7 ימים. אחר כך הוא יירד מהאוויר, יישמר עם הפניות 12 חודשים,
+          ואפשר יהיה לחדש אותו עד אז. בסוף התקופה הוא יימחק.
+        </p>
+        <button
+          onClick={() => onToggle(page.id, false)}
+          disabled={busy}
+          className="mt-1.5 font-medium text-[#2E63F6] underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {busy ? 'רגע…' : 'לחדש בכל זאת'}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <p className="text-[11px] leading-relaxed text-slate-400">
+      באוויר עד {until}. החידוש לא אוטומטי: נשאל אתכם לפני כן.{' '}
+      <button
+        onClick={() => onToggle(page.id, true)}
+        disabled={busy}
+        className="font-medium text-slate-500 underline underline-offset-2 hover:text-slate-700 disabled:opacity-50"
+      >
+        {busy ? 'רגע…' : 'לא לחדש את הדף'}
+      </button>
+    </p>
+  );
+}
+
 // Web Share API when available (opens the native share sheet — WhatsApp,
 // Messages, etc. — on mobile and on desktop browsers that support it),
 // falling back to clipboard copy everywhere else. `onCopied` lets the caller
@@ -294,9 +337,11 @@ async function sharePage(url: string, businessName: string, onCopied: () => void
 }
 
 function PageGrid({
-  pages, onDelete, onRenew, renewingId, renewalPrice, includedId = null,
+  pages, onDelete, onRenew, renewingId, renewalPrice, includedId = null, onToggleOptOut, optOutBusyId = null,
 }: {
   pages: PageRow[];
+  onToggleOptOut?: (id: string, optOut: boolean) => void;
+  optOutBusyId?: string | null;
   /** the page that comes with the promotion subscription (shown with a tag) */
   includedId?: string | null;
   onDelete: (id: string, name: string) => void;
@@ -355,8 +400,11 @@ function PageGrid({
               {(p.view_count ?? 0).toLocaleString('he-IL')} צפיות · {(p.cta_click_count ?? 0).toLocaleString('he-IL')} קליקים
             </p>
           )}
-          {needsRenewal(p) && (
+          {needsRenewal(p) && !(p.status === 'published' && p.renewal_opt_out_at) && (
             <RenewalNotice page={p} onRenew={onRenew} busy={renewingId === p.id} renewalPrice={renewalPrice} />
+          )}
+          {onToggleOptOut && includedId !== p.id && (
+            <RenewalChoice page={p} onToggle={onToggleOptOut} busy={optOutBusyId === p.id} />
           )}
           <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 min-w-0">
@@ -455,6 +503,7 @@ export default function Dashboard() {
   const [creditsAck, setCreditsAck] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
+  const [optOutBusyId, setOptOutBusyId] = useState<string | null>(null);
   // An applied coupon is only a PREVIEW of the price (see CouponField). What
   // makes it real is passing `code` through to /api/payments/start, which
   // re-validates it server-side and prices the charge itself.
@@ -675,6 +724,26 @@ export default function Dashboard() {
     } catch (e) {
       setBuyMsg({ text: e instanceof Error ? e.message : 'פתיחת התשלום נכשלה', ok: false });
       setRenewingId(null);
+    }
+  }
+
+  /** "Don't renew" / "renew after all" for one page. Only stops the reminder emails. */
+  async function handleRenewalOptOut(id: string, optOut: boolean) {
+    if (optOutBusyId) return;
+    setOptOutBusyId(id);
+    try {
+      const r = await authFetch(`/api/landing/${id}/renewal-opt-out`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optOut }),
+      });
+      const data = await r.json().catch(() => ({})) as { error?: string };
+      if (!r.ok) throw new Error(data.error ?? 'השמירה נכשלה');
+      setPages((prev) => prev.map((p) => (p.id === id ? { ...p, renewal_opt_out_at: optOut ? new Date().toISOString() : null } : p)));
+    } catch (e) {
+      setBuyMsg({ text: e instanceof Error ? e.message : 'השמירה נכשלה', ok: false });
+    } finally {
+      setOptOutBusyId(null);
     }
   }
 
@@ -1146,6 +1215,8 @@ export default function Dashboard() {
                   pages={pages}
                   onDelete={handleDeletePage}
                   onRenew={handleRenewPage}
+                  onToggleOptOut={handleRenewalOptOut}
+                  optOutBusyId={optOutBusyId}
                   renewingId={renewingId}
                   renewalPrice={plan ? renewalPriceFor(plan.pageCreditsTotal) : PRICING.renewal.base}
                   includedId={kind === 'both' ? includedPage?.id ?? null : null}

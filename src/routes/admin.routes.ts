@@ -7,7 +7,7 @@ import { adminAuditLeadHandled, adminAuditLeads } from '../controllers/publicAud
 import { adminGbpConfig } from '../controllers/gbpConfig.controller';
 import { adminListGrants, adminGrant, adminRevoke } from '../controllers/betaAccess.controller';
 import { adminListFeedback, adminMarkSeen } from '../controllers/feedback.controller';
-import { adminSeoOverview, adminSeoFunnel, adminSeoUsers, adminSeoRevenue, adminSeoHealth, adminSeoFeedback, adminSetManualPremium, adminGbpDiagnose } from '../controllers/adminSeo.controller';
+import { adminSeoOverview, adminSeoFunnel, adminSeoUsers, adminSeoRevenue, adminSeoHealth, adminSeoFeedback, adminSetManualPremium, adminGbpDiagnose, adminListRefunds, adminMarkRefund } from '../controllers/adminSeo.controller';
 import { adminPreview, adminTest } from '../controllers/digest.controller';
 import { requireAuth, requireAdmin } from '../middleware/auth.middleware';
 import { requireAdminPanelPassword } from '../middleware/adminPassword.middleware';
@@ -68,6 +68,9 @@ router.get('/seo/revenue', adminSeoRevenue);
 router.get('/seo/health', adminSeoHealth);
 router.get('/seo/feedback', adminSeoFeedback);
 router.post('/seo/gbp-diagnose', adminGbpDiagnose);
+// Refunds owed after a cancel inside the 14-day window (migration 051).
+router.get('/seo/refunds', adminListRefunds);
+router.post('/seo/refunds/:id/handled', adminMarkRefund);
 router.put('/seo/manual-premium', adminSetManualPremium);
 
 // Stuck-payment recovery (see payment.controller.ts's grantPaymentValue for

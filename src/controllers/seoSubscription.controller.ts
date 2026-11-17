@@ -10,7 +10,7 @@ import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import { diagLog, keysOf } from '../services/sumitDiag';
 import {
-  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, findBySumitCustomer, getSubscription, planOf, startSubscription,
+  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, findBySumitCustomer, getSubscription, planOf, refundOfferFor, startSubscription,
 } from '../services/seoSubscription.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -41,6 +41,13 @@ async function pageState(row: SubRow) {
 }
 
 /** GET /api/seo/subscription — what the dashboard card shows. Never fails the page. */
+async function refundView(row: SubRow): Promise<{ eligible: boolean; amount: number | null; until: string | null }> {
+  try {
+    const o = await refundOfferFor(row);
+    return { eligible: o.eligible, amount: o.eligible ? o.amount : null, until: o.eligible && o.until ? o.until.toISOString() : null };
+  } catch { return { eligible: false, amount: null, until: null }; }
+}
+
 export async function getStatus(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
@@ -64,6 +71,9 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         renewalPending: row.status === 'past_due' && Boolean(row.sumit_recurring_item_id) && !!row.current_period_end
           && Date.now() < new Date(row.current_period_end).getTime() + RENEWAL_DAY_MS,
         page: await pageState(row),
+        // Cancelling now returns the first payment in full (14 days from it, once per account). The card
+        // says which case applies, with the amount, before the customer confirms.
+        refund: await refundView(row),
       };
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
@@ -92,8 +102,8 @@ export async function cancel(req: Request, res: Response): Promise<void> {
   const email = req.authEmail;
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
   try {
-    const row = await cancelSubscription(email);
-    res.json({ status: row.status, currentPeriodEnd: row.current_period_end, cancelAtPeriodEnd: row.cancel_at_period_end });
+    const row = await cancelSubscription(email, new Date(), { refund: true });
+    res.json({ status: row.status, currentPeriodEnd: row.current_period_end, cancelAtPeriodEnd: row.cancel_at_period_end, refunded: row.refunded ?? null });
   } catch (e) { fail(res, e); }
 }
 

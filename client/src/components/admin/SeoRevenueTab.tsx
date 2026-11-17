@@ -1,5 +1,6 @@
 import { Card, Stat, State } from './adminUi';
 import { ils, pctText, useAdminData, type Fetcher } from './adminData';
+import RefundsPanel from './RefundsPanel';
 
 interface Revenue {
   mrr: { sumit: number; manual: number; total: number; goal: number; goalPct: number; payingCount: number; manualPayingCount: number };
@@ -34,6 +35,7 @@ export default function SeoRevenueTab({ adminFetch }: { adminFetch: Fetcher }) {
         )}
         {data.subsNeedingAttention > 0 && <p className="px-5 py-3 text-sm text-amber-700 border-t border-slate-100">{data.subsNeedingAttention} מנויים דורשים טיפול (חיוב שנכשל או ביטול ידני ב-SUMIT).</p>}
       </Card>
+      <RefundsPanel adminFetch={adminFetch} />
     </div>
   );
 }
