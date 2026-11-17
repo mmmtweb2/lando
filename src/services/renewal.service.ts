@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from '../config/supabase';
-import { addonPageIds, isAddonPage } from './seoPageAddon.service';
+import { addonPageIds, isAddonPage, releaseAddonClaim } from './seoPageAddon.service';
 import { deleteLeadsForPageTree } from './pageTree.service';
 import { sendRenewalReminder, ReminderKind } from './renewal.mailer';
 import { runDraftSweep } from './draftCleanup.service';
@@ -142,6 +142,11 @@ export interface RenewEligibility {
  * two, and the admin force-activate tool reaches the grant without ever passing
  * through startPayment).
  */
+async function subscriptionPageAccess(email: string): Promise<{ active: boolean }> {
+  const { pageAccessFor } = await import('./seoSubscription.service');
+  return pageAccessFor(email);
+}
+
 export async function checkRenewEligibility(email: string, id: string): Promise<RenewEligibility> {
   const { data, error } = await supabase
     .from('landing_pages')
@@ -158,9 +163,12 @@ export async function checkRenewEligibility(email: string, id: string): Promise<
   if (!owner || owner !== email.trim().toLowerCase()) {
     return { ok: false, reason: 'not_owner', status: row.status ?? null };
   }
-  // The page that comes with a "with page" promotion plan lives and freezes with that subscription.
-  // It is not renewed for 99 on its own (seoPageAddon.service.ts).
-  if (await isAddonPage(id)) return { ok: false, reason: 'managed_by_subscription', status: row.status ?? null, businessName: row.business_name ?? null };
+  // The page included in a promotion subscription lives with that subscription while it is active.
+  // Once the subscription has ended the page is the customer's like any other page and can be bought
+  // back the regular way (decision 17.11): the renewal then releases the included-page claim.
+  if (await isAddonPage(id) && (await subscriptionPageAccess(owner)).active) {
+    return { ok: false, reason: 'managed_by_subscription', status: row.status ?? null, businessName: row.business_name ?? null };
+  }
   if (!RENEWABLE_STATUSES.includes((row.status ?? '') as (typeof RENEWABLE_STATUSES)[number])) {
     return { ok: false, reason: 'not_renewable', status: row.status ?? null, businessName: row.business_name ?? null };
   }
@@ -257,6 +265,9 @@ export async function grantRenewal(email: string, id: string): Promise<boolean> 
     console.error('[RENEW] CAS lost — page changed mid-renewal, nothing written', { id, priorStatus, priorCount });
     return false;
   }
+  // A former included page that was just bought back is no longer tied to the (ended) subscription,
+  // or the subscription sweep would freeze it again.
+  if (await isAddonPage(id)) await releaseAddonClaim(email, id).catch((e: unknown) => console.error('[RENEW] ALERT included-page claim not released', { id, e: String(e) }));
 
   const renewed = data as RenewedPage;
   console.log('[RENEW] page renewed', {

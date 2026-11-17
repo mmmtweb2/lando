@@ -149,3 +149,23 @@ export async function setAuditLeadHandled(id: string, handled: boolean, now = ne
   if (error) throw dbError(error);
   return (data ?? []).length > 0;
 }
+
+/** How long a free-check lead is kept (decision 17.11): one month, then it is deleted. */
+export const AUDIT_LEAD_RETENTION_DAYS = 30;
+
+/** Deletes free-check leads older than the retention period. Returns how many were deleted; never throws. */
+export async function purgeOldAuditLeads(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - AUDIT_LEAD_RETENTION_DAYS * 86_400_000).toISOString();
+  const { data, error } = await supabase.from('audit_leads').delete().lt('created_at', cutoff).select('id');
+  if (error) { console.error('[AUDIT-LEADS] purge failed:', error.message); return 0; }
+  const n = (data ?? []).length;
+  if (n) console.log(`[AUDIT-LEADS] deleted ${n} leads older than ${AUDIT_LEAD_RETENTION_DAYS} days`);
+  return n;
+}
+
+/** Daily purge, first run a minute after start. Owned by the web process like the other sweeps. */
+export function startAuditLeadPurge(): void {
+  const run = () => { void purgeOldAuditLeads(); };
+  setTimeout(run, 60_000).unref?.();
+  setInterval(run, 24 * 3_600_000).unref?.();
+}

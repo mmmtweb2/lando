@@ -133,6 +133,9 @@ const P1 = '11111111-1111-4111-8111-111111111111', P2 = '22222222-2222-4222-8222
   assert.equal(p1.status, 'frozen'); assert.ok(p1.frozen_at);
   assert.equal(db.landing_pages.length, 3, 'nothing deleted');
   assert.equal(await publishIncludedPage(E, P1), null, 'frozen pages come back through the subscription, not the publish path');
+  // decision 17.11: once the subscription has ended, the frozen page can be bought back the regular way
+  const el2 = await checkRenewEligibility(E, P1);
+  assert.equal(el2.ok, true, 'ended subscription -> the page is renewable like any page');
 
   // 7. buying a plan with a page again brings it back
   r = res(); await start(req({ body: { plan: 'annual' } }), r);
