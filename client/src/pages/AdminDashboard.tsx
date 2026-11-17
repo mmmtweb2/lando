@@ -6,6 +6,7 @@ import SeoUsersTab from '../components/admin/SeoUsersTab';
 import SeoRevenueTab from '../components/admin/SeoRevenueTab';
 import SystemHealthTab from '../components/admin/SystemHealthTab';
 import SeoFeedbackTab from '../components/admin/SeoFeedbackTab';
+import RatingsTab from '../components/admin/RatingsTab';
 import DigestAdminPanel from '../components/admin/DigestAdminPanel';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +15,7 @@ import { authFetch } from '../lib/api';
 const TABS = [
   { id: 'overview', label: 'סקירה' }, { id: 'funnel', label: 'משפך' }, { id: 'users', label: 'משתמשים' },
   { id: 'revenue', label: 'הכנסות' }, { id: 'system', label: 'בריאות מערכת' }, { id: 'feedback', label: 'פידבק' },
-  { id: 'pages', label: 'דפי נחיתה (Pagey)' },
+  { id: 'pages', label: 'דפי נחיתה (Pagey)' }, { id: 'ratings', label: 'דירוגים' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 const TAB_KEY = 'pagey_admin_tab';
@@ -777,6 +778,7 @@ export default function AdminDashboard() {
           {tab === 'revenue' && <SeoRevenueTab adminFetch={adminFetch} />}
           {tab === 'system' && <SystemHealthTab adminFetch={adminFetch} />}
           {tab === 'feedback' && <SeoFeedbackTab adminFetch={adminFetch} />}
+          {tab === 'ratings' && <RatingsTab adminFetch={adminFetch} />}
 
           {tab === 'pages' && (
             <>

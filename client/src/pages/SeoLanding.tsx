@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getPublicConfig } from '../lib/publicConfig';
 import { trackEvent } from '../lib/track';
+import CustomerRatings from '../components/ratings/CustomerRatings';
 
 // /seo: the public sales page of the Google-promotion subscription (v2, 17.11.2026, README part 134).
 // Content rules, all deliberate (marketing spec + legal audit 16.11):
@@ -584,6 +585,8 @@ export default function SeoLanding() {
         <ListingSync />
         <Report />
         <Fair />
+        {/* Real customers' ratings; renders nothing until 3 are approved (migration 052). */}
+        <CustomerRatings product="seo" className="bg-slate-50" />
         <Plans plansRef={plansRef} conciergeHref={conciergeHref} />
 
         {/* FAQ: answer first, then the short explanation; native <details> so it works without JS */}
