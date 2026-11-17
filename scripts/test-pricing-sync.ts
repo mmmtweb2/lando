@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUNDLES, SINGLE_PAGE_PRICE, SINGLE_PAGE_AI_CREDITS, RENEWAL_PRICE, renewalPriceFor as serverRenewal, CREATION_ALLOWANCE_MULTIPLIER } from '../src/config/billing';
+import { SEO_MONTHLY_PRICE, SEO_ANNUAL_PRICE } from '../src/config/seoCatalog';
 import { PRICING, perPage, savingPercent, renewalPriceFor, fmt } from '../client/src/config/pricing';
 
 function ok(c: unknown, m: string) { if (!c) { console.error('FAIL:', m); process.exit(1); } }
@@ -18,6 +19,7 @@ for (const id of ['bundle5', 'bundle10'] as const) {
 }
 ok(PRICING.whiteLabelAddon.price === BUNDLES.whitelabel_addon.price, 'white-label add-on price');
 ok(PRICING.renewal.base === RENEWAL_PRICE, 'renewal base');
+ok(PRICING.seoSubscription.monthly === SEO_MONTHLY_PRICE && PRICING.seoSubscription.annual === SEO_ANNUAL_PRICE, 'promotion subscription price');
 for (const n of [0, 1, 4, 5, 9, 10, 25]) ok(renewalPriceFor(n) === serverRenewal(n), `renewal tier at ${n}`);
 
 // Credit packs live in the controller; read the literal rather than importing the whole controller.

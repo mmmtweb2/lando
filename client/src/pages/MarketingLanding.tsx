@@ -4,9 +4,12 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Zap, Globe, Smartphone, Palette, MessageSquare,
-  Check, ChevronDown, ArrowLeft, Wand2, Rocket, Menu, X, Mail,
+  Check, ChevronDown, ArrowLeft, Wand2, Rocket, Menu, X, Mail, Search, Star, CalendarCheck, BarChart3,
 } from 'lucide-react';
 import { LandoBot, LandoMark, type LandoMood } from '../components/Lando';
+import { trackEvent } from '../lib/track';
+import { getPublicConfig } from '../lib/publicConfig';
+import { OPERATOR } from '../config/operator';
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
 // Single source of truth — change here to rebrand.
@@ -93,7 +96,7 @@ function AnimatedDemo() {
                   ))}
                 </div>
                 <div className="mt-auto rounded-xl py-3 text-center text-sm font-bold text-white" style={{ background: GRAD }}>
-                  צור את הדף שלי ✦
+                  צרו את הדף שלי ✦
                 </div>
               </motion.div>
             )}
@@ -109,7 +112,7 @@ function AnimatedDemo() {
                     <Wand2 size={24} className="text-white" />
                   </span>
                 </div>
-                <p className="text-sm font-semibold text-slate-700">בונה את הדף שלך…</p>
+                <p className="text-sm font-semibold text-slate-700">בונים את הדף שלכם…</p>
                 <div className="w-full max-w-[200px] h-2 rounded-full bg-slate-100 overflow-hidden">
                   <motion.div className="h-full rounded-full" style={{ background: GRAD }}
                     initial={{ width: '10%' }} animate={{ width: '92%' }} transition={{ duration: 2, ease: 'easeOut' }} />
@@ -277,12 +280,123 @@ function GlowBar() {
     className="w-12 h-1 rounded-full mx-auto mt-3" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} />;
 }
 
+// ─── Pricing for several pages (agencies, several businesses) ────────────────
+function MultiPagePricing() {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const item = (f: string) => (
+    <li key={f} className="flex items-start gap-2.5"><span className="mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PRIMARY }} /><span className="text-slate-600">{f}</span></li>
+  );
+  return (
+    <div className="max-w-4xl mx-auto mt-8">
+      <div className="text-center">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={panelId}
+          className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold bg-white border transition hover:border-[#2E63F6]"
+          style={{ borderColor: '#C6D2F2', color: NAVY }}>
+          לבעלי כמה עסקים או סוכנויות: מחירים לכמה דפים
+          <ChevronDown size={16} aria-hidden className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      {open && (
+        <div id={panelId} className="mt-6 grid md:grid-cols-2 gap-5">
+          {(['bundle5', 'bundle10'] as const).map((id) => {
+            const b = PRICING[id];
+            const renewal = id === 'bundle5' ? PRICING.renewal.atFivePages : PRICING.renewal.atTenPages;
+            return (
+              <div key={id} className="rounded-3xl border-2 p-6 bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
+                <h3 className="font-bold text-lg text-slate-800">חבילת {b.pages} דפים</h3>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="text-3xl font-extrabold">{fmt(b.price)}</span><span className="text-base font-bold">₪</span>
+                  <span className="text-sm text-slate-600 mr-1">תשלום אחד</span>
+                </div>
+                <p className="mt-1 text-sm font-bold text-emerald-700">₪{perPage(id)} לדף, חיסכון של {savingPercent(id)}%</p>
+                <ul className="mt-4 space-y-2.5 text-sm flex-1">
+                  {[
+                    `${b.pages} דפים לפרסום, מתי שתרצו. היתרה לא פגה`,
+                    `${b.aiCredits} שינויים חכמים בדפים במתנה`,
+                    `אפשר לבנות דפים מאפס עד ${b.createAllowance} פעמים`,
+                    `חידוש שנתי מוזל: ${renewal} ₪ לדף, רק אם תבחרו`,
+                    ...(id === 'bundle10' ? ['בלי הכיתוב "נוצר באמצעות Pagey" בתחתית הדפים, לתמיד'] : []),
+                  ].map(item)}
+                </ul>
+                <Link to="/login" className="mt-6 block text-center rounded-xl py-3 font-bold text-white hover:opacity-90 transition" style={{ background: GRAD }}>
+                  לרכישה מהאזור האישי
+                </Link>
+              </div>
+            );
+          })}
+          <div className="md:col-span-2 rounded-2xl bg-white/70 border p-5 text-sm text-slate-600 leading-relaxed" style={{ borderColor: '#DCE4F7' }}>
+            <p><span className="font-bold text-slate-800">בלי הכיתוב "נוצר באמצעות Pagey"</span> בתחתית הדף ובשם הלשונית, גם בלי חבילה: ₪{fmt(PRICING.whiteLabelAddon.price)}, פעם אחת.</p>
+            <p className="mt-2"><span className="font-bold text-slate-800">עוד שינויים חכמים:</span> {PRICING.creditPacks.small.credits} ב-₪{fmt(PRICING.creditPacks.small.price)}, או {PRICING.creditPacks.large.credits} ב-₪{fmt(PRICING.creditPacks.large.price)}.</p>
+            <p className="mt-2">אין מנוי ואין חיוב חוזר. כל דף שמתפרסם בתוקף לשנה, ואפשר (לא חובה) לחדש אותו.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── The second product: Google promotion ───────────────────────────────────
+const AUDIT_HREF = '/audit?utm_source=home&utm_medium=cta&utm_campaign=home_seo';
+
+function SeoProductSection() {
+  return (
+    <Section id="google" className="py-20">
+      <div className="rounded-[2.5rem] px-6 sm:px-12 py-14 relative overflow-hidden" style={{ background: NAVY }}>
+        <div className="lando-blob absolute rounded-full" style={{ top: -60, insetInlineEnd: -40, width: 220, height: 220, background: 'rgba(111,231,255,0.14)', filter: 'blur(55px)' }} />
+        <div className="relative grid lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <p className="text-sm font-bold" style={{ color: GLOW }}>מוצר נוסף של Pagey</p>
+            <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-white leading-tight">רוצים שגם יפנו אליכם מגוגל?</h2>
+            <p className="mt-4 text-base leading-relaxed" style={{ color: '#C3CDE8' }}>
+              במנוי קידום העסק בגוגל אנחנו מטפלים בכרטיס העסק שלכם בגוגל כל שבוע, ואתם ממשיכים לעבוד.
+              {' '}₪{fmt(PRICING.seoSubscription.monthly)} לחודש כולל מע"מ, ודף הנחיתה של העסק כלול במנוי.
+            </p>
+            <div className="mt-7 flex flex-col sm:flex-row gap-3">
+              <Link to={AUDIT_HREF} onClick={() => trackEvent('home_seo_click', { location: 'section_audit' })}
+                className="rounded-xl px-6 py-3.5 text-base font-bold text-white inline-flex items-center justify-center gap-2 hover:opacity-90 transition" style={{ background: PRIMARY }}>
+                בדקו את הכרטיס שלכם בחינם <ArrowLeft size={18} aria-hidden />
+              </Link>
+              <Link to="/seo" onClick={() => trackEvent('home_seo_click', { location: 'section_more' })}
+                className="rounded-xl px-6 py-3.5 text-base font-bold inline-flex items-center justify-center gap-2 border transition hover:bg-white/10"
+                style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}>
+                מה כולל המנוי
+              </Link>
+            </div>
+            <p className="mt-3 text-xs" style={{ color: '#9FB0D9' }}>הבדיקה חינמית, לוקחת דקה ולא דורשת הרשמה. בלי הבטחת דירוג.</p>
+          </div>
+          <ul className="grid sm:grid-cols-2 gap-4">
+            {[
+              { icon: <CalendarCheck size={20} />, t: 'פוסט חדש כל שבוע', d: 'נכתב מפרטי העסק שאישרתם. אפשר לערוך או לעצור לפני שהוא עולה.' },
+              { icon: <Star size={20} />, t: 'תשובות לביקורות', d: 'לביקורות טובות אנחנו עונים בשמכם. לביקורת שלילית מכינים טיוטה לאישור שלכם.' },
+              { icon: <Search size={20} />, t: 'כרטיס מעודכן', d: 'אתר, שעות, חגים ותמונות מתעדכנים בגוגל מתוך האזור האישי.' },
+              { icon: <BarChart3 size={20} />, t: 'דוח חודשי', d: 'מה עשינו החודש, וכמה פניות הגיעו: שיחות, וואטסאפ וטפסים.' },
+            ].map((b) => (
+              <li key={b.t} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: 'rgba(111,231,255,0.14)', color: GLOW }}>{b.icon}</div>
+                <p className="font-bold text-white">{b.t}</p>
+                <p className="mt-1 text-sm leading-relaxed" style={{ color: '#AEB9D6' }}>{b.d}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MarketingLanding() {
   const [scrolled, setScrolled] = useState(false);
   const [scrollMood, setScrollMood] = useState<LandoMood>('default');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const heroRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let alive = true;
+    getPublicConfig().then((c) => { if (alive) setWhatsapp(c?.concierge ? (c.concierge.replace(/\D/g, '') || null) : null); });
+    return () => { alive = false; };
+  }, []);
   useEffect(() => {
     const onScroll = () => {
       setScrolled(window.scrollY > 20);
@@ -325,6 +439,7 @@ export default function MarketingLanding() {
             {SHOWCASE.length > 0 && <a href="#examples" className="hover:text-[#2E63F6] transition">דוגמאות</a>}
             <a href="#pricing" className="hover:text-[#2E63F6] transition">מחירים</a>
             <a href="#faq" className="hover:text-[#2E63F6] transition">שאלות</a>
+            <Link to="/seo" onClick={() => trackEvent('home_seo_click', { location: 'nav' })} className="hover:text-[#2E63F6] transition">קידום העסק בגוגל</Link>
           </nav>
           <div className="flex items-center gap-3">
             <Link to="/login" className="hidden sm:block text-sm font-medium text-slate-600 hover:text-[#2E63F6] transition">התחברות</Link>
@@ -344,6 +459,7 @@ export default function MarketingLanding() {
             {SHOWCASE.length > 0 && <a href="#examples" onClick={() => setMenuOpen(false)} className="py-1">דוגמאות</a>}
             <a href="#pricing" onClick={() => setMenuOpen(false)} className="py-1">מחירים</a>
             <a href="#faq" onClick={() => setMenuOpen(false)} className="py-1">שאלות</a>
+            <Link to="/seo" onClick={() => { setMenuOpen(false); trackEvent('home_seo_click', { location: 'menu' }); }} className="py-1">קידום העסק בגוגל</Link>
             <Link to="/login" onClick={() => setMenuOpen(false)} className="py-1" style={{ color: PRIMARY }}>התחברות</Link>
           </div>
         )}
@@ -356,7 +472,7 @@ export default function MarketingLanding() {
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold mb-6"
               style={{ background: 'var(--shell)', color: PRIMARY }}>
-              <Sparkles size={13} /> מופעל על ידי בינה מלאכותית
+              <Sparkles size={13} /> נכתב ומעוצב בעזרת בינה מלאכותית
             </motion.div>
             <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
               style={{ color: NAVY }}
@@ -368,7 +484,7 @@ export default function MarketingLanding() {
             </motion.h1>
             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
               className="mt-6 text-lg text-slate-500 leading-relaxed max-w-lg mx-auto lg:mx-0">
-              ספרו לנו על העסק — וה-AI כותב את התוכן, בוחר עיצוב, מייצר תמונות ובונה דף נחיתה שמוכן לפרסום. בלי מעצב, בלי מתכנת, בעברית.
+              ספרו לנו על העסק, והמערכת כותבת את התוכן, בוחרת עיצוב ותמונות ובונה דף נחיתה שמוכן לפרסום. בלי מעצב, בלי מתכנת, בעברית.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
               className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
@@ -407,7 +523,7 @@ export default function MarketingLanding() {
         <div className="grid md:grid-cols-3 gap-6">
           {[
             { n: '1', icon: <MessageSquare size={22} />, t: 'ספרו על העסק', d: 'שם, תחום, וכמה מילים. אפשר גם להעלות לוגו ותמונות משלכם.' },
-            { n: '2', icon: <Wand2 size={22} />, t: 'ה-AI בונה', d: 'תוכן משכנע, פלטת צבעים, תמונות ומבנה — הכל נבנה אוטומטית מולכם.' },
+            { n: '2', icon: <Wand2 size={22} />, t: 'המערכת בונה', d: 'תוכן משכנע, צבעים, תמונות ומבנה. הכל נבנה מול העיניים שלכם.' },
             { n: '3', icon: <Rocket size={22} />, t: 'ערכו ופרסמו', d: 'שינוי טקסט, צבעים ותמונות בקליק. מפרסמים — והדף באוויר עם כתובת משלו.' },
           ].map((s, i) => (
             <motion.div key={s.n} initial={{ opacity: 0, y: 26, scale: 0.95 }} whileInView={{ opacity: 1, y: 0, scale: 1 }} viewport={{ once: true }} transition={{ delay: i * 0.2, type: 'spring', stiffness: 90, damping: 16 }}>
@@ -438,10 +554,10 @@ export default function MarketingLanding() {
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 relative">
             <FeatureCard dark icon={<Zap size={20} />} title="מהיר באמת" desc="דף שלם ומוכן לפרסום בפחות מדקה. בלי לחכות למעצב או למתכנת." />
-            <FeatureCard dark icon={<Sparkles size={20} />} title="תוכן שכותב עצמו" desc="כותרות, תיאורי שירותים וקריאות לפעולה — כתובים על ידי AI שמבין שיווק." />
+            <FeatureCard dark icon={<Sparkles size={20} />} title="תוכן שכותב עצמו" desc="כותרות, תיאורי שירותים וכפתורי פנייה, כתובים בשבילכם בשפה שיווקית ברורה." />
             <FeatureCard dark icon={<Palette size={20} />} title="עיצוב מותאם" desc="פלטת צבעים ותמונות שנבחרות אוטומטית לפי תחום העסק והמותג שלכם." />
             <FeatureCard dark icon={<Smartphone size={20} />} title="מושלם במובייל" desc="כל דף נראה מצוין בנייד — שם רוב הלקוחות שלכם באמת נמצאים." />
-            <FeatureCard dark icon={<MessageSquare size={20} />} title="לוכד לידים" desc="טופס יצירת קשר מובנה — הפניות נאספות ומחכות לכם באזור האישי." />
+            <FeatureCard dark icon={<MessageSquare size={20} />} title="פניות מלקוחות" desc="טופס פנייה מובנה בדף. כל פנייה מגיעה אליכם ונשמרת באזור האישי." />
             <FeatureCard dark icon={<Globe size={20} />} title="באוויר בכתובת משלכם" desc="מפרסמים בקליק והדף עולה לרשת עם קישור לשיתוף בוואטסאפ וברשתות." />
           </div>
         </div>
@@ -492,72 +608,41 @@ export default function MarketingLanding() {
           <p className="mt-3 text-slate-500">בונים בחינם. משלמים רק כשמפרסמים, בלי חיוב אוטומטי.</p>
         </div>
 
-        {/* Single page (unchanged, 250₪ one-time) + two one-time page bundles.
-            Subscriptions were withdrawn 2026-09-01 — nothing here renews, and
-            no card is kept on file. Numbers mirror the server config
-            (src/config/billing.ts); keep in sync if prices change there. */}
-        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-5 items-stretch">
-
-          {/* Single page — pay per publish */}
-          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
-            <h3 className="font-bold text-lg text-slate-800">דף בודד</h3>
+        {/* One page is what almost every small business needs: it is the only card shown. Bundles,
+            the branding add-on and change packs are for agencies / several businesses and sit behind
+            an expander (external review 17.11). Every number comes from config/pricing.ts. */}
+        <div className="max-w-md mx-auto">
+          <div className="rounded-3xl border-2 p-7 shadow-xl bg-white flex flex-col" style={{ borderColor: PRIMARY }}>
+            <h3 className="font-bold text-lg text-slate-800">דף נחיתה לעסק</h3>
             <div className="mt-3 flex items-baseline gap-1">
               <span className="text-4xl font-extrabold">{fmt(PRICING.singlePage.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ דף, כולל שנה באוויר</span>
+              <span className="text-sm text-slate-600 mr-1">לדף, כולל שנה באוויר</span>
             </div>
             <ul className="mt-6 space-y-3 text-sm flex-1">
-              {['בנייה ועריכה חופשית לפני תשלום', 'דף באוויר עם כתובת משלו לשנה', `${PRICING.singlePage.aiCredits} קרדיטי AI במתנה לעריכות`, `עד ${PRICING.singlePage.createAllowance} יצירות דפים כלולות`, 'טופס לידים ואזור אישי', `חידוש שנתי — ${PRICING.renewal.base} ₪ בלבד`].map((f) => (
-                <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
+              {[
+                'בונים ועורכים בחינם, משלמים רק כשמפרסמים',
+                'כתובת משלכם, לשיתוף בוואטסאפ, ברשתות ובכרטיס בגוגל',
+                'טופס פנייה: כל פנייה מגיעה אליכם ונשמרת באזור האישי',
+                `${PRICING.singlePage.aiCredits} שינויים חכמים בדף במתנה (המערכת כותבת מחדש קטע לבקשתכם)`,
+                `אפשר לבנות את הדף מחדש מאפס עד ${PRICING.singlePage.createAllowance} פעמים`,
+                `אחרי שנה: חידוש ב-${PRICING.renewal.base} ₪, רק אם תבחרו. אין חיוב אוטומטי`,
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2.5"><span className="mt-1 w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
               ))}
             </ul>
             <Link to="/create" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
-              התחילו לבנות — בחינם
+              התחילו לבנות בחינם
             </Link>
-          </div>
-
-          {/* 5-page bundle */}
-          <div className="rounded-3xl border-2 p-7 shadow-lg bg-white flex flex-col" style={{ borderColor: '#DCE4F7' }}>
-            <h3 className="font-bold text-lg text-slate-800">חבילת 5 דפים</h3>
-            <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">{fmt(PRICING.bundle5.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ תשלום אחד</span>
-            </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle5')} לדף — חיסכון של {savingPercent('bundle5')}%</p>
-            <ul className="mt-6 space-y-3 text-sm flex-1">
-              {[`${PRICING.bundle5.pages} דפים לפרסום, מתי שתרצו`, 'היתרה לא פגה ולא מתחדשת חודשית', `${PRICING.bundle5.aiCredits} קרדיטי AI במתנה`, `עד ${PRICING.bundle5.createAllowance} יצירות דפים כלולות`, `חידוש שנתי מוזל — ${PRICING.renewal.atFivePages} ₪ לדף`, 'בלי מנוי ובלי חיוב חוזר'].map((f) => (
-                <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
-              ))}
-            </ul>
-            <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
-              לרכישה — מהאזור האישי
-            </Link>
-          </div>
-
-          {/* 10-page bundle — highlighted */}
-          <div className="rounded-3xl border-2 p-7 shadow-xl bg-white flex flex-col relative" style={{ borderColor: PRIMARY }}>
-            <span className="absolute -top-3 right-6 rounded-full px-3 py-1 text-xs font-bold text-white" style={{ background: GRAD }}>הכי משתלם</span>
-            <h3 className="font-bold text-lg text-slate-800">חבילת 10 דפים</h3>
-            <div className="mt-3 flex items-baseline gap-1">
-              <span className="text-4xl font-extrabold">{fmt(PRICING.bundle10.price)}</span><span className="text-lg font-bold">₪</span>
-              <span className="text-sm text-slate-600 mr-1">/ תשלום אחד</span>
-            </div>
-            <p className="mt-2 text-sm font-bold text-emerald-600">₪{perPage('bundle10')} לדף — חיסכון של כ-{savingPercent('bundle10')}%</p>
-            <ul className="mt-6 space-y-3 text-sm flex-1">
-              {[`${PRICING.bundle10.pages} דפים לפרסום, מתי שתרצו`, 'היתרה לא פגה ולא מתחדשת חודשית', `${PRICING.bundle10.aiCredits} קרדיטי AI במתנה`, `עד ${PRICING.bundle10.createAllowance} יצירות דפים כלולות`, `חידוש שנתי מוזל — ${PRICING.renewal.atTenPages} ₪ לדף`, 'בונוס: הסרת מיתוג Pagey מהדפים, לתמיד'].map((f) => (
-                <li key={f} className="flex items-center gap-2.5"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: GLOW, boxShadow: '0 0 8px #6FE7FF' }} /><span className="text-slate-600">{f}</span></li>
-              ))}
-            </ul>
-            <Link to="/login" className="mt-8 block text-center rounded-xl py-3.5 font-bold text-white shadow hover:opacity-90 transition" style={{ background: GRAD }}>
-              לרכישה — מהאזור האישי
-            </Link>
+            <p className="mt-4 text-xs text-center text-slate-500">
+              יש לכם מנוי לקידום העסק בגוגל? הדף כבר כלול במנוי, ואין צורך לקנות אותו בנפרד.
+            </p>
           </div>
         </div>
 
-        <p className="mt-8 text-center text-sm text-slate-500 max-w-2xl mx-auto">
-          אין מנוי ואין חיוב חוזר — רכישת חבילה היא חד־פעמית, וזכות הפרסום שלה לא פגה ולא מתחדשת מעצמה.
-          יחד עם זאת, כל דף שמתפרסם בפועל בתוקף לשנה מרגע הפרסום (כמו כל דף ב-Pagey) — ניתן לחדש אותו (לא חובה) לשנה נוספת, במחיר מוזל ככל שקניתם יותר דפים.
-        </p>
+        <MultiPagePricing />
       </Section>
+
+      <SeoProductSection />
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
       <Section id="faq" className="py-20 bg-[#E7EBF7]">
@@ -566,12 +651,14 @@ export default function MarketingLanding() {
           <GlowBar />
         </div>
         <div className="max-w-3xl mx-auto">
-          <FaqItem q="באמת אפשר לבנות דף בלי שום ידע טכני?" a="כן. ממלאים כמה שדות על העסק, וה-AI עושה את כל השאר — תוכן, עיצוב ותמונות. אתם רק עורכים ומפרסמים." />
+          <FaqItem q="באמת אפשר לבנות דף בלי שום ידע טכני?" a="כן. ממלאים כמה שדות על העסק, והמערכת עושה את כל השאר: תוכן, עיצוב ותמונות. אתם רק עורכים ומפרסמים." />
           <FaqItem q="צריך לשלם כדי לנסות?" a="לא. בונים ורואים את הדף בחינם. משלמים רק כשרוצים לפרסם אותו לאוויר." />
-          <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, ואף לבקש מה-AI לכתוב מחדש קטעים." />
+          <FaqItem q="אפשר לערוך את הדף אחרי שנבנה?" a="בהחלט. אפשר לשנות טקסטים, צבעים ותמונות ישירות על הדף, וגם לבקש מהמערכת לכתוב מחדש קטע שלם." />
           <FaqItem q="הדף יעבוד טוב בנייד?" a="כן. כל דף נבנה מותאם למובייל אוטומטית — שם נמצאים רוב הלקוחות." />
-          <FaqItem q="אני בונה הרבה דפים — יש מחיר משתלם?" a={`כן, ובלי מנוי. חבילת ${PRICING.bundle5.pages} דפים עולה ₪${fmt(PRICING.bundle5.price)} (₪${perPage('bundle5')} לדף) וחבילת ${PRICING.bundle10.pages} דפים ₪${fmt(PRICING.bundle10.price)} (₪${perPage('bundle10')} לדף, וגם בלי מיתוג Pagey על הדפים לתמיד). זו רכישה חד־פעמית: כל פרסום מנכה דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את מחיר החידוש השנתי (${PRICING.renewal.atFivePages} ₪ לדף בחבילת ${PRICING.bundle5.pages} דפים, ${PRICING.renewal.atTenPages} ₪ בחבילת ${PRICING.bundle10.pages}, במקום ${PRICING.renewal.base} ₪). רוצים רק להסיר את מיתוג Pagey בלי לקנות חבילה? אפשר לרכוש את זה בנפרד ב-₪${PRICING.whiteLabelAddon.price}, גם על דף בודד. רוכשים מהאזור האישי.`} />
-          <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס יצירת קשר. הפניות נאספות ומחכות לכם באזור האישי, עם אפשרות ייצוא לאקסל." />
+          <FaqItem q="אני בונה הרבה דפים, יש מחיר משתלם?" a={`כן, ובלי מנוי. חבילת ${PRICING.bundle5.pages} דפים עולה ₪${fmt(PRICING.bundle5.price)} (₪${perPage('bundle5')} לדף), וחבילת ${PRICING.bundle10.pages} דפים ₪${fmt(PRICING.bundle10.price)} (₪${perPage('bundle10')} לדף, וגם בלי הכיתוב "נוצר באמצעות Pagey" בתחתית הדפים). זה תשלום אחד: כל פרסום מוריד דף אחד מהיתרה, והיתרה לא פגה. חבילה גם מוזילה את החידוש השנתי (${PRICING.renewal.atFivePages} ₪ לדף בחבילת ${PRICING.bundle5.pages}, ${PRICING.renewal.atTenPages} ₪ בחבילת ${PRICING.bundle10.pages}, במקום ${PRICING.renewal.base} ₪). רוכשים מהאזור האישי.`} />
+          <FaqItem q="מה קורה עם פניות של לקוחות?" a="לכל דף יש טופס פנייה. כל פנייה מגיעה אליכם ונשמרת באזור האישי, ואפשר לייצא את כולן לאקסל." />
+          <FaqItem q="אפשר לחבר דומיין משלי?" a="עדיין לא. כל דף מקבל כתובת משלו, למשל השם-שלכם.pagey.co.il, ואפשר לקשר אליה מכל מקום: מהכרטיס בגוגל, מהאינסטגרם, מוואטסאפ ומאתר קיים." />
+          <FaqItem q="מה קורה אחרי שנה אם לא מחדשים?" a={`החידוש אף פעם לא אוטומטי. 30 יום לפני תאריך הסיום, 7 ימים לפניו וביום עצמו נשלחת תזכורת. אחרי תאריך הסיום הדף נשאר באוויר עוד 7 ימים, ואז יורד מהאוויר אבל נשמר אצלנו, עם כל הפניות, עוד 12 חודשים. בכל הזמן הזה אפשר לחדש ב-${PRICING.renewal.base} ₪ והדף חוזר בדיוק כמו שהיה. אם לא מחדשים, אחרי 12 החודשים הדף והפניות שלו נמחקים.`} />
         </div>
       </Section>
 
@@ -590,19 +677,23 @@ export default function MarketingLanding() {
           <p className="mt-2 text-sm text-slate-500">אנחנו כאן בשבילכם — אל תהססו לפנות בכל נושא, קטן כגדול.</p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <a
-              href="mailto:tirnoer.digital@gmail.com"
+              href={`mailto:${OPERATOR.email}`}
               className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:scale-105"
               style={{ background: `${PRIMARY}12`, color: PRIMARY }}>
-              <Mail size={18} /> tirnoer.digital@gmail.com
+              <Mail size={18} /> <span dir="ltr">{OPERATOR.email}</span>
             </a>
-            <a
-              href="https://wa.me/16465358055"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:scale-105"
-              style={{ background: '#25D366', color: '#052E16' }}>
-              <WhatsAppIcon size={18} /> WhatsApp
-            </a>
+            {/* The number comes from CONCIERGE_WHATSAPP (server config), like the rest of the site; it
+                used to be typed here by hand. No number configured: no button. */}
+            {whatsapp && (
+              <a
+                href={`https://wa.me/${whatsapp}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:scale-105"
+                style={{ background: '#25D366', color: '#052E16' }}>
+                <WhatsAppIcon size={18} /> וואטסאפ
+              </a>
+            )}
           </div>
         </motion.div>
       </Section>
@@ -629,9 +720,10 @@ export default function MarketingLanding() {
             <LandoMark size={26} />
             <span className="font-bold">{BRAND}</span>
           </div>
-          <p className="text-xs text-slate-600">© {new Date().getFullYear()} {BRAND} · דפי נחיתה מבוססי AI לעסקים בישראל</p>
+          <p className="text-xs text-slate-600">© {new Date().getFullYear()} {BRAND} · דפי נחיתה וקידום העסק בגוגל, לעסקים בישראל</p>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-slate-500">
             <Link to="/create" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">צרו דף</Link>
+            <Link to="/seo" onClick={() => trackEvent('home_seo_click', { location: 'footer' })} className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">קידום העסק בגוגל</Link>
             <Link to="/login" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">התחברות</Link>
             <Link to="/terms" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">תנאי שימוש</Link>
             <Link to="/privacy" className="inline-flex min-h-[44px] items-center hover:text-[#2E63F6] transition">מדיניות פרטיות</Link>

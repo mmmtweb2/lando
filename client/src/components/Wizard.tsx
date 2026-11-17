@@ -99,7 +99,7 @@ function getGoalLabels(goal: PageGoal | ''): GoalLabels {
         vibe: 'תחום / מטרת העמותה *',
         vibePlaceholder: 'לדוגמה: "עמותה לסיוע לילדים בסיכון"',
         userText: 'מידע על העמותה',
-        userTextPlaceholder: 'ספרו על הפעילות, הייעוד, והאנשים שאתם עוזרים להם — ה-AI ישתמש בזה לכתיבה',
+        userTextPlaceholder: 'ספרו על הפעילות, הייעוד, והאנשים שאתם עוזרים להם — המערכת תשתמש בזה כדי לכתוב את הדף',
         externalLinkLabel: 'קישור לדף תרומה (PayBox / bit / אחר)',
         externalLinkPlaceholder: 'https://paybox.co.il/...',
       };
@@ -132,7 +132,7 @@ function getGoalLabels(goal: PageGoal | ''): GoalLabels {
         vibe: 'תחום / סגנון *',
         vibePlaceholder: 'לדוגמה: "מאפייה ביתית שמתמחה בלחמי שאור"',
         userText: 'טקסט שיווקי קיים או מידע נוסף על העסק',
-        userTextPlaceholder: 'הדביקו כאן טקסטים מהאתר הישן, מסמכי שיווק, תיאור העסק, יתרונות — ה-AI ישתמש בזה כבסיס לכתיבה',
+        userTextPlaceholder: 'הדביקו כאן טקסטים מהאתר הישן, מסמכי שיווק, תיאור העסק, יתרונות — המערכת תשתמש בזה כבסיס לכתיבה',
         externalLinkLabel: null,
         externalLinkPlaceholder: '',
       };
@@ -140,7 +140,7 @@ function getGoalLabels(goal: PageGoal | ''): GoalLabels {
 }
 
 const PAGE_GOAL_OPTIONS: { value: PageGoal; label: string; desc: string; emoji: string }[] = [
-  { value: 'lead_gen',      label: 'גיוס לידים ופניות',         emoji: '📩', desc: 'קבלת פניות ובקשות מלקוחות פוטנציאליים' },
+  { value: 'lead_gen',      label: 'קבלת פניות מלקוחות',         emoji: '📩', desc: 'קבלת פניות ובקשות מלקוחות פוטנציאליים' },
   { value: 'direct_sale',   label: 'מכירת מוצר / שירות',        emoji: '🛒', desc: 'מכירה ישירה מהדף עם קריאה לפעולה ברורה' },
   { value: 'donation',      label: 'גיוס תרומות לעמותה',        emoji: '❤️', desc: 'עידוד תרומות למטרה חברתית או עמותה' },
   { value: 'registration',  label: 'הרשמה לקורס / וובינר',      emoji: '🎓', desc: 'הרשמת משתתפים לאירוע, קורס או הכשרה' },
@@ -196,7 +196,7 @@ const IMAGE_OPTIONS: { value: ImageSource; label: string; desc: string; icon: Re
   // the backend deducts CREDIT_COSTS.CREATE_IMAGE_SET for the creation image
   // batch (AI_CREATE_IMAGE_COST in src/controllers/landing.controller.ts). Say
   // so BEFORE the click — this was previously a silent deduction.
-  { value: 'ai',     label: `יצירת תמונות עם AI (${CREDIT_COSTS.CREATE_IMAGE_SET} ✦)`,  desc: `תמונות שנוצרו עבור העסק שלכם · עולה ${CREDIT_COSTS.CREATE_IMAGE_SET} קרדיטים`,  icon: <Sparkles size={20} /> },
+  { value: 'ai',     label: `תמונות שנוצרות במיוחד לעסק (${CREDIT_COSTS.CREATE_IMAGE_SET} ✦)`,  desc: `המערכת יוצרת תמונות שמתאימות לעסק שלכם · משתמש ב-${CREDIT_COSTS.CREATE_IMAGE_SET} מהשינויים החכמים שלכם`,  icon: <Sparkles size={20} /> },
 ];
 
 const PREVIEW_PALETTE: Record<string, { from: string; to: string }> = {
@@ -497,7 +497,7 @@ function BrandColorSection({
           </span>
           <span className="text-xs text-slate-400">
             {hasLogo
-              ? 'ה-AI יזהה את צבעי המותג ישירות מהלוגו שהעליתם'
+              ? 'המערכת תזהה את צבעי המותג ישירות מהלוגו שהעליתם'
               : 'יש להעלות לוגו כדי לאפשר אפשרות זו'}
           </span>
         </div>
@@ -525,7 +525,7 @@ function BrandColorSection({
       )}
       {!autoExtract && !primaryColor && !secondaryColor && (
         <p className="text-xs text-slate-400 text-center -mt-1">
-          השאירו ריק כדי לאפשר ל-AI לבחור את הצבעים
+          השאירו ריק, והמערכת תבחר צבעים שמתאימים לעסק
         </p>
       )}
     </div>
@@ -729,12 +729,12 @@ function IdleSkeletonPreview({ businessName, designStyle }: { businessName: stri
 // ─── Loading preview ──────────────────────────────────────────────────────────
 
 const LOADING_PHASES = [
-  'מנתח את תחום העיסוק שלך...',
-  'כותב כותרות ממירות בשיטת PAS...',
-  'בוחר פלטת צבעים שמשדרת יוקרה...',
-  'מעצב את מבנה הסקציות...',
-  'מייצר אייקונים מותאמים אישית...',
-  'מסיים ומרכיב את הדף...',
+  'לומדים את תחום העסק שלכם...',
+  'כותבים כותרות שמביאות פניות...',
+  'בוחרים צבעים שמתאימים לעסק...',
+  'מעצבים את חלקי הדף...',
+  'מכינים אייקונים מותאמים...',
+  'מרכיבים את הדף...',
 ];
 
 function LoadingPreview({ designStyle }: { designStyle: DesignStyle }) {
@@ -1168,7 +1168,7 @@ export default function Wizard() {
 
   const steps = [
     // ── Step 0: Page Goal ─────────────────────────────────────────────────────
-    <Step key="step-goal" title="מה מטרת הדף?" subtitle="ה-AI ישתמש בזה כדי להתאים את הכותרות, הכפתורים וסגנון הכתיבה">
+    <Step key="step-goal" title="מה מטרת הדף?" subtitle="כך נתאים את הכותרות, הכפתורים וסגנון הכתיבה">
       <PageGoalCards value={form.page_goal} onChange={handleGoalChange} />
     </Step>,
 
@@ -1214,9 +1214,9 @@ export default function Wizard() {
               <div className="flex flex-col gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3.5 mt-1">
                 <p className="text-xs font-semibold text-[#1E4FD6]">ענו על השאלות האלה בתיבה למעלה:</p>
                 {[
-                  'מה הלקוחות הכי אוהבים בשירות שלך?',
-                  'מה הבעיה הכי גדולה שאתה פותר להם?',
-                  'מה מייחד אותך מהמתחרים?',
+                  'מה הלקוחות הכי אוהבים בשירות שלכם?',
+                  'מה הבעיה הכי גדולה שאתם פותרים להם?',
+                  'מה מייחד אתכם מהמתחרים?',
                 ].map((q, i) => (
                   <div key={i} className="flex items-start gap-2">
                     <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-200 text-indigo-700 text-[10px] font-bold flex items-center justify-center mt-0.5">
@@ -1341,7 +1341,7 @@ export default function Wizard() {
       <ToggleSwitch
         checked={form.enable_form}
         onChange={(v) => update('enable_form', v)}
-        label="הוסף טופס השארת פרטים (לידים) לדף"
+        label="להוסיף לדף טופס פנייה מלקוחות"
       />
       <ToggleSwitch
         checked={form.include_testimonials}
@@ -1459,7 +1459,7 @@ export default function Wizard() {
                   <CheckCircle2 size={40} />
                 </motion.div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800">האתר שלך מוכן! 🎉</h2>
+                  <h2 className="text-xl font-bold text-slate-800">הדף שלכם מוכן! 🎉</h2>
                   <p className="mt-2 text-sm text-slate-500">
                     הדף עבור <span className="font-semibold text-slate-700">{result.business_name}</span> נוצר בהצלחה.
                   </p>
@@ -1515,7 +1515,7 @@ export default function Wizard() {
                           <Loader2 size={16} className="animate-spin" />
                           בונה את הדף שלך…
                         </>
-                      ) : 'צור את האתר שלי ✦'}
+                      ) : 'צרו את הדף שלי ✦'}
                     </button>
                   )}
                 </div>
@@ -1593,7 +1593,6 @@ export default function Wizard() {
 
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">מופעל על ידי Claude AI</p>
       </div>
     </div>
   );
