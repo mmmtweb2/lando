@@ -13,6 +13,7 @@ import { startPostsSweep } from './services/gbpPosts.service';
 import { startReplySweep } from './services/autoReplies.service';
 import { startHealthAlertSweep } from './services/adminHealth.service';
 import { warnIfAuditSaltMissing } from './services/auditLeads.service';
+import { startAuditLeadPurge } from './services/auditLeads.service';
 
 const PORT = process.env.PORT ?? 3000;
 
@@ -45,6 +46,8 @@ async function start() {
   startPostsSweep();
   startReplySweep();
   startHealthAlertSweep();
+  // Free-check leads are kept for 30 days (privacy policy).
+  startAuditLeadPurge();
 }
 
 start().catch((err) => {
