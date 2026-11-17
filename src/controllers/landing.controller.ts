@@ -239,6 +239,24 @@ export async function deleteLandingPage(req: Request, res: Response): Promise<vo
   res.status(204).send();
 }
 
+/**
+ * Internal lifecycle and metrics columns of a page: the owner's dashboard data, not part of the page.
+ * A public visitor gets the page without them (security audit 16.11: the public read used to return
+ * every column but owner_email, exposing view counts, expiry and reminder dates to anyone).
+ */
+const INTERNAL_PAGE_FIELDS = [
+  'view_count', 'cta_click_count', 'published_at', 'expires_at', 'frozen_at', 'renewed_at', 'renewal_count',
+  'renewal_reminder_30_at', 'renewal_reminder_7_at', 'renewal_reminder_0_at', 'frozen_reminder_6mo_at', 'frozen_reminder_11mo_at',
+  'draft_clock_at', 'draft_reminder_1d_at', 'draft_reminder_7d_at', 'draft_warning_30d_at',
+] as const;
+
+export function publicPageFields(row: Record<string, unknown>, privileged: boolean): Record<string, unknown> {
+  const { owner_email: _owner, ...rest } = row;
+  if (privileged) return rest;
+  for (const k of INTERNAL_PAGE_FIELDS) delete rest[k];
+  return rest;
+}
+
 export async function getLandingPage(req: Request, res: Response): Promise<void> {
   const { slug } = req.params;
 
@@ -276,7 +294,6 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   // optionalAuth on the route) replaces the old client-side
   // `user.email === page.owner_email` comparison, which needed owner_email
   // on the client to work.
-  const { owner_email: _ownerEmail, ...publicData } = data as Record<string, unknown>;
   const isOwner = !!(req.authEmail && ownerEmail && req.authEmail === ownerEmail.toLowerCase());
 
   // Draft pages are pre-payment/pre-publish — Moshe's explicit decision is that
@@ -352,6 +369,8 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
     parentSubdomain,
   );
   // For a child, `status` is the parent's (what the client branches on).
+  // The owner sees their own lifecycle fields; anyone else gets the page only.
+  const publicData = publicPageFields(data as Record<string, unknown>, isOwner);
   res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner });
 }
 
