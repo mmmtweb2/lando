@@ -5,7 +5,7 @@ import { isDesignV3 } from '../lib/designChoice';
 import { PRICING, perPage } from '../config/pricing';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft, X, Plus } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft, X, Plus, Tag } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -18,6 +18,10 @@ import CouponField, { type CouponQuote } from '../components/CouponField';
 import { safeHttpUrl } from '../lib/safeUrl';
 import ImageEditor from '../components/ImageEditor';
 import type { V3Ctx } from './landingV3/LandingV3';
+import {
+  CATEGORY_NAMES, HEALTH_HEADINGS, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, templateFor,
+  type CategoryId, type TeamMember,
+} from '../config/pageCategory';
 
 // Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
 const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
@@ -98,6 +102,11 @@ interface AiContent {
     background_effect?: string;
   };
   hidden_sections?: string[];
+  // Category templates (README part 141). The health template's doctor and team, languages line and practical lines.
+  team?: TeamMember[];
+  team_heading?: string;
+  spoken_languages?: string[];
+  practical_info?: { parking?: string; accessibility?: string };
   // v2 — generative SEO + trust
   seo_title?: string;
   seo_description?: string;
@@ -149,6 +158,9 @@ interface LandingPage {
   page_goal?: string | null;
   external_link?: string | null;
   whiteLabel?: boolean;
+  /** Page category (migration 053). Missing or null = a page from before categories = the general template. */
+  category?: string | null;
+  category_source?: 'auto' | 'manual' | null;
 }
 
 // Snapshot of the caller's page-publish balance + usage, fetched fresh from
@@ -984,6 +996,23 @@ function applyEdits(content: AiContent, changes: Record<string, string>): AiCont
       if (next.process_steps?.[idx]) next.process_steps[idx][field] = value;
       continue;
     }
+    // Health template: the languages line is typed as text ("עברית, צרפתית ואנגלית") and stored as a list
+    if (path === 'spoken_languages') {
+      const list = parseLanguages(value);
+      next.spoken_languages = list.length ? list : [...SPOKEN_LANGUAGES_DEFAULT];
+      continue;
+    }
+    // Health template: team.N.field creates the person (and the list) when the owner adds one
+    if (path.startsWith('team.')) {
+      const [, rawIdx, field] = path.split('.');
+      const idx = parseInt(rawIdx, 10);
+      if (!Number.isInteger(idx) || idx < 0 || idx > 7 || !field) continue;
+      const arr: TeamMember[] = Array.isArray(next.team) ? next.team : [];
+      while (arr.length <= idx) arr.push({ name: '', role: '', credentials: '', experience: '' });
+      (arr[idx] as unknown as Record<string, string>)[field] = value;
+      next.team = arr;
+      continue;
+    }
     // Generic dot-path write
     const parts = path.split('.');
     let obj = next as Record<string, unknown>;
@@ -1060,6 +1089,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // an explicit open/close toggle, moved to the opposite side of the
   // screen from the publish button, and closes itself on save.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The quiet category selector (README part 141): detected category + "שינוי", only in edit mode.
+  const [catOpen, setCatOpen] = useState(false);
+  const [catChoosing, setCatChoosing] = useState(false);
+  const [catBusy, setCatBusy] = useState(false);
+  const [catError, setCatError] = useState<string | null>(null);
+  const [catOffer, setCatOffer] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -1510,6 +1545,33 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     }
   }
 
+  // Changing the category re-orders the sections and marks the choice as manual (so it is never re-detected).
+  // The text is NOT rewritten here: the panel offers that next (it costs credits, and replaces the page's wording).
+  async function changeCategory(next: CategoryId) {
+    if (!page || catBusy || next === normalizeCategory(page.category)) return;
+    setCatBusy(true);
+    setCatError(null);
+    try {
+      const r = await authFetch(`/api/landing/${page.id}/category`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: next }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(b.error ?? 'שינוי הקטגוריה נכשל. נסו שוב.');
+      }
+      const d = await r.json() as { category: string; category_source: 'manual'; ai_content: AiContent };
+      setPage((prev) => (prev ? { ...prev, category: d.category, category_source: d.category_source, ai_content: d.ai_content } : prev));
+      setCatChoosing(false);
+      setCatOffer(true);
+    } catch (e) {
+      setCatError(e instanceof Error ? e.message : 'שינוי הקטגוריה נכשל. נסו שוב.');
+    } finally {
+      setCatBusy(false);
+    }
+  }
+
   async function toggleSectionVisibility(blockId: string) {
     if (!page) return;
     const newHidden = hiddenSections.includes(blockId)
@@ -1653,6 +1715,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   // Unify services list: v2 = services_or_benefits, v1 = services
   const services = ai_content.services_or_benefits ?? ai_content.services ?? [];
+  // Page category (README part 141): which template is drawn. Missing/unknown/not-yet-built = the general template.
+  const pageTemplate = templateFor(page.category);
+  const isHealth = pageTemplate === 'health';
+  const pageOrder = sectionOrderFor(page.category);
 
   // CTA text: v2 primary_cta_text, v1 contact.cta_text
   const ctaText = ai_content.hero?.primary_cta_text ?? ai_content.contact?.cta_text ?? 'צרו קשר עכשיו';
@@ -4078,14 +4144,26 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       testimonials: ai_content.testimonials ?? [],
       faq: ai_content.faq ?? [],
       badges: (ai_content.trust_badges ?? []).map((b) => b.label),
-      headings: {
+      template: isHealth ? 'health' : 'general',
+      order: pageOrder,
+      team: ai_content.team ?? [],
+      teamHeading: HEALTH_HEADINGS.team,
+      spokenLanguages: ai_content.spoken_languages?.length ? ai_content.spoken_languages : SPOKEN_LANGUAGES_DEFAULT,
+      practical: ai_content.practical_info ?? {},
+      reviewsSlot: null,
+      headings: isHealth ? {
+        services: HEALTH_HEADINGS.services,
+        process: HEALTH_HEADINGS.process,
+        testimonials: HEALTH_HEADINGS.testimonials,
+        faq: HEALTH_HEADINGS.faq,
+      } : {
         services: ai_content.services_heading || 'מה אנחנו מציעים',
         process: ai_content.process_heading || 'איך זה עובד',
         testimonials: ai_content.testimonials_heading || 'מה אומרים עלינו',
         faq: ai_content.faq_heading || 'שאלות נפוצות',
       },
       closing: {
-        headline: `מוכנים להתחיל עם ${business_name}?`,
+        headline: isHealth ? 'נשמח לשמוע מכם' : `מוכנים להתחיל עם ${business_name}?`,
         subline: ai_content.cta_banner_subline || '',
         waMessage: !useExternalLink && waUrl ? waMessage : null,
       },
@@ -4836,6 +4914,54 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               )}
               {logoError && <p className="text-[11px] text-red-500 leading-tight">{logoError}</p>}
               <p className="text-[11px] text-slate-400 leading-tight">נשמר מיד, בלי צורך ב"שמור שינויים". מומלץ PNG שקוף.</p>
+            </div>
+          )}
+          {/* Quiet category selector: shows what the page was detected as, with "שינוי". Never part of page creation. */}
+          <button
+            onClick={() => { setCatOpen((v) => !v); setPaletteOpen(false); setLogoOpen(false); }}
+            title="קטגוריית הדף"
+            aria-label="פתיחת קטגוריית הדף"
+            className="fixed top-20 right-[7.5rem] z-50 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 hover:scale-105 transition"
+          >
+            <Tag size={18} />
+          </button>
+          {catOpen && (
+            <div className="fixed top-[4.75rem] right-4 z-50 w-64 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200 shadow-xl p-4 flex flex-col gap-3" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-slate-700">קטגוריית הדף</p>
+                <button onClick={() => setCatOpen(false)} aria-label="סגירה" className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs leading-none">×</button>
+              </div>
+              <p className="text-sm text-slate-600 leading-snug">
+                הדף בנוי כ<b className="text-slate-800">{CATEGORY_NAMES[normalizeCategory(page.category)]}</b>
+                {page.category_source === 'manual' ? '' : ' (זוהה לפי תיאור העסק)'}.
+              </p>
+              {!catChoosing ? (
+                <button onClick={() => { setCatChoosing(true); setCatOffer(false); }}
+                  className="self-start text-xs font-bold text-slate-600 underline underline-offset-4 hover:text-slate-800">שינוי</button>
+              ) : (
+                <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="בחירת קטגוריה">
+                  {IMPLEMENTED_CATEGORIES.map((id) => (
+                    <button key={id} role="radio" aria-checked={normalizeCategory(page.category) === id} disabled={catBusy}
+                      onClick={() => { void changeCategory(id); }}
+                      className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-semibold transition disabled:opacity-60 ${normalizeCategory(page.category) === id ? 'border-slate-800 bg-slate-50 text-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      {CATEGORY_NAMES[id]}
+                      {normalizeCategory(page.category) === id && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {catError && <p className="text-[11px] text-red-500 leading-tight">{catError}</p>}
+              {catOffer && (
+                <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3">
+                  <p className="text-xs text-slate-600 leading-snug">סדר הסעיפים בדף עודכן. הטקסטים נשארו כפי שהיו. אפשר לכתוב אותם מחדש בנימה שמתאימה לקטגוריה.</p>
+                  <button onClick={() => { setCatOffer(false); setCatOpen(false); void handleRewrite('all'); }}
+                    disabled={rewriteStatus === 'rewriting'}
+                    className="rounded-lg bg-slate-800 py-2 text-xs font-bold text-white disabled:opacity-60">
+                    כתיבה מחדש ({CREDIT_COSTS.TEXT_FULL_PAGE} ✦)
+                  </button>
+                  <button onClick={() => setCatOffer(false)} className="text-xs font-semibold text-slate-500 hover:text-slate-700">לא עכשיו</button>
+                </div>
+              )}
             </div>
           )}
         </>
