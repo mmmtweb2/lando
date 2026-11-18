@@ -1,12 +1,11 @@
 // Who operates Pagey: the ONE place the legal pages (privacy, terms, accessibility) read it from.
-// TODO(Moshe): replace the bracketed placeholders with the real details before opening to the public.
 // Israeli law expects an online seller to identify itself (name, business number, address, contact).
 
 export const OPERATOR = {
-  name: '[שם העסק המלא]',
-  businessNumber: '[מספר עוסק]',
-  address: '[כתובת]',
-  phone: '[טלפון]',
+  name: 'Tirnoer Digital',
+  businessNumber: '207963521',
+  address: 'גפן 3, שמעה',
+  phone: '0586690351',
   email: 'tirnoer.digital@gmail.com',
   site: 'pagey.co.il',
 } as const;
