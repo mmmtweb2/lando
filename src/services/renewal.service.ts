@@ -147,6 +147,32 @@ async function subscriptionPageAccess(email: string): Promise<{ active: boolean 
   return pageAccessFor(email);
 }
 
+async function clearOptOut(id: string): Promise<void> {
+  try {
+    await supabase.from('landing_pages').update({ renewal_opt_out_at: null }).eq('id', id);
+  } catch { /* best effort */ }
+}
+
+/**
+ * The owner chose not to renew a page (or changed their mind). Renewal is never automatic, so this
+ * only stops the reminder emails and makes the dashboard say what will happen. Returns false when
+ * the page is not this owner's, is not a top-level page, or migration 051 has not run.
+ */
+export async function setRenewalOptOut(email: string, id: string, optOut: boolean, now = new Date()): Promise<{ ok: boolean; reason?: 'not_found' | 'not_migrated' }> {
+  const { data, error } = await supabase
+    .from('landing_pages')
+    .update({ renewal_opt_out_at: optOut ? now.toISOString() : null })
+    .eq('id', id)
+    .eq('owner_email', email)
+    .is('parent_id', null)
+    .select('id');
+  if (error) {
+    if (/renewal_opt_out_at/.test(error.message)) return { ok: false, reason: 'not_migrated' };
+    throw new Error(error.message);
+  }
+  return ((data ?? []) as unknown[]).length ? { ok: true } : { ok: false, reason: 'not_found' };
+}
+
 export async function checkRenewEligibility(email: string, id: string): Promise<RenewEligibility> {
   const { data, error } = await supabase
     .from('landing_pages')
@@ -265,6 +291,9 @@ export async function grantRenewal(email: string, id: string): Promise<boolean> 
     console.error('[RENEW] CAS lost — page changed mid-renewal, nothing written', { id, priorStatus, priorCount });
     return false;
   }
+  // Paying for another year undoes an earlier "don't renew" (best effort: before migration 051 the
+  // column does not exist, and that must never fail a paid renewal).
+  await clearOptOut(id);
   // A former included page that was just bought back is no longer tied to the (ended) subscription,
   // or the subscription sweep would freeze it again.
   if (await isAddonPage(id)) await releaseAddonClaim(email, id).catch((e: unknown) => console.error('[RENEW] ALERT included-page claim not released', { id, e: String(e) }));
@@ -326,15 +355,23 @@ async function sendDueReminders(now: Date): Promise<number> {
     // was missed (redeploy, outage) still sends late instead of never.
     const threshold = new Date(now.getTime() + daysBefore * DAY_MS);
 
-    const { data, error } = await supabase
-      .from('landing_pages')
-      .select('id, slug, subdomain, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
-      .eq('status', 'published')
-      .is('parent_id', null)
-      .is(column, null)
-      .not('expires_at', 'is', null)
-      .lte('expires_at', threshold.toISOString())
-      .limit(BATCH_LIMIT);
+    // An owner who chose not to renew (renewal_opt_out_at, migration 051) gets no reminders. Before that
+    // migration the column does not exist: the query is retried without the filter, so reminders never stop.
+    const reminderQuery = (skipOptedOut: boolean) => {
+      let q = supabase
+        .from('landing_pages')
+        .select('id, slug, subdomain, business_name, owner_email, expires_at, renewal_reminder_30_at, renewal_reminder_7_at, renewal_reminder_0_at')
+        .eq('status', 'published')
+        .is('parent_id', null)
+        .is(column, null);
+      if (skipOptedOut) q = q.is('renewal_opt_out_at', null);
+      return q
+        .not('expires_at', 'is', null)
+        .lte('expires_at', threshold.toISOString())
+        .limit(BATCH_LIMIT);
+    };
+    let { data, error } = await reminderQuery(true);
+    if (error && /renewal_opt_out_at/.test(error.message)) ({ data, error } = await reminderQuery(false));
 
     if (error) {
       console.error(`[SWEEP] reminder query failed (${kind}):`, error.message);
@@ -495,15 +532,22 @@ async function sendDueFrozenReminders(now: Date): Promise<number> {
 
     const threshold = addMonths(now, -monthsFrozen);
 
-    const { data, error } = await supabase
-      .from('landing_pages')
-      .select('id, slug, subdomain, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
-      .eq('status', 'frozen')
-      .is('parent_id', null)
-      .is(column, null)
-      .not('frozen_at', 'is', null)
-      .lte('frozen_at', threshold.toISOString())
-      .limit(BATCH_LIMIT);
+    // Same rule as the pre-expiry reminders: a page whose owner chose not to renew (migration 051) gets no mail.
+    const frozenQuery = (skipOptedOut: boolean) => {
+      let q = supabase
+        .from('landing_pages')
+        .select('id, slug, subdomain, business_name, owner_email, frozen_at, frozen_reminder_6mo_at, frozen_reminder_11mo_at')
+        .eq('status', 'frozen')
+        .is('parent_id', null)
+        .is(column, null);
+      if (skipOptedOut) q = q.is('renewal_opt_out_at', null);
+      return q
+        .not('frozen_at', 'is', null)
+        .lte('frozen_at', threshold.toISOString())
+        .limit(BATCH_LIMIT);
+    };
+    let { data, error } = await frozenQuery(true);
+    if (error && /renewal_opt_out_at/.test(error.message)) ({ data, error } = await frozenQuery(false));
 
     if (error) {
       console.error(`[SWEEP] frozen-reminder query failed (${kind}):`, error.message);

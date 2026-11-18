@@ -48,12 +48,16 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { data, error } = await supabase
+  const BASE = 'id, slug, subdomain, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count';
+  const mine = (cols: string) => supabase
     .from('landing_pages')
-    .select('id, slug, subdomain, business_name, created_at, logo_url, image_source, status, published_at, expires_at, frozen_at, renewal_count, view_count, cta_click_count')
+    .select(cols)
     .eq('owner_email', email)
     .is('parent_id', null) // child SEO pages are not listed as pages of their own
     .order('created_at', { ascending: false });
+  // renewal_opt_out_at comes with migration 051; before it the list is read without it.
+  let { data, error } = await mine(`${BASE}, renewal_opt_out_at`);
+  if (error && /renewal_opt_out_at/.test(error.message)) ({ data, error } = await mine(BASE));
 
   if (error) {
     serverError(res, error, '[LANDING]');
@@ -1050,6 +1054,24 @@ export async function includedPageAccess(email: string, id: string): Promise<Add
   if (row.status === 'published') return null;       // already live: nothing to spend, the normal path says so
   if (row.status === 'frozen') return null;          // brought back by reconcile when the subscription is active
   return access;
+}
+
+/**
+ * POST /api/landing/:id/renewal-opt-out { optOut: boolean } — "don't renew this page" (or undo it).
+ * Renewal is never automatic; this only stops the reminders. Owner only (requireOwnPage).
+ */
+export async function renewalOptOut(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
+  const optOut = (req.body as { optOut?: unknown } | undefined)?.optOut;
+  if (typeof optOut !== 'boolean') { res.status(400).json({ error: 'בקשה לא תקינה.' }); return; }
+  try {
+    const { setRenewalOptOut } = await import('../services/renewal.service');
+    const r = await setRenewalOptOut(email, req.params.id, optOut);
+    if (!r.ok && r.reason === 'not_migrated') { res.status(503).json({ error: 'האפשרות תיפתח בקרוב.', code: 'not_migrated' }); return; }
+    if (!r.ok) { res.status(404).json({ error: 'הדף לא נמצא.' }); return; }
+    res.json({ ok: true, optOut });
+  } catch (e) { serverError(res, e, '[LANDING]'); }
 }
 
 /** GET /api/landing/:id/included — does the promotion product cover publishing this page? Never fails the dialog. */

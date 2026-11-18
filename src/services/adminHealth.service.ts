@@ -54,6 +54,8 @@ export async function healthSnapshot(now = new Date()): Promise<HealthSnapshot> 
   const postsFailed7d = (await count(supabase.from('gbp_posts').select('id', { head: true, count: 'exact' }).eq('status', 'failed').gte('updated_at', since7))) ?? 0;
   const chargeFailed7d = (await count(supabase.from('seo_subscription_events').select('id', { head: true, count: 'exact' }).eq('kind', 'charge_failed').gte('created_at', since7))) ?? 0;
   const needAttention = (await count(supabase.from('seo_subscriptions').select('id', { head: true, count: 'exact' }).or('needs_manual_cancel.eq.true,status.eq.past_due'))) ?? 0;
+  // Refunds owed after a cancel inside the 14-day window (migration 051; unknown, so 0, before it).
+  const refundsPending = (await count(supabase.from('seo_refund_requests').select('id', { head: true, count: 'exact' }).eq('status', 'pending'))) ?? 0;
   const webhookFailing = !!sumitHb?.last_error_at && (now.getTime() - new Date(sumitHb.last_error_at).getTime() < 7 * DAY) && (!sumitHb.last_ok_at || new Date(sumitHb.last_error_at) > new Date(sumitHb.last_ok_at));
 
   const http = httpView(24);
@@ -65,6 +67,7 @@ export async function healthSnapshot(now = new Date()): Promise<HealthSnapshot> 
   if (needsReconnect > 0) alerts.push({ level: 'bad', text: `${needsReconnect} חיבורי גוגל דורשים חיבור מחדש (הפוסטים והתשובות שלהם עצורים).`, tab: 'system' });
   if (postsFailed7d > 0) alerts.push({ level: 'bad', text: `${postsFailed7d} פוסטים שבועיים לא פורסמו בשבוע האחרון.`, tab: 'system' });
   if (webhookFailing) alerts.push({ level: 'bad', text: 'ה-webhook של SUMIT נכשל לאחרונה.', tab: 'system' });
+  if (refundsPending > 0) alerts.push({ level: 'bad', text: `${refundsPending} החזרים ממתינים: להחזיר בסאמיט ולסמן "הוחזר" (הכנסות).`, tab: 'revenue' });
   if (needAttention > 0) alerts.push({ level: 'warn', text: `${needAttention} מנויים דורשים טיפול (חיוב שנכשל או ביטול ידני).`, tab: 'revenue' });
   if (http.total >= HTTP_ALERT_MIN_REQUESTS && http.ratePct >= HTTP_ALERT_RATE_PCT) alerts.push({ level: 'bad', text: `שגיאות 5xx: ${http.ratePct}% מהבקשות ב-24 שעות.`, tab: 'system' });
 
