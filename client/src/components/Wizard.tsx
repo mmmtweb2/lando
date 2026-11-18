@@ -7,6 +7,7 @@ import { authFetch } from '../lib/api';
 import { trackEvent } from '../lib/analytics';
 import { publicPageLabel } from '../lib/pageUrl';
 import { CREDIT_COSTS } from '../config/credits';
+import { isLowRes, LOW_RES_MESSAGE } from '../lib/landingImages';
 import {
   Building2,
   Phone,
@@ -70,6 +71,8 @@ interface LandingPageRecord {
   business_name: string;
   /** Reserved at creation (readable name, e.g. cafe-dani); null if naming failed. */
   subdomain?: string | null;
+  /** Quiet hints about uploaded photos (small, blurry, looks like a logo). The page was created anyway. */
+  image_warnings?: Array<{ code: string; message: string; index?: number; fileName?: string }>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -147,6 +150,8 @@ const PAGE_GOAL_OPTIONS: { value: PageGoal; label: string; desc: string; emoji: 
 ];
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Photos in the wizard: the first (or the most suitable) opens the page, the others go to the gallery. Same cap as the server. */
+const MAX_PHOTOS = 8;
 
 // ─── Draft persistence (2026-10-06, part 35) ─────────────────────────────────
 // The whole form lives in React state until the single POST at the end, so a
@@ -582,6 +587,21 @@ function LogoUpload({ file, onChange }: { file: File | null; onChange: (f: File 
 
 function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files: File[], err?: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
+  // Pick-time hint, never blocking: a photo whose short side is under 800px looks soft when it fills the screen.
+  const [small, setSmall] = useState<Set<File>>(new Set());
+  const checked = useRef<Set<File>>(new Set());
+  useEffect(() => {
+    files.forEach((f) => {
+      if (checked.current.has(f)) return;
+      checked.current.add(f);
+      createImageBitmap(f).then((bmp) => {
+        const low = isLowRes(bmp.width, bmp.height);
+        bmp.close();
+        if (low) setSmall((prev) => new Set(prev).add(f));
+      }).catch(() => undefined);
+    });
+  }, [files]);
+  const smallNow = files.filter((f) => small.has(f));
 
   function handlePick(list: FileList | null) {
     if (!list) return;
@@ -593,7 +613,7 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
         return;
       }
     }
-    const combined = [...files, ...picked].slice(0, 6);
+    const combined = [...files, ...picked].slice(0, MAX_PHOTOS);
     onChange(combined);
     if (ref.current) ref.current.value = '';
   }
@@ -613,14 +633,19 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
           ))}
         </div>
       )}
-      {files.length < 6 && (
+      {smallNow.length > 0 && (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {smallNow.length === 1 ? `"${smallNow[0].name}": ` : `${smallNow.length} תמונות: `}{LOW_RES_MESSAGE}
+        </p>
+      )}
+      {files.length < MAX_PHOTOS && (
         <div onClick={() => ref.current?.click()}
           className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-4 text-center cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition">
           <input ref={ref} type="file" accept="image/*" multiple className="hidden"
             onChange={(e) => handlePick(e.target.files)} />
           <Upload size={16} className="text-slate-400" />
           <p className="text-xs text-slate-500">
-            <span className="font-medium text-[#1E4FD6]">הוסיפו תמונות</span>{' '}({files.length}/6)
+            <span className="font-medium text-[#1E4FD6]">הוסיפו תמונות</span>{' '}({files.length}/{MAX_PHOTOS})
           </p>
         </div>
       )}
@@ -1474,6 +1499,15 @@ export default function Wizard() {
                   פתח את הדף שלי
                 </Link>
                 <p className="text-xs text-slate-400 font-mono" dir="ltr">{publicPageLabel(result.slug, result.subdomain)}</p>
+                {result.image_warnings && result.image_warnings.length > 0 && (
+                  <div role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-right text-xs leading-relaxed text-amber-900">
+                    {result.image_warnings.slice(0, 3).map((w, i) => (
+                      <p key={i}>{w.fileName ? `"${w.fileName}": ` : ''}{w.message}</p>
+                    ))}
+                    {result.image_warnings.length > 3 && <p>ועוד {result.image_warnings.length - 3} תמונות.</p>}
+                    <p className="mt-1 text-amber-800">אפשר להחליף תמונה בכל רגע, בעריכת הדף.</p>
+                  </div>
+                )}
               </motion.div>
             ) : (
               <>

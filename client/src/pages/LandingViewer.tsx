@@ -22,6 +22,7 @@ import {
   CATEGORY_NAMES, HEALTH_HEADINGS, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, templateFor,
   type CategoryId, type TeamMember,
 } from '../config/pageCategory';
+import { readImgMeta, promoteLegacyHero, altFor, buildSrcSet, focalPosition, intrinsicSize, type ImgMeta, type MetaMap } from '../lib/landingImages';
 
 // Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
 const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
@@ -129,11 +130,16 @@ interface AiImageStore {
   hero_image_url: string | null;
   icon_urls: string[];
   gallery_urls?: string[];
+  about_image_url?: string;
+  img_meta?: Record<string, ImgMeta>;
 }
 
 /** Array-store gallery photos start after hero, about and the 6 service slots (see src/services/imageSlots.ts). */
 const GALLERY_ARRAY_OFFSET = 8;
-const MAX_GALLERY_IMAGES = 6;
+const MAX_GALLERY_IMAGES = 12;
+
+/** What the stored JSON knows about each photo (alt text, sizes, focal point), by the photo's URL. EditableImage reads it, so every look gets alt text and the focal point without changing its call sites. */
+const ImageInfoCtx = React.createContext<{ meta: MetaMap; business: string; decorative: boolean }>({ meta: {}, business: '', decorative: false });
 
 interface LandingPage {
   canonical_url?: string; // server-computed indexed URL (/b/...)
@@ -145,6 +151,8 @@ interface LandingPage {
   phone_number: string;
   logo_url: string | null;
   user_images: string | null;
+  /** 'upload' | 'stock' | 'ai' | 'none' */
+  image_source?: string | null;
   ai_content: AiContent;
   facebook_url: string | null;
   instagram_url: string | null;
@@ -424,6 +432,9 @@ function EditableImage({
   onEditClick,
   darken = false,
   collapseEmpty = false,
+  sizes,
+  priority = false,
+  lazy = false,
 }: {
   src?: string | null;
   primaryColor: string;
@@ -439,9 +450,28 @@ function EditableImage({
       and show only a slim "add image" strip in edit mode. Reserving a big placeholder for a photo
       that does not exist reads as a broken gap (reported: one uploaded photo left empty areas). */
   collapseEmpty?: boolean;
+  /** The `sizes` of the picture on screen. Without it the photo is served as one file, exactly as before part 140. */
+  sizes?: string;
+  /** Above the fold (the opening image): no fade-in, loaded first. */
+  priority?: boolean;
+  /** Below the fold: loaded when it gets close, decoded off the main thread. */
+  lazy?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const editable = isEditingMode && canEdit;
+  const { meta, business, decorative } = React.useContext(ImageInfoCtx);
+  const info: ImgMeta | undefined = src ? meta[src] : undefined;
+  const srcSet = sizes ? buildSrcSet(src ?? '', info) : undefined;
+  const imgProps = {
+    alt: altFor(info, business, decorative),
+    ...intrinsicSize(info),
+    srcSet,
+    sizes: srcSet ? sizes : undefined,
+    loading: priority ? ('eager' as const) : lazy ? ('lazy' as const) : undefined,
+    decoding: lazy && !priority ? ('async' as const) : undefined,
+    fetchPriority: priority ? ('high' as const) : undefined,
+  };
+  const objectPosition = focalPosition(info);
 
   if (!src && collapseEmpty) {
     if (!editable) return null;
@@ -469,12 +499,12 @@ function EditableImage({
           <motion.img
             key={src}
             src={src}
-            alt=""
-            initial={{ opacity: 0 }}
+            {...imgProps}
+            initial={priority ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.4 }}
-            className="w-full h-full object-cover"
-            style={{ transform: hovered && editable ? 'scale(1.04)' : 'scale(1)', transition: 'transform 0.5s cubic-bezier(0.25,1,0.5,1)' }}
+            className={`w-full h-full ${info?.logo ? 'object-contain' : 'object-cover'}`}
+            style={{ objectPosition, transform: hovered && editable ? 'scale(1.04)' : 'scale(1)', transition: 'transform 0.5s cubic-bezier(0.25,1,0.5,1)' }}
           />
           {darken && <div className="absolute inset-0 bg-black/55" />}
         </>
@@ -532,7 +562,7 @@ function ImageSelectorModal({
   credits: number;
   primaryColor: string;
   onClose: () => void;
-  onImageUpdated: (url: string, userImages: string) => void;
+  onImageUpdated: (url: string, userImages: string, warnings?: Array<{ message: string }>) => void;
 }) {
   const [step, setStep] = useState<'choose' | 'ai-prompt' | 'edit'>('choose');
   const [busy, setBusy] = useState(false);
@@ -561,8 +591,9 @@ function ImageSelectorModal({
         const body = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? 'שגיאה בהעלאת התמונה');
       }
-      const data = await r.json() as { url: string; user_images: string };
-      onImageUpdated(data.url, data.user_images);
+      // A small, blurry or logo-looking photo is accepted; the server's warning is shown quietly after the editor closes.
+      const data = await r.json() as { url: string; user_images: string; warnings?: Array<{ message: string }> };
+      onImageUpdated(data.url, data.user_images, data.warnings);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'שגיאה בהעלאת התמונה');
@@ -1046,6 +1077,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // A quiet, never blocking hint after a photo upload (small / blurry / looks like a logo).
+  const [imageNote, setImageNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!imageNote) return;
+    const t = setTimeout(() => setImageNote(null), 14000);
+    return () => clearTimeout(t);
+  }, [imageNote]);
 
   // ── Checkout / paywall state ─────────────────────────────────────────────
   // 'loadingPlan' — fetching a fresh balance snapshot before deciding what to show.
@@ -1447,8 +1485,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     setImageModalSlot(slot);
   }
 
-  function handleImageUpdated(url: string, userImages: string) {
+  function handleImageUpdated(url: string, userImages: string, warnings?: Array<{ message: string }>) {
     void url;
+    setImageNote(warnings?.[0]?.message ?? null);
     setPage((prev) => prev ? { ...prev, user_images: userImages } : prev);
     setCreditsRefreshKey((k) => k + 1);
     // Image changes are already persisted by the modal's own API call — there
@@ -1596,16 +1635,21 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     try { return JSON.parse(user_images); } catch { return null; }
   })();
 
+  const imgMeta: MetaMap = readImgMeta(parsedImages);
+
   if (Array.isArray(parsedImages)) {
-    // v1: upload or stock — array of landscape URLs
-    legacyImages = parsedImages;
-    heroImageUrl = parsedImages[0] ?? null;
-    iconUrls = parsedImages.slice(2, 5);
+    // v1: upload or stock — array of landscape URLs. An upload page written before the hero-first change
+    // has no hero and its photos in the service cards: the first of them opens the page now.
+    const arr: string[] = page.image_source === 'upload' ? promoteLegacyHero(parsedImages) : parsedImages;
+    legacyImages = arr;
+    heroImageUrl = arr[0] || null;
+    iconUrls = arr.slice(2, 5);
   } else if (parsedImages && typeof parsedImages === 'object') {
-    // v2: AI-generated structured store
+    // v2: AI-generated structured store (and, since part 140, uploads: hero + gallery + img_meta)
     const store = parsedImages as AiImageStore;
     heroImageUrl = store.hero_image_url ?? null;
     iconUrls = store.icon_urls ?? [];
+    if (store.about_image_url) legacyImages = ['', store.about_image_url];
   }
 
   const isAiFormat = !Array.isArray(parsedImages) && parsedImages !== null;
@@ -4136,6 +4180,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       hero: { title: ai_content.hero?.title ?? business_name, subtitle: heroSubtitle, cta: ctaText },
       about: ai_content.about ? { heading: ai_content.about.heading ?? '', content: ai_content.about.content ?? '' } : null,
       aboutImage: legacyImages[1] || null,
+      imageInfo: imgMeta,
+      decorativeImages: page!.image_source === 'ai',
       services: services.map((sv) => ({ id: sv.id, title: sv.title, description: sv.description })),
       serviceImages: services.map((_, i) => serviceImageSource[i] || null),
       galleryUrls,
@@ -4225,6 +4271,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const fabBottom = toolbarVisible ? 'bottom-20' : 'bottom-6';
 
   return (
+    <ImageInfoCtx.Provider value={{ meta: imgMeta, business: business_name, decorative: page.image_source === 'ai' }}>
     <div dir="rtl" className={`lp-root min-h-screen bg-white ${fontClass}`} style={{ fontFamily: `${bodyFont}, system-ui, sans-serif` }}>
       <Helmet>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -4966,6 +5013,16 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           )}
         </>
       )}
+
+      {imageNote && (
+        <div role="status" aria-live="polite"
+          className="fixed inset-x-3 bottom-24 z-[60] mx-auto flex max-w-md items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-snug text-amber-900 shadow-lg">
+          <span className="flex-1">{imageNote}</span>
+          <button type="button" aria-label="סגירה" onClick={() => setImageNote(null)}
+            className="flex-shrink-0 rounded-full p-1 text-amber-700 hover:bg-amber-100"><X size={16} /></button>
+        </div>
+      )}
     </div>
+    </ImageInfoCtx.Provider>
   );
 }
