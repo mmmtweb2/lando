@@ -283,16 +283,21 @@ function PhotoTile({ p, onRemove, canEdit }: { p: GbpPhoto; onRemove: (id: strin
   );
 }
 
+const MAX_BATCH = 10;   // Google allows 10 edits a minute per listing; the photos go up one after another
+
 function AddPhoto({ state, pageSlug, onDone }: { state: GbpProfileState; pageSlug: string | null; onDone: (text: string, kind: 'ok' | 'error') => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const catId = useId();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [cat, setCat] = useState<PhotoCategory>('COVER');
   const [progress, setProgress] = useState<number | null>(null);
+  const [batch, setBatch] = useState<{ at: number; of: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [fromPage, setFromPage] = useState<string[] | null>(null);
   const [pageOpen, setPageOpen] = useState(false);
-  const [pageBusy, setPageBusy] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pageBusy, setPageBusy] = useState(false);
+  const busy = progress !== null || pageBusy;
 
   // The page's images are looked up once; the option shows only when there are some.
   useEffect(() => {
@@ -302,32 +307,60 @@ function AddPhoto({ state, pageSlug, onDone }: { state: GbpProfileState; pageSlu
     return () => { alive = false; };
   }, [pageSlug]);
 
-  const pick = async (f: File | undefined) => {
-    setErr(null); setFile(null);
-    if (!f) return;
-    if (!TYPES.includes(f.type)) { setErr(PHOTOS.badType); return; }
-    if (f.size > MAX_FILE) { setErr(PHOTOS.tooBig); return; }
-    const size = await imageSize(f);
-    if (size && Math.min(size.w, size.h) < 250) { setErr(PHOTOS.tooSmall); return; }
-    setFile(f);
+  /** Several files at once: each is checked; the good ones are kept, and the user is told about the rest. */
+  const pick = async (list: FileList | null) => {
+    setErr(null); setFiles([]);
+    const all = Array.from(list ?? []);
+    if (!all.length) return;
+    const ok: File[] = [];
+    let wrongType = 0, tooBig = 0, tooSmall = 0;
+    for (const f of all) {
+      if (!TYPES.includes(f.type)) { wrongType++; continue; }
+      if (f.size > MAX_FILE) { tooBig++; continue; }
+      const size = await imageSize(f);
+      if (size && Math.min(size.w, size.h) < 250) { tooSmall++; continue; }
+      ok.push(f);
+    }
+    const kept = ok.slice(0, MAX_BATCH);
+    const problems: string[] = [];
+    if (wrongType) problems.push(PHOTOS.skippedType(wrongType));
+    if (tooBig) problems.push(PHOTOS.skippedBig(tooBig));
+    if (tooSmall) problems.push(PHOTOS.skippedSmall(tooSmall));
+    if (ok.length > MAX_BATCH) problems.push(PHOTOS.skippedMany(MAX_BATCH));
+    if (problems.length) setErr(problems.join(' '));
+    setFiles(kept);
   };
+
+  /** Sends one after another; stops at the first failure and says how many already went up. */
+  const sendAll = async (jobs: Array<(onProgress: (p: number) => void) => Promise<{ error: string } | { small: boolean }>>) => {
+    let sent = 0, small = 0;
+    for (let i = 0; i < jobs.length; i++) {
+      setBatch({ at: i + 1, of: jobs.length }); setProgress(0);
+      const r = await jobs[i]((p) => setProgress(Math.round(p * 100)));
+      if ('error' in r) { setProgress(null); setBatch(null); setErr(sent ? `${PHOTOS.partial(sent, jobs.length)} ${r.error}` : r.error); if (sent) onDone(PHOTOS.addedMany(sent), 'ok'); return sent; }
+      sent++; if (r.small) small++;
+    }
+    setProgress(null); setBatch(null);
+    const base = sent === 1 ? PHOTOS.added : PHOTOS.addedMany(sent);
+    onDone(small ? `${base} ${sent === 1 ? PHOTOS.small : PHOTOS.smallMany(small)}` : base, 'ok');
+    return sent;
+  };
+
   const send = async () => {
-    if (!file) return;
-    setProgress(0); setErr(null);
-    const r = await state.upload(file, cat, (p) => setProgress(Math.round(p * 100)));
-    setProgress(null);
-    if ('error' in r) { setErr(r.error); return; }
-    setFile(null); if (fileRef.current) fileRef.current.value = '';
-    onDone(r.small ? `${PHOTOS.added} ${PHOTOS.small}` : PHOTOS.added, 'ok');
+    if (!files.length) return;
+    setErr(null);
+    const sent = await sendAll(files.map((f) => (onProgress: (p: number) => void) => state.upload(f, cat, onProgress)));
+    if (sent === files.length) { setFiles([]); if (fileRef.current) fileRef.current.value = ''; }
+    else { setFiles(files.slice(sent)); }
   };
-  const sendFromPage = async (url: string) => {
-    setPageBusy(url); setErr(null);
-    const r = await state.addFromPage(url, cat);
-    setPageBusy(null);
-    if ('error' in r) { setErr(r.error); return; }
-    setPageOpen(false);
-    onDone(r.small ? `${PHOTOS.added} ${PHOTOS.small}` : PHOTOS.added, 'ok');
+  const sendFromPage = async () => {
+    if (!picked.length) return;
+    setPageBusy(true); setErr(null);
+    const sent = await sendAll(picked.map((u) => () => state.addFromPage(u, cat)));
+    setPageBusy(false);
+    if (sent === picked.length) { setPicked([]); setPageOpen(false); } else setPicked(picked.slice(sent));
   };
+  const toggle = (u: string) => setPicked((l) => (l.includes(u) ? l.filter((x) => x !== u) : l.length >= MAX_BATCH ? l : [...l, u]));
 
   return (
     <div className="dv3-p-add">
@@ -337,15 +370,17 @@ function AddPhoto({ state, pageSlug, onDone }: { state: GbpProfileState; pageSlu
             {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{PHOTO_CATEGORY[c]}</option>)}
           </select>
         </label>
-        <input ref={fileRef} type="file" accept={TYPES.join(',')} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void pick(e.target.files?.[0])} />
-        <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" disabled={progress !== null} onClick={() => fileRef.current?.click()}><ImagePlus size={16} aria-hidden /> {file ? <bdi dir="ltr">{file.name}</bdi> : PHOTOS.pick}</button>
+        <input ref={fileRef} type="file" multiple accept={TYPES.join(',')} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void pick(e.target.files)} />
+        <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" disabled={busy} onClick={() => fileRef.current?.click()}>
+          <ImagePlus size={16} aria-hidden /> {files.length === 1 ? <bdi dir="ltr">{files[0].name}</bdi> : files.length > 1 ? PHOTOS.chosen(files.length) : PHOTOS.pick}
+        </button>
         {fromPage && fromPage.length > 0 && (
-          <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" aria-expanded={pageOpen} onClick={() => setPageOpen((o) => !o)}><Images size={16} aria-hidden /> {PHOTOS.fromPage}</button>
+          <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" aria-expanded={pageOpen} disabled={busy} onClick={() => setPageOpen((o) => !o)}><Images size={16} aria-hidden /> {PHOTOS.fromPage}</button>
         )}
       </div>
-      {file && (
-        <button type="button" className="dv3-btn dv3-a-small dv3-p-upload" disabled={progress !== null} onClick={() => void send()}>
-          {progress !== null ? PHOTOS.uploading(progress) : PHOTOS.upload}
+      {files.length > 0 && (
+        <button type="button" className="dv3-btn dv3-a-small dv3-p-upload" disabled={busy} onClick={() => void send()}>
+          {progress !== null ? PHOTOS.uploadingBatch(batch, progress) : PHOTOS.uploadMany(files.length)}
         </button>
       )}
       {progress !== null && <div className="dv3-p-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div>}
@@ -355,13 +390,16 @@ function AddPhoto({ state, pageSlug, onDone }: { state: GbpProfileState; pageSlu
           <ul>
             {fromPage.map((u, i) => (
               <li key={u}>
-                <button type="button" disabled={pageBusy !== null} onClick={() => void sendFromPage(u)} aria-label={`${PHOTOS.upload}: ${i + 1}`}>
+                <button type="button" disabled={pageBusy} aria-pressed={picked.includes(u)} onClick={() => toggle(u)} aria-label={`${PHOTOS.pickOne} ${i + 1}`} style={picked.includes(u) ? { outline: '3px solid var(--dv3-accent, #2563eb)', outlineOffset: -3 } : undefined}>
                   <img src={u} alt="" loading="lazy" />
-                  {pageBusy === u && <span className="dv3-p-frompage-busy">{PROFILE.saving}</span>}
+                  {picked.includes(u) && <span className="dv3-p-frompage-busy">✓</span>}
                 </button>
               </li>
             ))}
           </ul>
+          <button type="button" className="dv3-btn dv3-a-small dv3-p-upload" disabled={pageBusy || !picked.length} onClick={() => void sendFromPage()}>
+            {pageBusy ? PHOTOS.uploadingBatch(batch, progress ?? 0) : PHOTOS.uploadMany(picked.length)}
+          </button>
         </div>
       )}
       {err && <Notice kind="error">{err}</Notice>}
