@@ -4,8 +4,10 @@
 // visitors who ask for reduced motion. Rendered by LandingViewer when `designV3` is on.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Phone, Plus, X } from 'lucide-react';
 import { buildPalette } from './color';
+import { TeamSection, beforeAfterHasContent, renderBeforeAfter, renderPracticalGuide, teamHasContent, type Kit } from './HealthSections';
+import type { SectionKey, TeamMember } from '../../config/pageCategory';
 import './landingV3.css';
 
 // ── What LandingViewer hands over (kept structural so there is no import cycle) ──
@@ -42,6 +44,17 @@ export interface V3Ctx {
   testimonials: Array<{ quote: string; author: string; role: string }>;
   faq: Array<{ question: string; answer: string }>;
   badges: string[];
+  /** Page template (README part 141): 'health' draws the clinic template, every other category draws 'general'. */
+  template: 'general' | 'health';
+  /** Body sections of this page's category, in order (config/pageCategory.ts). */
+  order: SectionKey[];
+  team: TeamMember[];
+  teamHeading: string;
+  /** Languages spoken at the business; the health template shows "מדברים ...". */
+  spokenLanguages: string[];
+  practical: { parking?: string; accessibility?: string };
+  /** Hook for the live Google reviews (a later task): drawn in the reviews section. The page is complete without it. */
+  reviewsSlot: ReactNode | null;
   headings: { services: string; process: string; testimonials: string; faq: string };
   closing: { headline: string; subline: string; waMessage: string | null };
   // palette / type
@@ -247,8 +260,9 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
   // ── data shaping ──
   const placeholder = (q: string) => q.includes('הכנס כאן') || q.includes('ציטוט אמיתי');
   const testimonials = c.canEdit ? c.testimonials : c.testimonials.filter((t) => !placeholder(t.quote));
-  const facts = c.badges.map(parseFact).filter((f): f is NonNullable<ReturnType<typeof parseFact>> => !!f).slice(0, 3);
-  const stickerLabel = c.badges.find((b) => !parseFact(b) && b.length <= 18) ?? null;
+  const health = c.template === 'health';
+  const facts = (health ? [] : c.badges).map(parseFact).filter((f): f is NonNullable<ReturnType<typeof parseFact>> => !!f).slice(0, 3);
+  const stickerLabel = health ? null : c.badges.find((b) => !parseFact(b) && b.length <= 18) ?? null;
   const filledGallery = c.galleryUrls.map((src, i) => ({ src, i })).filter((x) => !!x.src);
   const nextFree = (() => { for (let i = 0; i < c.maxGallery; i++) if (!c.galleryUrls[i]) return i; return -1; })();
   const hasPlate = !!c.heroImageUrl || c.isEditing;
@@ -273,12 +287,18 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
     <SW isEditing={c.isEditing} isHidden={c.isHidden(ids)} label={label} onToggleHide={() => c.toggleHidden(ids)}>{node}</SW>
   );
 
+  // The body sections are drawn in the order the page's category asks for (config/pageCategory.ts); a thunk that is
+  // not in the order is never called, so the numbering of the folios always follows what is on the page.
+  const kit: Kit = { c, nextNo, folio, sec, d };
+  const ordered = (m: Partial<Record<SectionKey, () => ReactNode>>) =>
+    c.order.map((k) => <Fragment key={k}>{m[k]?.()}</Fragment>);
+
   const heroTitle = c.getEdit('hero.title', c.hero.title);
   const subtitle = c.getEdit('hero.subtitle', c.hero.subtitle);
   const ctaText = c.getEdit('hero.primary_cta_text', c.hero.cta);
 
   return (
-    <div ref={rootRef} className={`lp3 ${motion ? 'm' : ''}`} dir="rtl" style={rootStyle}>
+    <div ref={rootRef} className={`lp3 ${motion ? 'm' : ''}${health ? ' q' : ''}`} dir="rtl" style={rootStyle}>
       {/* header: one thin line */}
       <header className="top">
         <div className="wrap">
@@ -299,7 +319,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
             {c.isEditing ? (
               <ET as="h1" value={heroTitle} onCommit={(v) => c.setEdit('hero.title', v)} isEditing />
             ) : (
-              <h1><Words text={heroTitle} base={0.1} hlLast /></h1>
+              <h1><Words text={heroTitle} base={0.1} hlLast={!health} /></h1>
             )}
             <div className="sub">
               {(subtitle || c.isEditing) && (c.isEditing
@@ -307,7 +327,9 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                 : <p className="lead">{subtitle}</p>)}
               <div className="cta-row">
                 <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
-                {c.phone && <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>}
+                {c.phone && (health && c.isWhatsApp
+                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> התקשרו <span dir="ltr">{c.phone}</span></a>
+                  : <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>)}
               </div>
             </div>
           </div>
@@ -329,7 +351,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         </section>
 
         {/* tape of the business's own services */}
-        {c.services.length > 1 && (
+        {c.services.length > 1 && !health && (
           <div className="marqw" aria-hidden="true">
             <div className="marq"><div className="track">
               {[0, 1, 2, 3].map((k) => (
@@ -339,8 +361,9 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
           </div>
         )}
 
-        {/* about: a big statement + body copy */}
-        {c.about && (c.about.content || c.isEditing) && sec(['about'], 'קצת עלינו', (
+        {ordered({
+        // about: a big statement + body copy
+        about: () => c.about && (c.about.content || c.isEditing) && sec(['about'], 'קצת עלינו', (
           <section className="wrap about"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
             {folio(nextNo(), c.getEdit('about.heading', c.about.heading || 'הסיפור שלנו'))}
             <div>
@@ -355,10 +378,10 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               {c.aboutImage && <figure className="about-fig" data-rv=""><img src={c.aboutImage} alt={c.businessName} loading="lazy" /></figure>}
             </div>
           </div></section>
-        ))}
+        )),
 
-        {/* services: a price-list, not cards */}
-        {c.services.length > 0 && sec(['services_bento', 'services_grid'], 'שירותים', (
+        // services: a price-list, not cards
+        services: () => c.services.length > 0 && sec(['services_bento', 'services_grid'], 'שירותים', (
           <section className={`wrap ${dial.leaders ? 'leaders' : ''}`}><div className="sec">
             {folio(nextNo(), c.headings.services)}
             <ol className="rows">
@@ -397,10 +420,10 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               })}
             </ol>
           </div></section>
-        ))}
+        )),
 
-        {/* gallery: the owner's extra photos, natural proportions, no frames */}
-        {(filledGallery.length > 0 || c.canEdit && c.isEditing) && sec(['gallery'], 'גלריה', (
+        // gallery: the owner's extra photos, natural proportions, no frames
+        gallery: () => (filledGallery.length > 0 || c.canEdit && c.isEditing) && sec(['gallery'], 'גלריה', (
           <section className="wrap"><div className="sec" style={{ '--padD': '72px', '--pad': '44px' } as CSSProperties}>
             {folio(nextNo(), c.isEditing
               ? <ET as="span" value={c.getEdit('gallery.heading', 'גלריה')} onCommit={(v) => c.setEdit('gallery.heading', v)} isEditing />
@@ -426,10 +449,10 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               </div>
             )}
           </div></section>
-        ))}
+        )),
 
-        {/* process: the one inked band */}
-        {c.process.length > 0 && sec(['process_timeline', 'process_horizontal'], 'תהליך', (
+        // process: the one inked band (the health template's "first visit")
+        process: () => c.process.length > 0 && sec(['process_timeline', 'process_horizontal'], 'תהליך', (
           <section className="band slant"><div className="wrap"><div className="sec nobor" style={{ '--pad': '40px' } as CSSProperties}>
             {folio(nextNo(), c.headings.process)}
             <ol className="steps">
@@ -448,10 +471,10 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               ))}
             </ol>
           </div></div></section>
-        ))}
+        )),
 
-        {/* testimonials: one big quote, the rest as quiet rows */}
-        {testimonials.length > 0 && sec(['testimonials_grid'], 'המלצות', (
+        // testimonials: one big quote, the rest as quiet rows (+ the hook for live reviews)
+        testimonials: () => (testimonials.length > 0 || !!c.reviewsSlot) && sec(['testimonials_grid'], 'המלצות', (
           <section className="wrap"><div className="sec" style={{ '--pad': '64px' } as CSSProperties}>
             {folio(nextNo(), c.headings.testimonials)}
             <div className="qwrap">
@@ -496,11 +519,12 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                 </div>
               )}
             </div>
+            {c.reviewsSlot}
           </div></section>
-        ))}
+        )),
 
-        {/* faq: hairlines only */}
-        {c.faq.length > 0 && sec(['faq_accordion'], 'שאלות נפוצות', (
+        // faq: hairlines only
+        faq: () => c.faq.length > 0 && sec(['faq_accordion'], 'שאלות נפוצות', (
           <section className="wrap faq"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
             {folio(nextNo(), c.headings.faq)}
             <div>
@@ -515,10 +539,10 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               ))}
             </div>
           </div></section>
-        ))}
+        )),
 
-        {/* visit: big address + two links, no map iframe */}
-        {(c.address || c.hours) && (
+        // visit: big address + two links, no map iframe (the health template's practical guide)
+        visit: () => health ? renderPracticalGuide(kit) : (c.address || c.hours) && (
           <section className="wrap visit"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
             {folio(nextNo(), 'בואו לבקר')}
             <div className="cols">
@@ -534,7 +558,12 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               )}
             </div>
           </div></section>
-        )}
+        ),
+
+        // health only: the doctor and team, and the before/after photos (switched off until the owner turns it on)
+        team: () => health && teamHasContent(c) && <TeamSection kit={kit} no={nextNo()} />,
+        before_after: () => health && beforeAfterHasContent(c) && renderBeforeAfter(kit),
+        })}
 
         {c.leadForm && <div className="wrap lead-wrap">{c.leadForm}</div>}
 

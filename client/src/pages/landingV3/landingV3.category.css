@@ -1,0 +1,61 @@
+/* Category templates (README part 141), scoped under .lp3. Kept apart from landingV3.css on purpose.
+   .q = the "quiet" modifier of the HEALTH template: a calmer type scale, no ringing buttons, no sticker. */
+
+/* ---------- the quiet opening ---------- */
+.lp3.q .hero h1{font-weight:800;font-size:clamp(36px,10vw,60px);line-height:1.12;letter-spacing:-.015em}
+.lp3.q .hero h1 span.w,.lp3.q .hero.has-img h1 span.w{display:inline-block}
+.lp3.q .hero h1 span.wi,.lp3.q .hero.has-img h1 span.wi{display:inline-block}
+.lp3.q .hero .lead{font-size:19px;line-height:1.6;max-width:36ch;margin-top:20px;color:var(--muted)}
+.lp3.q .hero .cta-row{gap:12px 14px}
+.lp3.q .hero .plate{aspect-ratio:4/3}
+.lp3.q .close h2{font-weight:800;font-size:clamp(34px,8.5vw,64px);letter-spacing:-.02em}
+.lp3.q.m .hero .btn,.lp3.q.m .close .btn,.lp3.q .close .btn{animation:none!important}
+.lp3 .btn.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink);padding:13px 24px}
+.lp3 .btn.ghost span{font-weight:700;font-size:16px}
+.lp3 .btn.ghost svg{width:18px;height:18px}
+@media (min-width:860px){
+.lp3.q .hero h1,.lp3.q .hero.has-img h1{font-size:clamp(46px,4.8vw,66px)}
+.lp3.q .hero .sub{display:block}
+.lp3.q .hero .cta-row{flex-direction:row;align-items:center;margin-top:28px}
+.lp3.q .hero .lead{font-size:21px;margin-top:22px}
+}
+
+/* the health button label is longer ("לקביעת תור בוואטסאפ"): keep it on one line in the top bar */
+.lp3.q .top .btn{white-space:nowrap;flex:none;padding-inline:14px}
+.lp3.q .top .btn span{font-size:14px;white-space:nowrap}
+
+/* ---------- hint text in edit mode (a field the owner has not filled in yet) ---------- */
+.lp3 .ph{opacity:.5}
+
+/* ---------- doctor and team ---------- */
+.lp3 .team-about{font-size:19px;line-height:1.7;max-width:56ch;color:var(--muted);margin-bottom:28px}
+.lp3 .people{list-style:none}
+.lp3 .people li{display:flex;gap:20px;align-items:flex-start;padding:24px 0;border-top:1px solid var(--rule)}
+.lp3 .people li:last-child{border-bottom:1px solid var(--rule)}
+.lp3 .people .pic{width:96px;height:96px;border-radius:50%;object-fit:cover;flex:none}
+.lp3 .people h3{font-weight:800;font-size:clamp(24px,6.2vw,32px);line-height:1.2;letter-spacing:-.01em}
+.lp3 .people .role{color:var(--primary-ink);font-weight:700;font-size:17px;margin-top:2px}
+.lp3 .people p{color:var(--muted);font-size:16.5px;line-height:1.6;margin-top:6px;max-width:54ch}
+.lp3 .people p.role{color:var(--primary-ink)}
+.lp3 .people .lic{font-size:14.5px}
+.lp3 .people .lic b{color:var(--ink);font-weight:700}
+.lp3 .team-add{width:auto;aspect-ratio:auto;flex-direction:row;padding:14px 20px;margin-top:20px}
+
+/* ---------- practical guide ---------- */
+.lp3 .langs{font-family:var(--head);font-weight:800;font-size:clamp(26px,6.8vw,38px);line-height:1.35;letter-spacing:-.01em}
+.lp3 .langs{box-shadow:inset 0 -.34em 0 var(--hi);display:inline}
+.lp3 .guide-rows{display:grid;margin-top:30px}
+.lp3 .guide-rows>div{display:grid;grid-template-columns:104px 1fr;gap:10px 14px;padding:16px 0;border-top:1px solid var(--rule)}
+.lp3 .guide-rows>div:last-child{border-bottom:1px solid var(--rule)}
+.lp3 .guide-rows dt{font-weight:800;font-size:14px;letter-spacing:.03em;color:var(--muted);padding-top:4px}
+.lp3 .guide-rows dd{font-size:18px;line-height:1.5}
+.lp3 .guide .links{margin-top:26px}
+@media (min-width:860px){
+.lp3 .guide-rows{grid-template-columns:1fr 1fr;gap:0 56px}
+.lp3 .guide-rows>div:nth-last-child(2):nth-child(odd){border-bottom:1px solid var(--rule)}
+.lp3 .guide-rows>div{grid-template-columns:110px 1fr}
+}
+
+/* ---------- before / after (off by default) ---------- */
+.lp3 .ba-note{margin-top:16px;font-size:15px;color:var(--muted)}
+.lp3 .ba-owner-note{margin-bottom:16px;font-size:15px;font-weight:700;color:var(--muted);border-inline-start:3px solid var(--accent);padding-inline-start:12px}

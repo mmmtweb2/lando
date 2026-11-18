@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, getIncludedPublish, renewalOptOut, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo, removeImage } from '../controllers/landing.controller';
+import { createLandingPage, getLandingPage, deleteLandingPage, getMyPages, getMyLeads, updateLandingPage, publishLandingPage, getIncludedPublish, renewalOptOut, useAiEdit, updateImageUpload, regenerateImageAi, regenerateText, updatePageCategory, suggestQuestions, trackView, trackCtaClick, trackLeadEvent, updateLogo, removeLogo, removeImage } from '../controllers/landing.controller';
 import { submitLead } from '../controllers/lead.controller';
 import { handleUpload, handleSingleImageUpload } from '../middleware/upload.middleware';
 import { rateLimit } from '../middleware/rateLimit';
@@ -91,6 +91,7 @@ router.post('/:slug/event', trackLimiter, trackLeadEvent); // WhatsApp / call cl
 router.get('/:id/included', requireAuth, requireOwnPage, getIncludedPublish);
 router.post('/:id/renewal-opt-out', requireAuth, requireOwnPage, renewalOptOut);
 router.post('/:id/publish', requireAuth, requireOwnPage, publishLandingPage);
+router.patch('/:id/category', requireAuth, requireOwnPage, updatePageCategory);
 router.post('/:id/regenerate-text', requireAuth, requireOwnPage, aiLimiter, regenerateText);
 router.post('/:id/use-ai-edit', requireAuth, requireOwnPage, aiLimiter, useAiEdit);
 router.post('/:id/update-image-upload', requireAuth, requireOwnPage, handleSingleImageUpload, updateImageUpload);

@@ -1,4 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { CATEGORY_CONFIG, extractCity, healthSubtype, stockKeywordsFor, templateFor, type CategoryId } from './pageCategory';
+import { applyHealthTemplate, softenHealthCopy, healthCtaLabel, HEALTH_HEADINGS, type DoctorExtraction } from './healthCopy';
 
 // ─── Shared prompt fragments ───────────────────────────────────────────────────
 // This rule is injected into every prompt that can produce consumer-visible
@@ -138,6 +140,16 @@ export interface DesignHints {
   structural_layout?: StructuralLayout;
 }
 
+/** A person in the clinic's "doctor and team" section. Only what the owner provided; the licence number only if they gave one. */
+export interface TeamMember {
+  name: string;
+  role: string;
+  credentials: string;
+  experience: string;
+  license_number?: string;
+  photo_url?: string;
+}
+
 export interface AiContent {
   page_strategy?: PageStrategy;
   hero?: {
@@ -193,6 +205,13 @@ export interface AiContent {
     image_style?: string; // 'photo' | 'icon' — realistic photos vs 3D glassmorphism icons
   };
   hidden_sections?: string[];
+  // Category templates (README part 141). Health pages: the doctor and team section, the languages line,
+  // and the practical-guide lines. All optional: a page without them renders exactly as before.
+  team?: TeamMember[];
+  team_heading?: string;
+  /** Languages spoken at the business, shown as "מדברים ...". Defaults to ['עברית']; the owner can edit it. */
+  spoken_languages?: string[];
+  practical_info?: { parking?: string; accessibility?: string };
 }
 
 export interface GenerateInput {
@@ -221,6 +240,10 @@ export interface GenerateInput {
   // instead of writing the usual "fill this in yourself" placeholder quote.
   testimonial_quote?: string;
   testimonial_author?: string;
+  // Page category (see pageCategory.ts). Unset or 'general' = today's behaviour, unchanged.
+  category?: CategoryId | string;
+  /** The chosen contact method (whatsapp | phone | email | link): the health template words its buttons by it. */
+  cta_type?: string;
 }
 
 // ─── Internal parallel-call intermediate types ────────────────────────────────
@@ -252,6 +275,9 @@ interface CoreOutput {
   whatsappMessage: string;
   imageKeywords: string[];
   imageStyle: 'photo' | 'icon';
+  /** Health template only. */
+  doctor?: DoctorExtraction;
+  practical?: { parking?: string; accessibility?: string };
 }
 
 interface TrustOutput {
@@ -406,9 +432,55 @@ function getMockContent(input: GenerateInput): AiContent {
   };
 }
 
+// ─── Category template block (README part 141) ───────────────────────────────
+// Appended LAST to the writer prompts, so it wins over any rule above it. GENERAL returns '' and the
+// prompts are byte-for-byte what they were before categories existed.
+
+/** Everything the owner wrote about the business: what the detection and the grounding checks read. */
+export function sourceTextOf(input: Pick<GenerateInput, 'vibe' | 'about_business' | 'user_provided_text'>): string {
+  return [input.vibe, input.about_business, input.user_provided_text].filter(Boolean).join('\n');
+}
+
+function buildCategoryBlock(input: GenerateInput, which: 'core' | 'trust'): string {
+  if (templateFor(input.category) !== 'health') return '';
+  const cfg = CATEGORY_CONFIG.health;
+  const src = sourceTextOf(input);
+  const city = extractCity(input.address, src);
+  const sub = healthSubtype(src);
+  const field = sub === 'dental' ? 'a dental clinic' : sub === 'physio' ? 'a physiotherapy clinic' : 'a health clinic / para-medical practice';
+  const tone = cfg.toneRules.map((r) => `- ${r}`).join('\n');
+  if (which === 'trust') {
+    return `
+
+CATEGORY TEMPLATE — HEALTH (this block OVERRIDES any conflicting rule above):
+This page is for ${field}. The first-visit steps, the FAQ and the trust badges are written by the system, not by you.
+${tone}
+- "benefits": return []. "processSteps": return []. "faq": return []. "trustBadges": return [].
+- All four headings and all four kickers: return "" (empty string).
+- "ctaBannerSubline": ONE calm Hebrew sentence, max 12 words, that invites them to write or call. No urgency, no promise.
+- "testimonials": follow the testimonials rule above exactly.`;
+  }
+  return `
+
+CATEGORY TEMPLATE — HEALTH (this block OVERRIDES any conflicting rule above, including the word diet, the PAS framework and the layout rules):
+This page is for ${field}${city ? ` in ${city}` : ''}. Write like a calm, trustworthy clinic, not like a sales page.
+${tone}
+- heroTitle: a QUIET headline, max 7 Hebrew words${city ? `, and it MUST contain the city name "${city}"` : ''} (for example "מרפאת שיניים בחיפה, בקצב שלכם"). No hook, no question, no exclamation mark.
+- heroSubtitle: one calm sentence, max 15 words, that invites them to ask or to book. No promise.
+- ctaText: exactly "${healthCtaLabel(input.cta_type)}".
+- aboutContent: max 2 short sentences, only what the owner wrote.
+- "services" are the clinic's TREATMENTS: list ONLY treatments the owner named explicitly in the input (1 to 8 items; do not pad to 3 and do not add common ones the owner did not name). One plain explanatory sentence each (max 20 words): what it is for, in everyday words. No promise of results, no price, no "painless". If the owner named no treatments, return exactly ONE item whose title is the field itself (for example "טיפולי שיניים") and a sentence inviting them to ask.
+- servicesHeading: "${HEALTH_HEADINGS.services}". servicesKicker: "".
+- layoutComposition: ["hero_split","services_grid","process_timeline","faq_accordion","cta_banner"].
+- imageStyle: "photo". heroImagePrompt: a calm, bright, empty clinic room, soft daylight, no people, no text, no logos.
+- ADD two more fields to the JSON:
+  "doctor": { "name": "", "role": "", "credentials": "", "experience": "" } — copy ONLY what the owner wrote about the doctor (for example "ד״ר כהן", "רופא שיניים", their training, their years). Use "" for anything the owner did not write. NEVER invent a name, a degree, a university, a number of years or a licence number.
+  "practical": { "parking": "", "accessibility": "" } — only if the owner wrote about parking or accessibility, otherwise "".`;
+}
+
 // ─── Call A: Core & Design — palette, layout, hero, services ─────────────────
 
-function buildCoreSystem(input: GenerateInput): string {
+export function buildCoreSystem(input: GenerateInput): string {
   const hasManualColors = input.primary_color && input.secondary_color;
   const extractFromLogo = input.auto_extract_colors && input.logo_base64;
 
@@ -584,7 +656,7 @@ Return EXACTLY this JSON (ALL fields required — do not omit any):
   "imageKeywords": ["English landscape keyword", "keyword 2", "keyword 3"]
 }
 
-CRITICAL: Copy phone, email, address, and business hours EXACTLY as provided — never reformat or invent hours. Base copy heavily on any user-provided marketing text.`;
+CRITICAL: Copy phone, email, address, and business hours EXACTLY as provided — never reformat or invent hours. Base copy heavily on any user-provided marketing text.${buildCategoryBlock(input, 'core')}`;
 }
 
 function buildCoreUser(input: GenerateInput): string {
@@ -633,7 +705,7 @@ function buildTestimonialsExampleJson(input: GenerateInput): string {
   return `[\n    ${placeholder},\n    ${placeholder}\n  ]`;
 }
 
-function buildTrustSystem(input: GenerateInput): string {
+export function buildTrustSystem(input: GenerateInput): string {
   return `You are an elite Hebrew conversion copywriter for Israeli small businesses.
 
 MISSION: Generate TRUST and CONVERSION sections for a landing page — benefits, process, FAQ, testimonials, and a closing CTA line.
@@ -726,7 +798,7 @@ Return EXACTLY this JSON (ALL fields required):
     { "label": "..." }
   ],
   "ctaBannerSubline": "Hebrew — 1 sentence max 15 words, creates urgency or concrete promise"
-}`;
+}${buildCategoryBlock(input, 'trust')}`;
 }
 
 function buildTrustUser(input: GenerateInput): string {
@@ -873,6 +945,15 @@ export interface BusinessContext {
   business_name: string;
   vibe?: string;
   page_goal?: string;
+  /** Page category: a HEALTH page's rewrite keeps the calm tone and is softened by the same lint. */
+  category?: string | null;
+}
+
+function softenDeep(v: unknown, sourceText: string): unknown {
+  if (typeof v === 'string') return softenHealthCopy(v, { sourceText }).text || v;
+  if (Array.isArray(v)) return v.map((x) => softenDeep(x, sourceText));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, softenDeep(x, sourceText)]));
+  return v;
 }
 
 export async function regenerateSectionText(
@@ -895,6 +976,10 @@ export async function regenerateSectionText(
 
   const schema = schemaKey ? SECTION_SCHEMAS[schemaKey] : JSON.stringify(currentData, null, 2);
 
+  const healthTone = templateFor(businessContext.category) === 'health'
+    ? `\n\nCATEGORY TEMPLATE — HEALTH (overrides any conflicting rule above):\n${CATEGORY_CONFIG.health.toneRules.map((r) => `- ${r}`).join('\n')}\n- Keep the headline quiet; no hook, no exclamation mark.`
+    : '';
+
   const systemPrompt = `You are an elite Hebrew copywriter and brand strategist for Israeli small businesses.
 
 MISSION: Rewrite ONLY the requested section of a landing page. Preserve all keys and JSON structure.
@@ -911,7 +996,7 @@ LANGUAGE RULES:
 - Return ONLY the JSON for the requested section — nothing else
 
 Expected output schema:
-${schema}`;
+${schema}${healthTone}`;
 
   const userLines = [
     `Business: ${businessContext.business_name}${businessContext.vibe ? ` (${businessContext.vibe})` : ''}`,
@@ -935,7 +1020,8 @@ ${schema}`;
     const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
     const parsed: unknown = parseJsonLoose(raw);
     console.log(`[AI:micro] Section "${sectionName}" rewritten successfully`);
-    return parsed;
+    // A health page keeps its calm tone: the same lint that checks the first draft checks a rewrite.
+    return templateFor(businessContext.category) === 'health' ? softenDeep(parsed, `${businessContext.vibe ?? ''}`) : parsed;
   } catch (err) {
     console.error(`[AI:micro] Failed to rewrite section "${sectionName}":`, err);
     throw new Error(`AI rewrite failed for section "${sectionName}"`);
@@ -982,12 +1068,46 @@ export async function checkBusinessCoherence(businessName?: string, description?
   }
 }
 
+interface RawGeneration {
+  content: AiContent;
+  /** The neutral fallback (no API key, or the writer failed): its three "שירות ראשון" items are not treatments. */
+  isMock?: boolean;
+  doctor?: DoctorExtraction;
+  practical?: { parking?: string; accessibility?: string };
+}
+
+/**
+ * Writes the page's text. GENERAL pages come out exactly as the writer returned them. A HEALTH page is
+ * then put through the template: calm-tone lint with automatic softening, only the treatments the owner
+ * named, the doctor section from the owner's own words, the neutral first-visit steps and FAQ, the city in
+ * the headline, and category stock-photo words. (A page the writer could not produce falls back to the
+ * neutral mock, which goes through the same template.)
+ */
 export async function generateAiContent(input: GenerateInput): Promise<AiContent> {
+  const raw = await generateRaw(input);
+  if (templateFor(input.category) !== 'health') return raw.content;
+  const sourceText = sourceTextOf(input);
+  if (raw.isMock) raw.content = { ...raw.content, services_or_benefits: [] };
+  const { content, report } = applyHealthTemplate(raw.content, {
+    businessName: input.business_name,
+    address: input.address,
+    sourceText,
+    ctaType: input.cta_type,
+    doctor: raw.doctor,
+    practical: raw.practical,
+  });
+  if (report.length) console.log('[AI] health lint softened:', report.join(' | '));
+  const kw = stockKeywordsFor('health', sourceText);
+  if (kw) content.design_system = { ...content.design_system, image_keywords: kw };
+  return content;
+}
+
+async function generateRaw(input: GenerateInput): Promise<RawGeneration> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
     console.warn('[AI] ANTHROPIC_API_KEY not set — using mock content');
-    return getMockContent(input);
+    return { content: getMockContent(input), isMock: true };
   }
 
   const client = new Anthropic({ apiKey });
@@ -1078,10 +1198,10 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
     const aiContent = mapToAiContent(step1, input);
     console.log('[AI] Mapping done — layout_composition:', aiContent.layout_composition);
 
-    return aiContent;
+    return { content: aiContent, doctor: core.doctor, practical: core.practical };
   } catch (err) {
     console.error('[AI] Generation failed, falling back to mock:', err);
-    return getMockContent(input);
+    return { content: getMockContent(input), isMock: true };
   }
 }
 

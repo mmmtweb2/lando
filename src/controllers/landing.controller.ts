@@ -22,6 +22,8 @@ import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/lead
 import { optionalHttpUrl } from '../utils/safeUrl';
 import { serverError } from '../utils/httpErrors';
 import { packUploads, applyImageSlot, clearImageSlot, parseSlot, galleryOf, type AiStore, type ImageStore } from '../services/imageSlots';
+import { defaultHiddenSections, detectCategory, isCategoryId, isMissingCategoryColumn, normalizeCategory, templateFor, withCategoryColumns } from '../services/pageCategory';
+import { carryOverOwnerData } from '../services/healthCopy';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -530,6 +532,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       include_testimonials,
       testimonial_quote,
       testimonial_author,
+      google_category,
     } = req.body as {
       business_name?: string;
       phone_number?: string;
@@ -554,6 +557,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       include_testimonials?: string;
       testimonial_quote?: string;
       testimonial_author?: string;
+      google_category?: string;
     };
 
     if (!business_name || !phone_number || !vibe) {
@@ -689,7 +693,17 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       }
 
       // 3. AI content — 2-step prompt chain (copywriter → mapping)
+      // Page category: chosen by the machine from what the owner wrote (and the Google category text when there is
+      // one), never asked. Unsure = 'general', which builds the page exactly as before.
+      const detected = detectCategory({
+        description: [vibe, safeAbout, safeUserText].filter(Boolean).join('\n'),
+        googleCategory: typeof google_category === 'string' ? google_category.slice(0, 120) : null,
+        businessName: business_name,
+      });
+      console.log('[LANDING] category detected:', detected.id, detected.confidence);
       const aiInput: Parameters<typeof generateAiContent>[0] = {
+        category: detected.id,
+        cta_type: safeCtaType,
         business_name,
         phone_number,
         email: safeEmail ?? undefined,
@@ -838,9 +852,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
 
       console.log('[LANDING] serializedImages length:', serializedImages?.length ?? 0);
 
-      const { data, error } = await supabase
-        .from('landing_pages')
-        .insert({
+      const landingRow = {
           slug,
           business_name,
           phone_number,
@@ -861,9 +873,15 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
           page_goal: safePageGoal,
           external_link: safeExternalLink,
           status: 'draft',
-        })
-        .select()
-        .single();
+      };
+      // category / category_source come with migration 053. Before it has run, the insert is repeated without
+      // them (the page is then simply a general page) instead of failing the creation.
+      const inserted = await withCategoryColumns(
+        (extra) => supabase.from('landing_pages').insert({ ...landingRow, ...extra }).select().single(),
+        detected.id,
+        'auto',
+      );
+      const { data, error } = inserted;
 
       if (error) {
         console.error('=== SUPABASE INSERT ERROR ===', error);
@@ -1459,11 +1477,12 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
     return;
   }
 
-  const { data: page, error: fetchErr } = await supabase
-    .from('landing_pages')
-    .select('id, owner_email, business_name, about_business, user_provided_text, design_style, page_goal, phone_number, ai_content')
-    .eq('id', id)
-    .single();
+  const REGEN_COLS = 'id, owner_email, business_name, about_business, user_provided_text, design_style, page_goal, phone_number, address, ai_content';
+  const readForRegen = (cols: string) => supabase.from('landing_pages').select(cols).eq('id', id).single();
+  // category comes with migration 053; before it has run the page is read without it (= a general page).
+  let { data: pageRow, error: fetchErr } = await readForRegen(`${REGEN_COLS}, category`);
+  if (fetchErr && isMissingCategoryColumn(fetchErr)) ({ data: pageRow, error: fetchErr } = await readForRegen(REGEN_COLS));
+  const page = pageRow as unknown as Record<string, any> | null;
 
   if (fetchErr || !page) {
     res.status(404).json({ error: 'Page not found' });
@@ -1501,22 +1520,29 @@ export async function regenerateText(req: Request, res: Response): Promise<void>
         .filter(Boolean)
         .join(', ');
 
+      const category = templateFor(page.category);
       updatedContent = await generateAiContent({
         business_name: page.business_name as string,
         phone_number: (page.phone_number as string | undefined) ?? '',
+        address: (page.address as string | undefined) ?? currentContent.contact?.address ?? undefined,
         vibe: vibeProxy,
         design_style: page.design_style ?? undefined,
         about_business: page.about_business ?? undefined,
         user_provided_text: page.user_provided_text ?? undefined,
         page_goal: page.page_goal ?? undefined,
         image_source: 'none',
+        category,
+        cta_type: currentContent.contact?.cta_type,
       });
+      // What the owner entered or switched survives the rewrite (doctor and team, languages, hidden sections, contact method).
+      updatedContent = carryOverOwnerData(currentContent, updatedContent, defaultHiddenSections(category));
     } else {
       // Single section rewrite
       const businessContext = {
         business_name: page.business_name as string,
         vibe: page.about_business ?? page.design_style ?? undefined,
         page_goal: page.page_goal ?? undefined,
+        category: page.category as string | null | undefined,
       };
 
       const rewritten = await regenerateSectionText(
@@ -1585,6 +1611,42 @@ function mergeSectionIntoContent(content: AiContent, sectionName: string, rewrit
     return next;
   }
   return next;
+}
+
+// ─── Page category (README part 141) ──────────────────────────────────────────
+
+/**
+ * PATCH /api/landing/:id/category  { category }
+ * The owner's quiet change of a page's category (from the editor). Re-orders the sections and sets
+ * category_source = 'manual', so nothing ever re-detects it. The text is NOT rewritten here: the editor
+ * offers that separately (it costs credits). Switching to a template that starts some sections switched off
+ * (health: before/after) adds them to hidden_sections; nothing the owner already hid is shown again.
+ */
+export async function updatePageCategory(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const category = (req.body as { category?: unknown } | undefined)?.category;
+  if (!isCategoryId(category)) { res.status(400).json({ error: 'קטגוריה לא תקינה.' }); return; }
+
+  const { data: row, error: readErr } = await supabase.from('landing_pages').select('id, ai_content').eq('id', id).single();
+  if (readErr || !row) { res.status(404).json({ error: 'הדף לא נמצא.' }); return; }
+  const content = ((row as { ai_content?: AiContent }).ai_content ?? {}) as AiContent;
+  const hidden = [...new Set([...(content.hidden_sections ?? []), ...defaultHiddenSections(category)])];
+  const nextContent: AiContent = hidden.length ? { ...content, hidden_sections: hidden } : content;
+
+  const { error } = await supabase
+    .from('landing_pages')
+    .update({ category, category_source: 'manual', ai_content: nextContent })
+    .eq('id', id);
+  if (error) {
+    if (isMissingCategoryColumn(error)) {
+      res.status(503).json({ error: 'שינוי הקטגוריה ייפתח בקרוב.', code: 'not_migrated' });
+      return;
+    }
+    serverError(res, error, '[LANDING]');
+    return;
+  }
+  touchDraft(id);
+  res.json({ category: normalizeCategory(category), category_source: 'manual', ai_content: nextContent });
 }
 
 // ─── Legacy credit endpoint (deprecated — column dropped) ────────────────────
