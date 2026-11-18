@@ -41,6 +41,8 @@ export const FIELD_LABEL: Record<FieldKey, string> = {
   hours: 'שעות פעילות',
   specialHours: 'חגים וימים מיוחדים',
   services: 'שירותים',
+  serviceArea: 'אזורי שירות',
+  attributes: 'מאפיינים',
 };
 
 export const FIELD_HINT: Record<FieldKey, string> = {
@@ -50,6 +52,8 @@ export const FIELD_HINT: Record<FieldKey, string> = {
   hours: 'השעות שמוצגות בגוגל בכל יום רגיל.',
   specialHours: 'ימים שבהם אתם סגורים או עובדים בשעות אחרות, כמו חגים. מופיעים בגוגל רק בתאריך עצמו.',
   services: 'מה שאתם עושים. השירותים שכבר מופיעים בגוגל נשארים שם גם אם לא תכתבו אותם כאן.',
+  serviceArea: 'הערים והאזורים שאליהם אתם מגיעים. גוגל מציגה אתכם ללקוחות שמחפשים באזורים האלה. כתובת העסק לא משתנה.',
+  attributes: 'פרטים שעוזרים ללקוחות להחליט, כמו נגישות, חניה ואמצעי תשלום. סמנו רק מה שנכון אצלכם.',
 };
 
 export const STATUS_LABEL: Record<FieldStatus, string> = {
@@ -78,6 +82,45 @@ export const SPECIAL = {
   errDate: 'בחרו תאריך לכל יום.',
   errHours: 'בכל יום פתוח צריך שעת פתיחה לפני שעת סגירה.',
   errDup: 'אותו תאריך מופיע פעמיים.',
+};
+
+export const AREA = {
+  add: 'הוספת אזור',
+  inputLabel: 'עיר או אזור',
+  placeholder: 'למשל: חיפה',
+  addBtn: 'הוספה',
+  remove: (n: string) => `הסרת ${n}`,
+  none: 'עדיין לא הוספתם אזורי שירות.',
+  count: (n: number, max: number) => `${n} מתוך ${max}`,
+  showsAddress: 'כתובת העסק מוצגת בכרטיס לצד אזורי השירות.',
+  hidesAddress: 'כתובת העסק לא מוצגת בכרטיס, כי אתם מגיעים ללקוחות. את זה אפשר לשנות רק בגוגל עצמה.',
+  lookup: 'גוגל מזהה כל אזור לפי השם שלו, אז כתבו אותו כמו שהוא מופיע במפות.',
+  errNone: 'צריך לפחות אזור אחד.',
+  errMax: (max: number) => `אפשר עד ${max} אזורים.`,
+  errShort: 'שם האזור קצר מדי.',
+  errDup: 'האזור הזה כבר ברשימה.',
+};
+
+export const ATTRS = {
+  yes: 'כן',
+  no: 'לא',
+  none: 'עוד לא סימנתם מאפיינים. לחצו על "עריכה" ובחרו מה נכון אצלכם.',
+  noneOffered: 'גוגל עוד לא הציעה מאפיינים לעסק שלכם.',
+  other: 'כללי',
+  setYes: 'יש',
+  setNo: 'אין',
+  toggle: (label: string) => label,
+  keepNote: 'מאפיין שמבטלים בו את הסימון יופיע בגוגל כ"לא".',
+};
+
+export const HOLIDAYS = {
+  title: 'חגים קרובים',
+  hint: 'אפשר להוסיף חג כיום סגור ולערוך אותו לפני השמירה. שום דבר לא נשמר בלי שתלחצו "שמירה".',
+  add: 'הוספה כסגור',
+  addLabel: (name: string) => `הוספת ${name} כיום סגור`,
+  addAll: 'הוספת כל החגים',
+  usuallyClosed: 'בדרך כלל סגורים ביום הזה',
+  added: (n: number) => (n === 1 ? 'נוסף יום אחד לרשימה. לחצו "שמירה" כדי לשלוח לגוגל.' : `נוספו ${n} ימים לרשימה. לחצו "שמירה" כדי לשלוח לגוגל.`),
 };
 
 export const SERVICES = {

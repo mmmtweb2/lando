@@ -228,11 +228,12 @@ export async function createLocalPost(access: string, account: string, location:
 // Sources: https://developers.google.com/my-business/reference/businessinformation/rest/v1/locations/patch
 //          https://developers.google.com/my-business/content/limits (10 edits per minute per profile)
 /**
- * The only fields we ever write to a customer's listing (docs/gbp-sync-spec.md, phase 1). Identity
+ * The only fields we ever write to a customer's listing through locations.patch (docs/gbp-sync-spec.md,
+ * phases 1 and A; the yes/no attributes have their own call, patchAttributes). Identity
  * fields (title, storefrontAddress, categories, openInfo) are deliberately absent: changing them can
  * send a listing to re-verification or suspension. Anything else in a mask is refused here.
  */
-export const WRITABLE_MASKS = ['profile.description', 'serviceItems', 'websiteUri', 'phoneNumbers', 'regularHours', 'specialHours'] as const;
+export const WRITABLE_MASKS = ['profile.description', 'serviceItems', 'websiteUri', 'phoneNumbers', 'regularHours', 'specialHours', 'serviceArea'] as const;
 export type WritableMask = (typeof WRITABLE_MASKS)[number];
 
 /** Google refused the content itself (HTTP 400): the message is Google's, shown to the customer. */
@@ -295,6 +296,57 @@ export async function getGoogleUpdated(access: string, location: string, f: Fetc
   const b = (await r.json().catch(() => ({}))) as Record<string, any>;
   const split = (v: unknown) => (typeof v === 'string' && v ? v.split(',').map((x) => x.trim()).filter(Boolean) : []);
   return { diffMask: split(b.diffMask), pendingMask: split(b.pendingMask) };
+}
+
+// ── Attributes (Business Information API v1): yes/no only ──
+// Sources: https://developers.google.com/my-business/reference/businessinformation/rest/v1/attributes/list
+//          https://developers.google.com/my-business/reference/businessinformation/rest/v1/locations/getAttributes
+//          https://developers.google.com/my-business/reference/businessinformation/rest/v1/locations/updateAttributes
+// UNVERIFIED against live Google: covered by tests with fake responses.
+const CATEGORY_RE = /^categories\/[\w:.-]{2,100}$/;
+
+/** What the listing has set: `locations/{id}/attributes` (raw; parsed by gbpAttributes.parseAttributes). */
+export async function fetchAttributes(access: string, location: string, f: Fetch = fetch): Promise<Record<string, any>> {
+  if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  return getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}/attributes`, access, f, 'attributes');
+}
+
+/**
+ * What exists for a category, with display names in Hebrew (Google falls back to English where a
+ * name has no Hebrew version). Up to 3 pages of 200. Raw `attributeMetadata` items.
+ */
+export async function listAttributeMetadata(access: string, category: string, f: Fetch = fetch, region = 'IL', language = 'he'): Promise<Record<string, any>[]> {
+  if (!CATEGORY_RE.test(category)) throw new GbpError('google', 'bad_category');
+  const out: Record<string, any>[] = [];
+  let token = '';
+  for (let page = 0; page < 3; page++) {
+    const q = new URLSearchParams({ categoryName: category, regionCode: region, languageCode: language, pageSize: '200' });
+    if (token) q.set('pageToken', token);
+    const body = await getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/attributes?${q.toString()}`, access, f, 'attributes_list');
+    out.push(...((Array.isArray(body.attributeMetadata) ? body.attributeMetadata : []) as Record<string, any>[]));
+    token = typeof body.nextPageToken === 'string' ? body.nextPageToken : '';
+    if (!token) break;
+  }
+  return out;
+}
+
+const ATTR_NAME_RE = /^attributes\/[A-Za-z0-9_.-]{2,100}$/;
+
+/**
+ * Sets yes/no attributes on the listing: `updateAttributes` with `attributeMask` naming exactly the
+ * attributes sent. Only boolean values: anything else is refused here. There is no validateOnly for
+ * this call, so the caller reads the listing back afterwards. Retries 429 (withQuotaRetry).
+ */
+export async function patchAttributes(access: string, location: string, names: string[], body: { attributes: { name: string; valueType: string; values: unknown[] }[] }, f: Fetch = fetch, opts: RetryOpts = {}): Promise<void> {
+  if (!LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  const sent = body.attributes.map((a) => a.name);
+  if (!names.length || names.length > 100 || names.some((n) => !ATTR_NAME_RE.test(n)) || sent.length !== names.length || sent.some((n, i) => n !== names[i])) throw new GbpError('google', 'bad_mask');
+  if (body.attributes.some((a) => a.valueType !== 'BOOL' || a.values.length !== 1 || typeof a.values[0] !== 'boolean')) throw new GbpError('google', 'bad_attribute');
+  const r = await withQuotaRetry(() => f(`https://mybusinessbusinessinformation.googleapis.com/v1/${location}/attributes?attributeMask=${names.map(encodeURIComponent).join(',')}`, {
+    method: 'PATCH', headers: { authorization: `Bearer ${access}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: `${location}/attributes`, attributes: body.attributes }),
+  }), opts);
+  if (!r.ok) await googleError(r, 'attributes_patch');
 }
 
 // ── Photos (My Business API v4 media: still the only photo API) ──

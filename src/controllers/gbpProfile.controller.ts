@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
-import { isSyncField } from '../services/gbpSync';
+import { ATTRIBUTES, isProfileField } from '../services/gbpSync';
 import {
-  SyncError, addPhoto, getProfile, isPhotoCategory, listPhotos, removePhoto, resolveField, saveField, websiteFromPage,
+  SyncError, addPhoto, getProfile, isPhotoCategory, listPhotos, removePhoto, resolveField, saveAttributes, saveField, websiteFromPage,
 } from '../services/gbpSync.service';
 import { PhotoInputError, fetchPageImage, storeGooglePhoto, toGooglePhoto } from '../services/gbpPhotos';
 import { writeBackEnabled } from '../services/businessTruth.service';
@@ -21,6 +21,9 @@ const INVALID_HE: Record<string, string> = {
   specialHours: 'השעות המיוחדות לא תקינות: תאריך, ושעות פתיחה וסגירה או "סגור".',
   specialHoursNeedHours: 'כדי להוסיף שעות לחגים, צריך קודם שעות פעילות רגילות.',
   services: 'רשימת השירותים לא תקינה: עד 20 שירותים, שם קצר לכל אחד, בלי קישורים.',
+  serviceArea: 'רשימת אזורי השירות לא תקינה: צריך לפחות אזור אחד ועד 20, כל אחד שם של עיר או אזור.',
+  serviceAreaPlace: 'לא הצלחנו לזהות את האזור. כתבו את שם העיר או האזור כמו שהוא מופיע במפות גוגל.',
+  attributes: 'אחד המאפיינים לא מוכר. רעננו את המסך ונסו שוב.',
 };
 
 const SYNC_HE: Record<SyncError['code'], [number, string]> = {
@@ -48,7 +51,9 @@ const PHOTO_HE: Record<PhotoInputError['code'], string> = {
 function fail(res: Response, e: unknown): void {
   if (e instanceof SyncError) {
     const [status, msg] = SYNC_HE[e.code];
-    const error = e.code === 'invalid' ? (INVALID_HE[e.field ?? ''] ?? msg) : e.code === 'google_rejected' && e.detail ? `${msg} ${e.detail}` : msg;
+    const error = e.code === 'invalid'
+      ? `${INVALID_HE[e.field ?? ''] ?? msg}${e.field === 'serviceAreaPlace' && e.detail ? ` (${e.detail.slice(0, 60)})` : ''}`
+      : e.code === 'google_rejected' && e.detail ? `${msg} ${e.detail}` : msg;
     res.status(status).json({ error, code: e.code, ...(e.field ? { field: e.field } : {}), ...(e.code === 'google_rejected' && e.detail ? { googleMessage: e.detail } : {}) });
     return;
   }
@@ -69,9 +74,11 @@ export async function getProfileView(req: Request, res: Response): Promise<void>
 export async function putField(req: Request, res: Response): Promise<void> {
   if (!req.authEmail) return needAuth(res);
   const field = req.params.field;
-  if (!isSyncField(field) || !req.body || typeof req.body !== 'object' || !('value' in req.body)) { res.status(400).json({ error: 'בקשה לא תקינה.', code: 'invalid' }); return; }
+  if (!isProfileField(field) || !req.body || typeof req.body !== 'object' || !('value' in req.body)) { res.status(400).json({ error: 'בקשה לא תקינה.', code: 'invalid' }); return; }
   try {
-    const r = await saveField(req.authEmail, field, (req.body as { value: unknown }).value);
+    const value = (req.body as { value: unknown }).value;
+    // the yes/no attributes go to Google through their own call (gbpAttributes.ts); every other field through locations.patch
+    const r = field === ATTRIBUTES ? await saveAttributes(req.authEmail, value) : await saveField(req.authEmail, field, value);
     res.json(r.code === 'sync_off' ? { ...r, message: SYNC_OFF_MSG } : r);
   } catch (e) { fail(res, e); }
 }
@@ -80,7 +87,7 @@ export async function putField(req: Request, res: Response): Promise<void> {
 export async function resolve(req: Request, res: Response): Promise<void> {
   if (!req.authEmail) return needAuth(res);
   const field = req.params.field, keep = (req.body ?? {}).keep;
-  if (!isSyncField(field) || (keep !== 'google' && keep !== 'ours')) { res.status(400).json({ error: 'בקשה לא תקינה.', code: 'invalid' }); return; }
+  if (!isProfileField(field) || (keep !== 'google' && keep !== 'ours')) { res.status(400).json({ error: 'בקשה לא תקינה.', code: 'invalid' }); return; }
   try {
     const r = await resolveField(req.authEmail, field, keep);
     res.json(r.code === 'sync_off' ? { ...r, message: SYNC_OFF_MSG } : r);

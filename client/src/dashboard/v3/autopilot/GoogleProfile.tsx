@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, ExternalLink, ImagePlus, Images, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Clock, ExternalLink, ImagePlus, Images, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
 import HoursField from './HoursField';
 import { LoadError, Notice, SampleBanner } from './bits';
 import { hoursLines, hoursProblems, relTime } from './format';
+import { addHolidayRows, pendingHolidays, usuallyClosed } from './holidays';
 import { pageImages } from './profileApi';
-import { FIELD_HINT, FIELD_LABEL, PHONE, PHOTOS, PHOTO_CATEGORY, PHOTO_STATE, PROFILE, SERVICES, SPECIAL, STATUS_LABEL } from './profileCopy';
-import { PHOTO_CATEGORIES, type FieldKey, type FieldStatus, type FieldValues, type GbpPhoto, type GbpProfile, type PhotoCategory, type ProfileField, type SpecialDay } from './profileTypes';
+import { AREA, ATTRS, FIELD_HINT, FIELD_LABEL, HOLIDAYS, PHONE, PHOTOS, PHOTO_CATEGORY, PHOTO_STATE, PROFILE, SERVICES, SPECIAL, STATUS_LABEL } from './profileCopy';
+import { PHOTO_CATEGORIES, type AreaValue, type AttributeItem, type AttributeValues, type FieldKey, type FieldStatus, type FieldValues, type GbpPhoto, type GbpProfile, type HolidaySuggestion, type PhotoCategory, type ProfileField, type SpecialDay } from './profileTypes';
+import { AREA_OPTIONS } from './serviceAreaOptions';
+import type { TruthHours } from './types';
 import type { GbpProfileState } from './useGbpProfile';
 import './dashboard-v3-profile.css';
 
@@ -17,6 +20,7 @@ import './dashboard-v3-profile.css';
 
 const MAX_DESC = 750;
 const MAX_SERVICES = 20;
+const MAX_AREAS = 20;
 const MAX_FILE = 10 * 1024 * 1024;
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
@@ -35,7 +39,21 @@ function StatusChip({ status }: { status: FieldStatus }) {
 
 const dateHe = (iso: string) => { try { return new Date(`${iso}T12:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); } catch { return iso; } };
 
-function Value<K extends FieldKey>({ k, v }: { k: K; v: FieldValues[K] | null }) {
+/** What the card around a field also needs to know: the attribute names, the holiday suggestions, the regular hours. */
+interface Ctx { items: AttributeItem[]; holidays: HolidaySuggestion[]; hours: TruthHours[] }
+
+/** The attributes grouped the way Google groups them, in the order Google listed them. */
+function groupItems(items: AttributeItem[]): { group: string; items: AttributeItem[] }[] {
+  const out: { group: string; items: AttributeItem[] }[] = [];
+  for (const i of items) {
+    const name = i.group || ATTRS.other;
+    const g = out.find((x) => x.group === name);
+    if (g) g.items.push(i); else out.push({ group: name, items: [i] });
+  }
+  return out;
+}
+
+function Value<K extends FieldKey>({ k, v, items }: { k: K; v: FieldValues[K] | null; items: AttributeItem[] }) {
   const empty = <p className="dv3-p-empty">{PROFILE.empty}</p>;
   if (v === null) return empty;
   switch (k) {
@@ -53,6 +71,37 @@ function Value<K extends FieldKey>({ k, v }: { k: K; v: FieldValues[K] | null })
     case 'services': {
       const a = v as FieldValues['services'];
       return a.length ? <ul className="dv3-p-list">{a.map((s, i) => <li key={`${s.name}-${i}`}><strong>{s.name}</strong>{s.description && <span> · {s.description}</span>}</li>)}</ul> : <p className="dv3-p-empty">{SERVICES.none}</p>;
+    }
+    case 'serviceArea': {
+      const a = v as AreaValue;
+      return (
+        <>
+          {a.places.length ? <ul className="dv3-p-chips">{a.places.map((p) => <li key={p} className="dv3-p-chip">{p}</li>)}</ul> : <p className="dv3-p-empty">{AREA.none}</p>}
+          {a.type && <p className="dv3-a-hint dv3-p-areanote">{a.type === 'CUSTOMER_LOCATION_ONLY' ? AREA.hidesAddress : AREA.showsAddress}</p>}
+        </>
+      );
+    }
+    case 'attributes': {
+      const vals = v as AttributeValues;
+      const set = items.filter((i) => typeof vals[i.name] === 'boolean');
+      if (!set.length) return <p className="dv3-p-empty">{items.length ? ATTRS.none : ATTRS.noneOffered}</p>;
+      return (
+        <div className="dv3-p-attr-groups">
+          {groupItems(set).map((g) => (
+            <div key={g.group} className="dv3-p-attr-group">
+              <h4>{g.group}</h4>
+              <ul className="dv3-p-chips">
+                {g.items.map((i) => (
+                  <li key={i.name} className="dv3-p-chip" data-on={vals[i.name] ? 'yes' : 'no'}>
+                    {vals[i.name] ? <Check size={14} aria-hidden /> : <X size={14} aria-hidden />}
+                    <span className="sr-only">{vals[i.name] ? ATTRS.setYes : ATTRS.setNo}: </span>{i.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      );
     }
     default: return empty;
   }
@@ -137,6 +186,103 @@ function ServicesEditor({ value, onChange }: Editor<'services'>) {
   );
 }
 
+const sameArea = (a: string, b: string) => a.replace(/[\s"'׳״,.-]+/g, '').toLowerCase() === b.replace(/[\s"'׳״,.-]+/g, '').toLowerCase();
+
+function AreaEditor({ value, onChange }: Editor<'serviceArea'>) {
+  const listId = useId();
+  const [text, setText] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const add = () => {
+    const n = text.replace(/\s+/g, ' ').trim();
+    if (n.length < 2) { setErr(AREA.errShort); return; }
+    if (value.places.some((p) => sameArea(p, n))) { setErr(AREA.errDup); return; }
+    if (value.places.length >= MAX_AREAS) { setErr(AREA.errMax(MAX_AREAS)); return; }
+    onChange({ ...value, places: [...value.places, n] });
+    setText(''); setErr(null);
+  };
+  return (
+    <div className="dv3-p-rows">
+      {value.places.length === 0 ? <p className="dv3-p-empty">{AREA.none}</p> : (
+        <ul className="dv3-p-chips">
+          {value.places.map((p) => (
+            <li key={p} className="dv3-p-chip dv3-p-chip-edit">
+              <span>{p}</span>
+              <button type="button" className="dv3-p-chip-x" aria-label={AREA.remove(p)} onClick={() => onChange({ ...value, places: value.places.filter((x) => x !== p) })}><X size={16} aria-hidden /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="dv3-p-row">
+        <input className="dv3-a-input" list={listId} aria-label={AREA.inputLabel} placeholder={AREA.placeholder} maxLength={60} value={text}
+          onChange={(e) => { setText(e.target.value); setErr(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+        <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" onClick={add}><Plus size={16} aria-hidden /> {AREA.addBtn}</button>
+      </div>
+      <datalist id={listId}>{AREA_OPTIONS.filter((o) => !value.places.some((p) => sameArea(p, o))).map((o) => <option key={o} value={o} />)}</datalist>
+      {err && <p className="dv3-p-inline-err" role="alert">{err}</p>}
+      <p className="dv3-a-hint">{AREA.lookup}</p>
+      <span className="dv3-a-counter dv3-p-counter dv3-p-counter-he">{AREA.count(value.places.length, MAX_AREAS)}</span>
+    </div>
+  );
+}
+
+function AttributesEditor({ value, onChange, items, base }: Editor<'attributes'> & { items: AttributeItem[]; base: AttributeValues }) {
+  const toggle = (name: string) => {
+    const on = !(value[name] === true);
+    const next = { ...value };
+    if (!on && base[name] === undefined) delete next[name]; else next[name] = on;   // never set before: switching it back off leaves it unset
+    onChange(next);
+  };
+  if (!items.length) return <p className="dv3-p-empty">{ATTRS.noneOffered}</p>;
+  return (
+    <div className="dv3-p-attr-groups">
+      {groupItems(items).map((g) => (
+        <fieldset key={g.group} className="dv3-p-attr-group">
+          <legend>{g.group}</legend>
+          <div className="dv3-p-toggles">
+            {g.items.map((i) => {
+              const on = value[i.name] === true;
+              return (
+                <button key={i.name} type="button" className="dv3-p-toggle" aria-pressed={on} data-on={on ? 'yes' : 'no'} onClick={() => toggle(i.name)}>
+                  <span className="dv3-p-toggle-label">{i.label}</span>
+                  <span className="dv3-p-toggle-state" aria-hidden>{on && <Check size={14} aria-hidden />}{on ? ATTRS.yes : ATTRS.no}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+      ))}
+      <p className="dv3-a-hint">{ATTRS.keepNote}</p>
+    </div>
+  );
+}
+
+/** The upcoming holidays as "add as closed" rows. A suggestion only: it fills the editor, saving is the owner's. */
+function HolidaySuggest({ list, hours, onAdd }: { list: HolidaySuggestion[]; hours: TruthHours[]; onAdd: (picks: HolidaySuggestion[]) => void }) {
+  const headId = useId();
+  if (!list.length) return null;
+  return (
+    <div className="dv3-p-holidays" role="group" aria-labelledby={headId}>
+      <div className="dv3-p-holidays-head">
+        <strong id={headId}>{HOLIDAYS.title}</strong>
+        {list.length > 1 && <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" onClick={() => onAdd(list)}><Plus size={16} aria-hidden /> {HOLIDAYS.addAll}</button>}
+      </div>
+      <p className="dv3-a-hint">{HOLIDAYS.hint}</p>
+      <ul>
+        {list.map((h) => (
+          <li key={h.id}>
+            <div className="dv3-p-holiday-text">
+              <span className="dv3-p-holiday-name">{h.name}</span>
+              <span className="dv3-p-holiday-date">{dateHe(h.date)}{usuallyClosed(h.date, hours) && <small> · {HOLIDAYS.usuallyClosed}</small>}</span>
+            </div>
+            <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" aria-label={HOLIDAYS.addLabel(h.name)} onClick={() => onAdd([h])}><Plus size={16} aria-hidden /> {HOLIDAYS.add}</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** The value as it goes to the server: trimmed, empty rows dropped. Returns a sentence when it cannot go. */
 function prepare<K extends FieldKey>(k: K, v: FieldValues[K]): { value: FieldValues[K]; problem: string | null } {
   switch (k) {
@@ -146,16 +292,21 @@ function prepare<K extends FieldKey>(k: K, v: FieldValues[K]): { value: FieldVal
     case 'hours': return { value: v, problem: Object.keys(hoursProblems(v as FieldValues['hours'])).length ? FIELD_HINT.hours : null };
     case 'specialHours': return { value: v, problem: specialProblem(v as SpecialDay[]) };
     case 'services': { const a = (v as FieldValues['services']).map((s) => ({ name: s.name.trim(), description: s.description.trim() })).filter((s) => s.name); return { value: a as FieldValues[K], problem: null }; }
+    case 'serviceArea': {
+      const a = v as AreaValue;
+      const places = a.places.map((p) => p.trim()).filter(Boolean);
+      return { value: { ...a, places } as FieldValues[K], problem: places.length < 1 ? AREA.errNone : places.length > MAX_AREAS ? AREA.errMax(MAX_AREAS) : null };
+    }
     default: return { value: v, problem: null };
   }
 }
 
-const EMPTY: FieldValues = { website: '', description: '', phone: [], hours: [], specialHours: [], services: [] };
+const EMPTY: FieldValues = { website: '', description: '', phone: [], hours: [], specialHours: [], services: [], serviceArea: { type: null, places: [] }, attributes: {} };
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 // ── one field ────────────────────────────────────────────────────────────────
 
-function FieldCard<K extends FieldKey>({ k, f, state }: { k: K; f: ProfileField<K>; state: GbpProfileState }) {
+function FieldCard<K extends FieldKey>({ k, f, state, ctx }: { k: K; f: ProfileField<K>; state: GbpProfileState; ctx: Ctx }) {
   const headId = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<FieldValues[K]>(clone(f.ours ?? EMPTY[k]));
@@ -175,6 +326,15 @@ function FieldCard<K extends FieldKey>({ k, f, state }: { k: K; f: ProfileField<
     setEditing(false);
     setNote(r.localOnly ? { kind: 'info', text: r.message ?? PROFILE.savedLocal } : { kind: 'ok', text: `${PROFILE.saved} ${PROFILE.googleDelay}` });
   };
+  /** "Add as closed": the day goes into the editor (opened if it is not), never straight to Google. */
+  const addHolidays = (picks: HolidaySuggestion[]) => {
+    const base = editing ? (draft as SpecialDay[]) : ((f.ours ?? []) as SpecialDay[]);
+    const next = addHolidayRows(base, picks);
+    setDraft(next as FieldValues[K]);
+    setHoursTried(false);
+    setEditing(true);
+    setNote({ kind: 'info', text: HOLIDAYS.added(next.length - base.length) });
+  };
   const resolve = async (keep: 'google' | 'ours') => {
     setBusy(true); setNote(null);
     const r = await state.resolve(k, keep);
@@ -190,6 +350,8 @@ function FieldCard<K extends FieldKey>({ k, f, state }: { k: K; f: ProfileField<
     else if (k === 'phone') editor = <PhoneEditor label={label} value={draft as string[]} onChange={on as (v: string[]) => void} />;
     else if (k === 'hours') editor = <HoursField value={draft as FieldValues['hours']} onChange={on as (v: FieldValues['hours']) => void} problems={hoursTried ? hoursProblems(draft as FieldValues['hours']) : {}} />;
     else if (k === 'specialHours') editor = <SpecialEditor label={label} value={draft as SpecialDay[]} onChange={on as (v: SpecialDay[]) => void} />;
+    else if (k === 'serviceArea') editor = <AreaEditor label={label} value={draft as AreaValue} onChange={on as (v: AreaValue) => void} />;
+    else if (k === 'attributes') editor = <AttributesEditor label={label} value={draft as AttributeValues} onChange={on as (v: AttributeValues) => void} items={ctx.items} base={(f.ours ?? {}) as AttributeValues} />;
     else editor = <ServicesEditor label={label} value={draft as FieldValues['services']} onChange={on as (v: FieldValues['services']) => void} />;
   }
 
@@ -205,8 +367,8 @@ function FieldCard<K extends FieldKey>({ k, f, state }: { k: K; f: ProfileField<
         <div className="dv3-p-changed" role="group" aria-label={PROFILE.changedTitle}>
           <p className="dv3-p-changed-title"><strong>{PROFILE.changedTitle}</strong> {PROFILE.changedBody}</p>
           <div className="dv3-p-compare">
-            <div><h4>{PROFILE.oursLabel}</h4><Value k={k} v={f.ours} /></div>
-            <div><h4>{PROFILE.googleLabel}</h4><Value k={k} v={f.google} /></div>
+            <div><h4>{PROFILE.oursLabel}</h4><Value k={k} v={f.ours} items={ctx.items} /></div>
+            <div><h4>{PROFILE.googleLabel}</h4><Value k={k} v={f.google} items={ctx.items} /></div>
           </div>
           <div className="dv3-p-actions">
             <button type="button" className="dv3-btn dv3-a-small" disabled={busy} onClick={() => void resolve('google')}>{PROFILE.keepGoogle}</button>
@@ -216,7 +378,11 @@ function FieldCard<K extends FieldKey>({ k, f, state }: { k: K; f: ProfileField<
       ) : editing ? (
         <div className="dv3-p-edit">{editor}</div>
       ) : (
-        <div className="dv3-p-value"><Value k={k} v={f.ours} /></div>
+        <div className="dv3-p-value"><Value k={k} v={f.ours} items={ctx.items} /></div>
+      )}
+
+      {k === 'specialHours' && !(f.status === 'google_changed' && !editing) && (
+        <HolidaySuggest list={pendingHolidays(ctx.holidays, (editing ? draft : (f.ours ?? [])) as SpecialDay[])} hours={ctx.hours} onAdd={addHolidays} />
       )}
 
       {f.status === 'local_only' && f.error && !note && <Notice kind="error">{f.error}</Notice>}
@@ -428,7 +594,7 @@ function PhotosSection({ state, syncEnabled, pageSlug }: { state: GbpProfileStat
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-const ORDER: FieldKey[] = ['website', 'phone', 'hours', 'specialHours', 'description', 'services'];
+const ORDER: FieldKey[] = ['website', 'phone', 'hours', 'specialHours', 'description', 'services', 'serviceArea', 'attributes'];
 
 export function GoogleProfileBody({ state, pageSlug, onMore }: { state: GbpProfileState; pageSlug: string | null; onMore: () => void }) {
   const { profile } = state;
@@ -444,7 +610,9 @@ export function GoogleProfileBody({ state, pageSlug, onMore }: { state: GbpProfi
       </div>
       {ORDER.map((k) => {
         const f = p.fields[k];
-        return f ? <FieldCard key={k} k={k} f={f as ProfileField<typeof k>} state={state} /> : null;
+        if (!f || (k === 'attributes' && !p.attributeItems.length)) return null;
+        const ctx: Ctx = { items: p.attributeItems, holidays: p.holidays, hours: (p.fields.hours?.ours ?? []) as TruthHours[] };
+        return <FieldCard key={k} k={k} f={f as ProfileField<typeof k>} state={state} ctx={ctx} />;
       })}
       <PhotosSection state={state} syncEnabled={p.syncEnabled} pageSlug={pageSlug} />
       <button type="button" className="dv4-card dv3-p-more" onClick={onMore}>

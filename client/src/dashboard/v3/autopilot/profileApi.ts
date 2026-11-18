@@ -8,8 +8,8 @@ import { PHOTOS, PROFILE } from './profileCopy';
 import { sampleFlag } from './sample';
 import type { Day, TruthHours } from './types';
 import {
-  FIELD_KEYS, type FieldKey, type FieldStatus, type FieldValues, type GbpPhoto, type GbpProfile, type PhotoCategory, type PhotoState,
-  type ProfileField, type ProfileFields, type SaveResult, type ServiceItem, type SpecialDay,
+  FIELD_KEYS, type AreaValue, type AttributeItem, type AttributeValues, type FieldKey, type FieldStatus, type FieldValues, type GbpPhoto, type GbpProfile,
+  type HolidaySuggestion, type PhotoCategory, type PhotoState, type ProfileField, type ProfileFields, type SaveResult, type ServiceItem, type SpecialDay,
 } from './profileTypes';
 
 export interface ProfileApi {
@@ -70,8 +70,33 @@ function services(v: unknown): ServiceItem[] {
   if (!Array.isArray(v)) return [];
   return v.flatMap((s) => { const o = (s ?? {}) as Record<string, unknown>; return str(o.name) ? [{ name: str(o.name), description: str(o.description) }] : []; });
 }
+function serviceArea(v: unknown): AreaValue {
+  const o = (v && typeof v === 'object' && !Array.isArray(v) ? v : {}) as { type?: unknown; places?: unknown };
+  const list = Array.isArray(v) ? v : Array.isArray(o.places) ? o.places : [];
+  const places = list.map((p) => str(typeof p === 'object' && p ? (p as { name?: unknown }).name : p).trim()).filter(Boolean);
+  return { type: o.type === 'CUSTOMER_AND_BUSINESS_LOCATION' || o.type === 'CUSTOMER_LOCATION_ONLY' ? o.type : null, places: [...new Set(places)].slice(0, 20) };
+}
+function attributes(v: unknown): AttributeValues {
+  const out: AttributeValues = {};
+  if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k, b] of Object.entries(v)) if (typeof b === 'boolean' && /^attributes\//.test(k)) out[k] = b;
+  return out;
+}
+export function attributeItems(v: unknown): AttributeItem[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((a) => {
+    const o = (a ?? {}) as Record<string, unknown>;
+    return /^attributes\//.test(str(o.name)) && str(o.label) ? [{ name: str(o.name), label: str(o.label), group: str(o.group) }] : [];
+  });
+}
+export function holidays(v: unknown): HolidaySuggestion[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((h) => {
+    const o = (h ?? {}) as Record<string, unknown>;
+    return /^\d{4}-\d{2}-\d{2}$/.test(str(o.date)) && str(o.name) ? [{ id: str(o.id) || `${str(o.name)}-${str(o.date)}`, name: str(o.name), date: str(o.date) }] : [];
+  });
+}
 const NORMALIZE: { [K in FieldKey]: (v: unknown) => FieldValues[K] } = {
-  website: str, description: str, phone: phones, hours, specialHours: special, services,
+  website: str, description: str, phone: phones, hours, specialHours: special, services, serviceArea, attributes,
 };
 const STATUSES: FieldStatus[] = ['live', 'pending', 'google_changed', 'local_only'];
 
@@ -100,6 +125,8 @@ export function normalizeProfile(raw: unknown): GbpProfile {
     fields,
     metadata: { mapsUri: str(m.mapsUri) || null, newReviewUri: str(m.newReviewUri) || null },
     websiteSuggestion: ws && str(ws.url) ? { url: str(ws.url), current: str(ws.current) || null } : null,
+    attributeItems: attributeItems(b.attributeItems),
+    holidays: holidays(b.holidays),
     checkedAt: typeof b.checkedAt === 'string' ? b.checkedAt : null,
   };
 }
@@ -232,6 +259,29 @@ export async function pageImages(slug: string): Promise<string[]> {
 
 const SAMPLE_IMG = (n: number) => `https://images.unsplash.com/photo-${['1581092160562-40aa08e78837', '1504328345606-18bbc8c9d7d1', '1621905251189-08b45d6a269e', '1558618666-fcd25c85cd64'][n % 4]}?w=480&q=60`;
 
+const SAMPLE_AREAS = ['חיפה', 'קריית ביאליק', 'קריית מוצקין', 'קריית אתא', 'נשר', 'טירת כרמל'];
+const SAMPLE_ATTRIBUTES: AttributeItem[] = [
+  { name: 'attributes/has_wheelchair_accessible_entrance', label: 'כניסה נגישה לכיסא גלגלים', group: 'נגישות' },
+  { name: 'attributes/has_wheelchair_accessible_parking_lot', label: 'חניה נגישה', group: 'נגישות' },
+  { name: 'attributes/has_wheelchair_accessible_restroom', label: 'שירותים נגישים', group: 'נגישות' },
+  { name: 'attributes/pay_credit_card', label: 'כרטיסי אשראי', group: 'תשלומים' },
+  { name: 'attributes/pay_debit_card', label: 'כרטיסי חיוב', group: 'תשלומים' },
+  { name: 'attributes/pay_mobile_nfc', label: 'תשלום בנייד', group: 'תשלומים' },
+  { name: 'attributes/offers_onsite_services', label: 'שירות בבית הלקוח', group: 'שירותים' },
+  { name: 'attributes/requires_appointments', label: 'בתיאום מראש', group: 'שירותים' },
+  { name: 'attributes/has_free_parking_lot', label: 'חניה חינם בחניון', group: 'חניה' },
+];
+const SAMPLE_ATTRS_OURS: AttributeValues = {
+  'attributes/has_wheelchair_accessible_entrance': true, 'attributes/pay_credit_card': true, 'attributes/pay_debit_card': true,
+  'attributes/offers_onsite_services': true, 'attributes/requires_appointments': true, 'attributes/has_free_parking_lot': false,
+};
+const SAMPLE_HOLIDAYS: HolidaySuggestion[] = [
+  { id: 'pesach-2027-04-22', name: 'פסח', date: '2027-04-22' },
+  { id: 'pesach7-2027-04-28', name: 'שביעי של פסח', date: '2027-04-28' },
+  { id: 'independence-2027-05-12', name: 'יום העצמאות', date: '2027-05-12' },
+  { id: 'shavuot-2027-06-11', name: 'שבועות', date: '2027-06-11' },
+];
+
 /** Preview: the same calls over a sample in memory. `&profile=off` shows the screen with sync switched off. */
 export function sampleProfileApi(): ProfileApi {
   const off = sampleFlag('profile') === 'off';
@@ -240,6 +290,9 @@ export function sampleProfileApi(): ProfileApi {
     syncEnabled: !off, location: 'locations/1', checkedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
     metadata: { mapsUri: 'https://maps.google.com/?cid=1', newReviewUri: 'https://g.page/r/CSample1234/review' },
     websiteSuggestion: sampleFlag('website') === 'replace' ? { url: 'https://dudi.pagey.co.il', current: 'https://old-site.co.il' } : null,
+    attributeItems: SAMPLE_ATTRIBUTES,
+    // The sample's "today" for the holidays is 22.3.2027, so the suggestions are there whenever it is looked at.
+    holidays: sampleFlag('holidays') === 'none' ? [] : SAMPLE_HOLIDAYS,
     fields: {
       website: { ours: 'https://dudi.pagey.co.il', google: off ? '' : 'https://dudi.pagey.co.il', status: st('live'), error: null },
       description: { ours: 'אינסטלטור מוסמך בחיפה והקריות. מגיעים מהר, נותנים הצעת מחיר לפני שמתחילים, ומשאירים את הבית נקי.', google: 'אינסטלטור בחיפה.', status: st('pending'), error: null },
@@ -251,6 +304,16 @@ export function sampleProfileApi(): ProfileApi {
       },
       specialHours: { ours: [{ date: '2026-12-25', closed: true, open: '', close: '' }], google: [], status: st(sampleFlag('special') === 'error' ? 'local_only' : 'pending'), error: sampleFlag('special') === 'error' ? 'גוגל לא קיבלה את השינוי: צריך להגדיר קודם שעות פעילות רגילות.' : null },
       services: { ours: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], google: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], status: st('live'), error: null },
+      serviceArea: {
+        ours: { type: 'CUSTOMER_AND_BUSINESS_LOCATION', places: SAMPLE_AREAS },
+        google: { type: 'CUSTOMER_AND_BUSINESS_LOCATION', places: sampleFlag('area') === 'changed' ? [...SAMPLE_AREAS.slice(0, 4), 'עכו'] : SAMPLE_AREAS },
+        status: st(sampleFlag('area') === 'changed' ? 'google_changed' : 'live'), error: null,
+      },
+      attributes: {
+        ours: SAMPLE_ATTRS_OURS,
+        google: sampleFlag('attrs') === 'changed' ? { ...SAMPLE_ATTRS_OURS, 'attributes/has_wheelchair_accessible_entrance': false, 'attributes/pay_mobile_nfc': true } : SAMPLE_ATTRS_OURS,
+        status: st(sampleFlag('attrs') === 'changed' ? 'google_changed' : 'live'), error: null,
+      },
     },
   };
   let photos: GbpPhoto[] = sampleFlag('photos') === 'none' ? [] : [
