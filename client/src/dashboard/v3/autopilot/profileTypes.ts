@@ -4,12 +4,24 @@
 
 import type { TruthHours } from './types';
 
-export type FieldKey = 'website' | 'description' | 'phone' | 'hours' | 'specialHours' | 'services';
-export const FIELD_KEYS: FieldKey[] = ['website', 'description', 'phone', 'hours', 'specialHours', 'services'];
+export type FieldKey = 'website' | 'description' | 'phone' | 'hours' | 'specialHours' | 'services' | 'serviceArea' | 'attributes';
+export const FIELD_KEYS: FieldKey[] = ['website', 'description', 'phone', 'hours', 'specialHours', 'services', 'serviceArea', 'attributes'];
 
 /** One special day: a holiday or a date with different hours. Closed, or one range. */
 export interface SpecialDay { date: string; closed: boolean; open: string; close: string }
 export interface ServiceItem { name: string; description: string }
+/**
+ * The regions the business serves (phase A). `type` is how Google holds the listing: with the street
+ * address shown too, or serving customers only at their place (address hidden). It is shown, never edited here.
+ */
+export type ServiceAreaType = 'CUSTOMER_AND_BUSINESS_LOCATION' | 'CUSTOMER_LOCATION_ONLY';
+export interface AreaValue { type: ServiceAreaType | null; places: string[] }
+/** Yes/no attributes keyed by Google's name ("attributes/has_delivery"); a name that is absent was never set. */
+export type AttributeValues = Record<string, boolean>;
+/** One yes/no attribute Google offers for the listing, with the words to show (from the server). */
+export interface AttributeItem { name: string; label: string; group: string }
+/** An upcoming Israeli holiday the owner can add as a closed day (suggestion only). */
+export interface HolidaySuggestion { id: string; name: string; date: string }
 
 export interface FieldValues {
   website: string;
@@ -19,6 +31,8 @@ export interface FieldValues {
   hours: TruthHours[];
   specialHours: SpecialDay[];
   services: ServiceItem[];
+  serviceArea: AreaValue;
+  attributes: AttributeValues;
 }
 
 /**
@@ -44,6 +58,10 @@ export interface GbpProfile {
   metadata: { mapsUri: string | null; newReviewUri: string | null };
   /** our published page could be the website on Google; `current` is what Google shows now (null = none) */
   websiteSuggestion: { url: string; current: string | null } | null;
+  /** the yes/no attributes Google offers for this listing; empty until Google was read */
+  attributeItems: AttributeItem[];
+  /** the next Israeli holidays (about four months ahead), as "add as closed" suggestions */
+  holidays: HolidaySuggestion[];
   checkedAt: string | null;
 }
 

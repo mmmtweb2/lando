@@ -13,6 +13,13 @@ export interface TruthService { name: string; description: string; source: 'goog
 export interface TruthHours { day: Day; open: string; close: string }
 /** A holiday or other one-off day: closed, or open at other hours. `date` is YYYY-MM-DD. */
 export interface TruthSpecialHours { date: string; closed: boolean; open: string; close: string }
+/** Google's two kinds of service-area business: shows the address too, or serves customers only at their place. */
+export type ServiceAreaType = 'CUSTOMER_AND_BUSINESS_LOCATION' | 'CUSTOMER_LOCATION_ONLY';
+export const SERVICE_AREA_TYPES: ServiceAreaType[] = ['CUSTOMER_AND_BUSINESS_LOCATION', 'CUSTOMER_LOCATION_ONLY'];
+/** A region the business serves: Google needs its Place ID to accept it ('' = not resolved yet). */
+export interface TruthAreaPlace { name: string; placeId: string }
+export interface TruthServiceArea { type: ServiceAreaType | null; places: TruthAreaPlace[] }
+
 export interface TruthCard {
   name: string; phone: string; website: string; address: string; city: string;
   category: string; categories: string[];
@@ -24,6 +31,14 @@ export interface TruthCard {
   specialHours: TruthSpecialHours[];
   /** Up to two phone numbers besides the main one (Google: phoneNumbers.additionalPhones). */
   extraPhones: string[];
+  /**
+   * The regions the business serves, as the Google listing holds them (docs/gbp-sync-spec.md, phase A).
+   * Absent on a card saved before phase A: the first read from Google fills it in (gbpSync.seedNewFields).
+   * Not the same as `areas`, which also holds the home city and only feeds the posts.
+   */
+  serviceArea?: TruthServiceArea;
+  /** Yes/no attributes (accessibility, parking, payments...) keyed by Google's name "attributes/<id>". Absent until first read. */
+  attributes?: Record<string, boolean>;
   /** false when Google marks the business closed (temporarily or permanently). */
   open: boolean;
   reviewUrl: string; mapsUrl: string;
@@ -36,6 +51,7 @@ export const MAX_AREAS = 10;
 export const MAX_DESCRIPTION = 750; // Google's own limit for the profile description
 export const MAX_NOTES = 1000;
 export const MAX_SPECIAL_HOURS = 40;
+export const MAX_SERVICE_AREA_PLACES = 20; // Google's limit for the regions of one listing
 export const MAX_EXTRA_PHONES = 2;
 
 export const emptyCard = (): TruthCard => ({
@@ -71,6 +87,7 @@ const hhmm = (t: any): string | null => {
 const TIME_RE = /^([01]\d|2[0-4]):[0-5]\d$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const PHONE_RE = /^[+\d][\d\s()-]{6,28}$/;
+const PLACE_ID = /^[A-Za-z0-9_-]{10,300}$/;
 
 /** A real calendar date "YYYY-MM-DD", or ''. */
 export function isoDate(v: unknown): string {
@@ -125,6 +142,15 @@ export function parseLocation(raw: any): TruthCard {
   const infos = raw.serviceArea?.places?.placeInfos;
   c.areas = dedupe([...(Array.isArray(infos) ? infos.map((p: any) => areaName(p?.placeName)) : []), c.city], (x) => x).slice(0, MAX_AREAS);
 
+  const sa = raw.serviceArea;
+  c.serviceArea = {
+    type: SERVICE_AREA_TYPES.includes(sa?.businessType) ? sa.businessType : null,
+    places: dedupe(
+      (Array.isArray(infos) ? infos : []).map((p: any): TruthAreaPlace => ({ name: areaName(p?.placeName), placeId: typeof p?.placeId === 'string' && PLACE_ID.test(p.placeId) ? p.placeId : '' })).filter((p: TruthAreaPlace) => p.name || p.placeId),
+      (p: TruthAreaPlace) => p.placeId || p.name,
+    ).slice(0, MAX_SERVICE_AREA_PLACES),
+  };
+
   const hours: TruthHours[] = [];
   for (const p of (Array.isArray(raw.regularHours?.periods) ? raw.regularHours.periods : [])) {
     const open = hhmm(p?.openTime), close = hhmm(p?.closeTime);
@@ -166,6 +192,9 @@ export function mergeFromGoogle(prev: TruthCard | null, fresh: TruthCard): Truth
     extraPhones: fresh.extraPhones.length ? fresh.extraPhones : (prev.extraPhones ?? []),
     services: dedupe([...fresh.services, ...mine], (s) => s.name).slice(0, MAX_SERVICES),
     areas: dedupe([...fresh.areas, ...prev.areas], (x) => x).slice(0, MAX_AREAS),
+    serviceArea: fresh.serviceArea?.places.length ? fresh.serviceArea : (prev.serviceArea ?? fresh.serviceArea),
+    // attributes are read with their own call (gbpSync.service), never from the location resource
+    ...(prev.attributes ? { attributes: prev.attributes } : {}),
     notes: prev.notes,
   };
 }

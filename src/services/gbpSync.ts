@@ -7,18 +7,29 @@ import {
 } from './businessTruth';
 import { BARE_DOMAIN } from './gbpPosts';
 import type { WritableMask } from './gbpGoogle';
+import {
+  type AttributeMeta, type AttributeValues, adoptAttributes, sameAttributes,
+} from './gbpAttributes';
+import { type AreaValue, applyServiceArea, areaValue, sameAreas, serviceAreaPatch } from './gbpServiceArea';
 
-export const SYNC_FIELDS = ['website', 'description', 'phone', 'hours', 'specialHours', 'services'] as const;
+/** Fields that go to Google through locations.patch (phase 1 + the service area of phase A). */
+export const SYNC_FIELDS = ['website', 'description', 'phone', 'hours', 'specialHours', 'services', 'serviceArea'] as const;
 export type SyncField = (typeof SYNC_FIELDS)[number];
 export const isSyncField = (v: unknown): v is SyncField => typeof v === 'string' && (SYNC_FIELDS as readonly string[]).includes(v);
 
+/** The yes/no attributes (phase A) are a field of the screen too, but go to Google through their own call (gbpAttributes.ts). */
+export const ATTRIBUTES = 'attributes' as const;
+export type ProfileField = SyncField | typeof ATTRIBUTES;
+export const isProfileField = (v: unknown): v is ProfileField => v === ATTRIBUTES || isSyncField(v);
+
 export const MASK_OF: Record<SyncField, WritableMask> = {
   website: 'websiteUri', description: 'profile.description', phone: 'phoneNumbers',
-  hours: 'regularHours', specialHours: 'specialHours', services: 'serviceItems',
+  hours: 'regularHours', specialHours: 'specialHours', services: 'serviceItems', serviceArea: 'serviceArea',
 };
 
-export const FIELD_HE: Record<SyncField, string> = {
+export const FIELD_HE: Record<ProfileField, string> = {
   website: 'האתר', description: 'תיאור העסק', phone: 'מספרי הטלפון', hours: 'שעות הפעילות', specialHours: 'שעות בחגים ובימים מיוחדים', services: 'השירותים',
+  serviceArea: 'אזורי השירות', attributes: 'המאפיינים',
 };
 
 export type FieldStatus = 'live' | 'pending' | 'google_changed' | 'local_only';
@@ -30,9 +41,11 @@ export interface GoogleState {
   diffMask: string[];
   checkedAt: string | null;
   /** The last failure per field, in words the customer can act on. Cleared by the next success. */
-  errors: Partial<Record<SyncField, string>>;
+  errors: Partial<Record<ProfileField, string>>;
+  /** The boolean attributes Google offers for the listing's category, kept for a week (phase A). */
+  attributeMeta: { category: string; fetchedAt: string; items: AttributeMeta[] } | null;
 }
-export const emptyState = (): GoogleState => ({ google: null, pendingMask: [], diffMask: [], checkedAt: null, errors: {} });
+export const emptyState = (): GoogleState => ({ google: null, pendingMask: [], diffMask: [], checkedAt: null, errors: {}, attributeMeta: null });
 export function readState(v: unknown): GoogleState {
   const s = (v && typeof v === 'object' ? v : {}) as Partial<GoogleState>;
   return {
@@ -41,6 +54,8 @@ export function readState(v: unknown): GoogleState {
     diffMask: Array.isArray(s.diffMask) ? s.diffMask.filter((x) => typeof x === 'string') : [],
     checkedAt: typeof s.checkedAt === 'string' ? s.checkedAt : null,
     errors: s.errors && typeof s.errors === 'object' ? { ...s.errors } : {},
+    attributeMeta: s.attributeMeta && typeof s.attributeMeta === 'object' && Array.isArray(s.attributeMeta.items) && typeof s.attributeMeta.category === 'string'
+      ? { category: s.attributeMeta.category, fetchedAt: typeof s.attributeMeta.fetchedAt === 'string' ? s.attributeMeta.fetchedAt : '', items: s.attributeMeta.items } : null,
   };
 }
 
@@ -48,7 +63,7 @@ export function readState(v: unknown): GoogleState {
 
 export interface PhoneValue { primary: string; additional: string[] }
 export interface ServiceValue { name: string; description: string }
-export type FieldValue = string | PhoneValue | TruthHours[] | TruthSpecialHours[] | ServiceValue[];
+export type FieldValue = string | PhoneValue | TruthHours[] | TruthSpecialHours[] | ServiceValue[] | AreaValue | AttributeValues;
 
 /** The value of one field as the API shows it (`ours` / `google` in GET /gbp/profile). */
 export function fieldValue(field: SyncField, c: TruthCard): FieldValue {
@@ -59,6 +74,7 @@ export function fieldValue(field: SyncField, c: TruthCard): FieldValue {
     case 'hours': return c.hours;
     case 'specialHours': return c.specialHours ?? [];
     case 'services': return c.services.map((s) => ({ name: s.name, description: s.description }));
+    case 'serviceArea': return areaValue(c.serviceArea);
   }
 }
 
@@ -90,6 +106,7 @@ export function applyField(card: TruthCard, field: SyncField, value: unknown): T
     case 'hours': return applyEdit(card, { hours: value });
     case 'specialHours': return applyEdit(card, { specialHours: value });
     case 'services': return applyEdit(card, { services: value });
+    case 'serviceArea': return applyServiceArea(card, value);
   }
 }
 
@@ -146,6 +163,7 @@ export function buildPatch(field: SyncField, c: TruthCard, raw: any): FieldPatch
         body: { serviceItems: [...existing, ...added.map((s) => ({ freeFormServiceItem: { category, label: { displayName: s.name, ...(s.description ? { description: s.description } : {}), languageCode: 'he' } } }))] },
       };
     }
+    case 'serviceArea': return serviceAreaPatch(c, raw);
   }
 }
 
@@ -176,6 +194,7 @@ export function sameField(field: SyncField, ours: TruthCard, google: TruthCard):
       const g = new Set(google.services.map((s) => s.name.toLowerCase()));
       return ours.services.every((s) => g.has(s.name.toLowerCase()));
     }
+    case 'serviceArea': return sameAreas(ours.serviceArea?.places ?? [], google.serviceArea?.places ?? []);
   }
 }
 
@@ -193,6 +212,23 @@ export function fieldStatus(field: SyncField, ours: TruthCard, st: GoogleState, 
   return view('google_changed');
 }
 
+/**
+ * The yes/no attributes as one field: ours and Google's values (only the attributes the screen offers),
+ * and where they stand. Google gives no "being reviewed" signal for attributes, so there is no `pending`.
+ */
+export function attributesView(ours: TruthCard, st: GoogleState, syncEnabled: boolean): FieldView | null {
+  const items = st.attributeMeta?.items ?? [];
+  if (!items.length) return null;
+  const only = new Set(items.map((i) => i.name));
+  const pick = (v: AttributeValues | undefined) => Object.fromEntries(Object.entries(v ?? {}).filter(([k]) => only.has(k)));
+  const google = st.google?.attributes !== undefined ? pick(st.google.attributes) : null;
+  const view = (status: FieldStatus, error?: string): FieldView => ({ ours: pick(ours.attributes), google, status, ...(error ? { error } : {}) });
+  if (st.errors.attributes) return view('local_only', st.errors.attributes);
+  if (google === null) return view('local_only');
+  if (sameAttributes(pick(ours.attributes), google)) return view('live');
+  return syncEnabled ? view('google_changed') : view('local_only');
+}
+
 /** Our card with one field taken from what Google shows ("להשאיר את מה שבגוגל"). */
 export function takeGoogle(field: SyncField, ours: TruthCard, google: TruthCard): TruthCard {
   switch (field) {
@@ -206,6 +242,7 @@ export function takeGoogle(field: SyncField, ours: TruthCard, google: TruthCard)
       const have = new Set(ours.services.map((s) => s.name.toLowerCase()));
       return { ...ours, services: [...ours.services, ...google.services.filter((s) => !have.has(s.name.toLowerCase()))].slice(0, 20) };
     }
+    case 'serviceArea': return { ...ours, serviceArea: google.serviceArea ?? { type: null, places: [] } };
   }
 }
 
@@ -215,10 +252,10 @@ export function takeGoogle(field: SyncField, ours: TruthCard, google: TruthCard)
  * Google: the owner (or Google) edited it there, and posts must not state old hours.
  * Nothing is adopted on the first read (no previous snapshot to compare with).
  */
-export function adoptChanges(card: TruthCard, prevGoogle: TruthCard | null, nextGoogle: TruthCard): { card: TruthCard; adopted: SyncField[] } {
+export function adoptChanges(card: TruthCard, prevGoogle: TruthCard | null, nextGoogle: TruthCard): { card: TruthCard; adopted: ProfileField[] } {
   if (!prevGoogle) return { card, adopted: [] };
   let out = card;
-  const adopted: SyncField[] = [];
+  const adopted: ProfileField[] = [];
   for (const f of SYNC_FIELDS) {
     if (sameField(f, prevGoogle, nextGoogle) && sameField(f, nextGoogle, prevGoogle)) continue;   // Google did not change it
     if (!sameField(f, card, prevGoogle)) continue;                                                   // we changed it ourselves: keep ours
@@ -226,7 +263,23 @@ export function adoptChanges(card: TruthCard, prevGoogle: TruthCard | null, next
     out = takeGoogle(f, out, nextGoogle);
     if (!sameField(f, card, out) || !sameField(f, out, card)) adopted.push(f);
   }
+  // The yes/no attributes: only when both reads carried them.
+  const a = adoptAttributes(out.attributes, prevGoogle.attributes, nextGoogle.attributes);
+  if (a.changed) { out = { ...out, attributes: a.values }; adopted.push(ATTRIBUTES); }
   return { card: out, adopted };
+}
+
+/**
+ * A card saved before phase A has no service area and no attributes. The first time Google's values
+ * are read they are taken as ours (nothing is written to Google), so the screen does not open with a
+ * "Google changed it" conflict on fields the owner never touched.
+ */
+export function seedNewFields(card: TruthCard, google: TruthCard | null): { card: TruthCard; changed: boolean } {
+  if (!google) return { card, changed: false };
+  let out = card, changed = false;
+  if (out.serviceArea === undefined) { out = { ...out, serviceArea: google.serviceArea ?? { type: null, places: [] } }; changed = true; }
+  if (out.attributes === undefined && google.attributes !== undefined) { out = { ...out, attributes: { ...google.attributes } }; changed = true; }
+  return { card: out, changed };
 }
 
 function fieldPresent(f: SyncField, c: TruthCard): boolean {
@@ -237,5 +290,6 @@ function fieldPresent(f: SyncField, c: TruthCard): boolean {
     case 'hours': return c.hours.length > 0;
     case 'specialHours': return (c.specialHours ?? []).length > 0;
     case 'services': return c.services.length > 0;
+    case 'serviceArea': return (c.serviceArea?.places ?? []).length > 0;
   }
 }

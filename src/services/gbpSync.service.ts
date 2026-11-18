@@ -6,12 +6,16 @@
 // Google accepted it (validateOnly, then the real PATCH, then a fresh read).
 
 import { supabase } from '../config/supabase';
-import { CardInputError, type TruthCard, emptyCard, parseLocation } from './businessTruth';
+import { CardInputError, type TruthAreaPlace, type TruthCard, emptyCard, parseLocation } from './businessTruth';
 import { writeBackEnabled } from './businessTruth.service';
 import {
   type GbpPhoto, type PhotoCategory, GbpError, GbpQuota, GbpRejected, PHOTO_CATEGORIES,
-  createMedia, deleteMedia, fetchLocationDetail, getGoogleUpdated, listLocations, listMedia, patchLocation,
+  createMedia, deleteMedia, fetchAttributes, fetchLocationDetail, getGoogleUpdated, listAttributeMetadata, listLocations, listMedia, patchAttributes, patchLocation,
 } from './gbpGoogle';
+import { type AttributeMeta, applyAttributes, buildAttributesPatch, parseAttributeMetadata, parseAttributes, takeGoogleAttributes } from './gbpAttributes';
+import { findRegion, resolveMissing } from './gbpServiceArea';
+import { type HolidaySuggestion, suggestHolidays } from './israeliHolidays';
+import { countPlacesCall } from './opsMetrics.service';
 import { getConnection, markNeedsReconnect } from './gbpStore';
 import { accessFor } from './reviewAlerts.service';
 import { type WebsiteMode, autopilotEnabled, getAutomation, logActivity, missingTable } from './automation.service';
@@ -20,8 +24,8 @@ import { shareUrl } from './subdomain.service';
 import { isEntitled } from './entitlements.service';
 import { withHeartbeat } from './opsMetrics.service';
 import {
-  type FieldView, type GoogleState, type SyncField, FIELD_HE, SYNC_FIELDS,
-  adoptChanges, applyField, buildPatch, fieldStatus, fieldValue, readState, takeGoogle,
+  type FieldView, type GoogleState, type ProfileField, type SyncField, ATTRIBUTES, FIELD_HE, SYNC_FIELDS,
+  adoptChanges, applyField, attributesView, buildPatch, fieldStatus, fieldValue, readState, seedNewFields, takeGoogle,
 } from './gbpSync';
 
 export type SyncErrorCode = 'not_found' | 'not_connected' | 'invalid' | 'google_rejected' | 'quota' | 'google' | 'not_migrated' | 'no_page' | 'bad_photo' | 'nothing_to_resolve' | 'sync_off';
@@ -43,6 +47,14 @@ export interface SyncDeps {
   patch(access: string, location: string, body: Record<string, unknown>, mask: string[], validateOnly: boolean): Promise<void>;
   revoked(email: string): Promise<void>;
   log: typeof logActivity;
+  /** What the listing has set: raw `locations/{id}/attributes`. */
+  attributes(access: string, location: string): Promise<Record<string, any>>;
+  /** What exists for a category: raw `attributeMetadata` items. */
+  attributeMeta(access: string, category: string): Promise<Record<string, any>[]>;
+  /** Sets yes/no attributes (no validateOnly exists for this call). */
+  patchAttributes(access: string, location: string, names: string[], body: { attributes: { name: string; valueType: string; values: unknown[] }[] }): Promise<void>;
+  /** Google's Place ID for a city or region the owner typed, or null. */
+  resolvePlace(name: string): Promise<TruthAreaPlace | null>;
   /** Public address of the business's own page when it is published, else null. */
   pageUrl(email: string): Promise<{ pageId: string; url: string } | null>;
   websiteMode(email: string): Promise<WebsiteMode>;
@@ -74,6 +86,13 @@ export const realDeps: SyncDeps = {
   updated: (a, l) => getGoogleUpdated(a, l),
   patch: (a, l, body, mask, validateOnly) => patchLocation(a, l, body, mask, fetch, { validateOnly }),
   revoked: async (email) => { await markNeedsReconnect(email, 'revoked').catch(() => undefined); },
+  attributes: (a, l) => fetchAttributes(a, l),
+  attributeMeta: (a, c) => listAttributeMetadata(a, c),
+  patchAttributes: (a, l, names, body) => patchAttributes(a, l, names, body),
+  async resolvePlace(name) {
+    countPlacesCall('https://places.googleapis.com/v1/places:searchText');   // billed per request
+    return findRegion(name);
+  },
   log: logActivity,
   async pageUrl(email) {
     const id = await businessPageId(email);
@@ -106,17 +125,49 @@ async function target(email: string, row: TruthRow, deps: SyncDeps): Promise<{ a
   return { access, location };
 }
 
-/** A fresh read of what Google shows + which fields are pending or differ. `updated` failing is not fatal. */
-async function readGoogle(access: string, location: string, deps: SyncDeps, prev: GoogleState, now: Date): Promise<{ raw: Record<string, any>; state: GoogleState }> {
+const META_TTL_MS = 7 * 86_400_000;
+const ATTR_READ_FAILED = 'לא הצלחנו לקרוא את המאפיינים מגוגל כרגע. ננסה שוב בקריאה הבאה.';
+const isRevoked = (e: unknown) => e instanceof GbpError && e.code === 'revoked';
+const primaryCategory = (raw: Record<string, any>): string => (typeof raw?.categories?.primaryCategory?.name === 'string' ? raw.categories.primaryCategory.name : '');
+
+/**
+ * A fresh read of what Google shows + which fields are pending or differ. `updated` failing is not fatal.
+ * With `withAttributes` the yes/no attributes are read too (two more calls, the list of what exists only
+ * once a week): each of those failing leaves the other fields untouched (the last known attributes stay,
+ * with a note), because a listing's other fields must never wait on them.
+ */
+async function readGoogle(access: string, location: string, deps: SyncDeps, prev: GoogleState, now: Date, withAttributes = false): Promise<{ raw: Record<string, any>; state: GoogleState }> {
   const raw = await deps.detail(access, location);
   let masks = { diffMask: [] as string[], pendingMask: [] as string[] };
   try { masks = await deps.updated(access, location); } catch (e) {
-    if (e instanceof GbpError && e.code === 'revoked') throw e;
+    if (isRevoked(e)) throw e;
     // Some listings answer getGoogleUpdated with an error; the fields still show live / changed.
   }
   // hasPendingEdits without a pendingMask: every field we last wrote is still in review.
   const pending = masks.pendingMask.length || !raw?.metadata?.hasPendingEdits ? masks.pendingMask : prev.pendingMask;
-  return { raw, state: { ...prev, google: parseLocation(raw), diffMask: masks.diffMask, pendingMask: pending, checkedAt: now.toISOString() } };
+  const google = parseLocation(raw);
+  const errors = { ...prev.errors };
+  let attributeMeta = prev.attributeMeta;
+  if (withAttributes) {
+    try {
+      google.attributes = parseAttributes(await deps.attributes(access, location));
+      delete errors.attributes;
+    } catch (e) {
+      if (isRevoked(e)) throw e;
+      if (prev.google?.attributes !== undefined) google.attributes = prev.google.attributes;
+      errors.attributes = ATTR_READ_FAILED;
+    }
+    const category = primaryCategory(raw);
+    const fetched = Date.parse(attributeMeta?.fetchedAt || '');
+    const stale = !attributeMeta || attributeMeta.category !== category || Number.isNaN(fetched) || now.getTime() - fetched > META_TTL_MS;
+    if (category && stale) {
+      try { attributeMeta = { category, fetchedAt: now.toISOString(), items: parseAttributeMetadata(await deps.attributeMeta(access, category)) }; } catch (e) {
+        if (isRevoked(e)) throw e;
+        // keep the list we have; without one the attributes simply are not shown yet
+      }
+    }
+  } else if (prev.google?.attributes !== undefined) google.attributes = prev.google.attributes;
+  return { raw, state: { ...prev, google, errors, attributeMeta, diffMask: masks.diffMask, pendingMask: pending, checkedAt: now.toISOString() } };
 }
 
 // ── GET /gbp/profile ─────────────────────────────────────────────────────────
@@ -124,7 +175,11 @@ async function readGoogle(access: string, location: string, deps: SyncDeps, prev
 export interface ProfileView {
   syncEnabled: boolean;
   location: string | null;
-  fields: Record<SyncField, FieldView>;
+  fields: Record<SyncField, FieldView> & { attributes?: FieldView };
+  /** The yes/no attributes Google offers for this listing, with their Hebrew names (empty until read). */
+  attributeItems: AttributeMeta[];
+  /** The next Israeli holidays, as "add as closed" suggestions (never saved by themselves). */
+  holidays: HolidaySuggestion[];
   metadata: { mapsUri: string | null; newReviewUri: string | null };
   websiteSuggestion: { url: string; current: string | null } | null;
   checkedAt: string | null;
@@ -140,11 +195,15 @@ async function suggestion(email: string, ours: TruthCard, st: GoogleState, deps:
   return current && same(current, page.url) ? null : { url: page.url, current: current || null };
 }
 
-function viewOf(ours: TruthCard, st: GoogleState, syncEnabled: boolean, location: string | null): Omit<ProfileView, 'websiteSuggestion'> {
-  const fields = Object.fromEntries(SYNC_FIELDS.map((f) => [f, fieldStatus(f, ours, st, syncEnabled)])) as Record<SyncField, FieldView>;
+function viewOf(ours: TruthCard, st: GoogleState, syncEnabled: boolean, location: string | null, now: Date): Omit<ProfileView, 'websiteSuggestion'> {
+  const fields = Object.fromEntries(SYNC_FIELDS.map((f) => [f, fieldStatus(f, ours, st, syncEnabled)])) as ProfileView['fields'];
+  const attrs = attributesView(ours, st, syncEnabled);
+  if (attrs) fields.attributes = attrs;
   const g = st.google;
   return {
     syncEnabled, location, fields,
+    attributeItems: attrs ? (st.attributeMeta?.items ?? []) : [],
+    holidays: suggestHolidays(now, (ours.specialHours ?? []).map((d) => d.date)),
     metadata: { mapsUri: (g?.mapsUrl || ours.mapsUrl) || null, newReviewUri: (g?.reviewUrl || ours.reviewUrl) || null },
     checkedAt: st.checkedAt,
   };
@@ -158,20 +217,22 @@ export async function getProfile(email: string, now = new Date(), deps: SyncDeps
   const row = await deps.row(email);
   if (!row) throw new SyncError('not_found');
   let st = readState(row.google_state);
-  const ours = card(row);
+  let ours = card(row);
   const stale = !st.checkedAt || now.getTime() - Date.parse(st.checkedAt) > REFRESH_AFTER_MS;
   if (stale) {
     try {
       const t = await target(email, row, deps);
-      st = (await readGoogle(t.access, t.location, deps, st, now)).state;
-      await deps.save(email, { google_state: st }, now);
+      st = (await readGoogle(t.access, t.location, deps, st, now, true)).state;
+      const seeded = seedNewFields(ours, st.google);   // a card saved before phase A takes Google's service area and attributes as its own
+      if (seeded.changed) ours = seeded.card;
+      await deps.save(email, seeded.changed ? { card: ours, google_state: st } : { google_state: st }, now);
     } catch (e) {
       if (e instanceof SyncError && e.code === 'not_migrated') throw e;
       if (e instanceof GbpError && e.code === 'revoked') await deps.revoked(email);
       // Not connected, Google down: the screen still shows what we know.
     }
   }
-  return { ...viewOf(ours, st, deps.writeEnabled(), row.location_name), websiteSuggestion: await suggestion(email, ours, st, deps) };
+  return { ...viewOf(ours, st, deps.writeEnabled(), row.location_name, now), websiteSuggestion: await suggestion(email, ours, st, deps) };
 }
 
 // ── PUT /gbp/profile/:field ──────────────────────────────────────────────────
@@ -201,6 +262,13 @@ export async function saveField(email: string, field: SyncField, value: unknown,
   const t = await target(email, row, deps);
   try {
     const fresh = await readGoogle(t.access, t.location, deps, st, now);
+    if (field === 'serviceArea') {
+      // Google takes a region only by its Place ID: names the listing already has keep theirs, new ones are looked up.
+      try { next = await resolveMissing(next, fresh.state.google, deps.resolvePlace); } catch (e) {
+        if (e instanceof CardInputError && e.field.startsWith('serviceAreaPlace:')) throw new SyncError('invalid', e.field.slice('serviceAreaPlace:'.length), 'serviceAreaPlace');
+        throw e;
+      }
+    }
     let p;
     try { p = buildPatch(field, next, fresh.raw); } catch (e) {
       if (e instanceof CardInputError) throw new SyncError('invalid', null, e.field);
@@ -229,13 +297,74 @@ export async function saveField(email: string, field: SyncField, value: unknown,
   }
 }
 
+// ── Yes/no attributes (phase A) ──────────────────────────────────────────────
+
+const attrsOf = (st: GoogleState): Set<string> => new Set((st.attributeMeta?.items ?? []).map((i) => i.name));
+const attrsView = (ours: TruthCard, st: GoogleState, syncEnabled: boolean): FieldView => attributesView(ours, st, syncEnabled) as FieldView;
+
+/**
+ * Saves the owner's yes/no attributes. `value` is { "attributes/<id>": true | false }, only names Google
+ * offers for this listing. With the sync switch on: the listing is read, only the attributes that differ
+ * are sent (one call, one edit toward the quota), the listing is read back, and then our card is saved.
+ * Google has no validateOnly for attributes, so a refusal arrives from the real call and leaves our card
+ * as it was. With the switch off: saved here only (`code: 'sync_off'`). Never sends an "unset".
+ */
+export async function saveAttributes(email: string, value: unknown, now = new Date(), deps: SyncDeps = realDeps): Promise<SaveResult> {
+  const row = await deps.row(email);
+  if (!row) throw new SyncError('not_found');
+  const st = readState(row.google_state);
+  const allowed = attrsOf(st);
+  if (!allowed.size) throw new SyncError('invalid', null, 'attributes');   // not read yet: nothing the screen could have offered
+  let next: TruthCard;
+  try { next = applyAttributes(card(row), value, allowed); } catch (e) {
+    if (e instanceof CardInputError) throw new SyncError('invalid', null, e.field);
+    throw e;
+  }
+
+  if (!deps.writeEnabled()) {
+    delete st.errors.attributes;
+    await deps.save(email, { card: next, google_state: st }, now);
+    return { field: attrsView(next, st, false), syncEnabled: false, code: 'sync_off' };
+  }
+
+  const t = await target(email, row, deps);
+  try {
+    const fresh = await readGoogle(t.access, t.location, deps, st, now, true);
+    const p = buildAttributesPatch(next.attributes, fresh.state.google?.attributes, attrsOf(fresh.state));
+    if (!p) {
+      delete fresh.state.errors.attributes;
+      await deps.save(email, { card: next, google_state: fresh.state }, now);
+      return { field: attrsView(next, fresh.state, true), syncEnabled: true };
+    }
+    await deps.patchAttributes(t.access, t.location, p.names, p.body);
+    const after = await readGoogle(t.access, t.location, deps, fresh.state, now, true);
+    await deps.save(email, { card: next, google_state: after.state }, now);
+    await deps.log(email, 'card_field_synced', `עדכנו בכרטיס שלכם בגוגל: ${FIELD_HE.attributes}`, 'גוגל לפעמים בודקת שינוי עד כמה ימים לפני שהוא מופיע.', null);
+    return { field: attrsView(next, after.state, true), syncEnabled: true };
+  } catch (e) {
+    if (e instanceof GbpRejected) {
+      st.errors.attributes = e.googleMessage;
+      await deps.save(email, { google_state: st }, now).catch(() => undefined);
+    }
+    return mapGoogle(e, email, deps);
+  }
+}
+
 /** POST /gbp/profile/:field/resolve {keep}: for a field Google changed. */
-export async function resolveField(email: string, field: SyncField, keep: 'google' | 'ours', now = new Date(), deps: SyncDeps = realDeps): Promise<SaveResult> {
+export async function resolveField(email: string, field: ProfileField, keep: 'google' | 'ours', now = new Date(), deps: SyncDeps = realDeps): Promise<SaveResult> {
   const row = await deps.row(email);
   if (!row) throw new SyncError('not_found');
   const st = readState(row.google_state);
   if (!st.google) throw new SyncError('nothing_to_resolve');
   const ours = card(row);
+  if (field === ATTRIBUTES) {
+    if (keep === 'ours') return saveAttributes(email, ours.attributes ?? {}, now, deps);
+    const only = attrsOf(st);
+    const next = { ...ours, attributes: takeGoogleAttributes(ours.attributes, st.google.attributes, only) };
+    delete st.errors.attributes;
+    await deps.save(email, { card: next, google_state: st }, now);
+    return { field: attrsView(next, st, deps.writeEnabled()), syncEnabled: deps.writeEnabled() };
+  }
   if (keep === 'ours') return saveField(email, field, fieldValue(field, ours), now, deps);
   const next = takeGoogle(field, ours, st.google);
   delete st.errors[field];
@@ -307,9 +436,10 @@ export async function sweepProfiles(now = new Date(), deps: ProfileSweepDeps = r
       const st = readState(row.google_state);
       if (st.checkedAt && now.getTime() - Date.parse(st.checkedAt) < PROFILE_REFRESH_DAYS * 86_400_000) continue;
       const t = await target(email, row, deps);
-      const fresh = await readGoogle(t.access, t.location, deps, st, now);
-      const { card: next, adopted } = adoptChanges(card(row), st.google, fresh.state.google!);
-      await deps.save(email, adopted.length ? { card: next, google_state: fresh.state } : { google_state: fresh.state }, now);
+      const fresh = await readGoogle(t.access, t.location, deps, st, now, true);
+      const seeded = seedNewFields(card(row), fresh.state.google);
+      const { card: next, adopted } = adoptChanges(seeded.card, st.google, fresh.state.google!);
+      await deps.save(email, adopted.length || seeded.changed ? { card: next, google_state: fresh.state } : { google_state: fresh.state }, now);
       out.refreshed++;
       if (adopted.length) {
         out.adopted++;

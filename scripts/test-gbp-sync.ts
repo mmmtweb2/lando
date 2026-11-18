@@ -190,6 +190,7 @@ const RAW: Record<string, any> = {
       },
       revoked: async () => { steps.push('revoked'); },
       log: async (_e, kind, title) => { log.push({ kind, title }); },
+      attributes: async () => ({}), attributeMeta: async () => [], patchAttributes: async () => undefined, resolvePlace: async () => null,
       pageUrl: async () => ({ pageId: 'P1', url: 'https://dani.pagey.co.il' }),
       websiteMode: async () => 'auto',
       ...over,
@@ -256,7 +257,7 @@ const RAW: Record<string, any> = {
     gp.setGoogle({ ...RAW, websiteUri: 'https://old-site.co.il' });
     const view = await getProfile('o@x.co', NOW, gp.deps);
     assert.equal(view.syncEnabled, true); assert.equal(view.location, 'locations/123');
-    assert.deepEqual(Object.keys(view.fields).sort(), ['description', 'hours', 'phone', 'services', 'specialHours', 'website']);
+    assert.deepEqual(Object.keys(view.fields).sort(), ['description', 'hours', 'phone', 'serviceArea', 'services', 'specialHours', 'website']);
     assert.deepEqual(view.websiteSuggestion, { url: 'https://dani.pagey.co.il', current: 'https://old-site.co.il' });
     assert.equal(view.metadata.mapsUri, 'https://maps.google.com/?cid=1');
     assert.equal(view.checkedAt, NOW.toISOString());
