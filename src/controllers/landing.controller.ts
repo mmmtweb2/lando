@@ -21,7 +21,8 @@ import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 import { optionalHttpUrl } from '../utils/safeUrl';
 import { serverError } from '../utils/httpErrors';
-import { packUploads, applyImageSlot, clearImageSlot, parseSlot, galleryOf, type AiStore, type ImageStore } from '../services/imageSlots';
+import { applyImageSlot, clearImageSlot, parseSlot, keepOwnerExtras, type AiStore, type ImageStore } from '../services/imageSlots';
+import { processPhoto, processUploadedPhotos, type ImageWarning } from '../services/landingImages';
 import { defaultHiddenSections, detectCategory, isCategoryId, isMissingCategoryColumn, normalizeCategory, templateFor, withCategoryColumns } from '../services/pageCategory';
 import { carryOverOwnerData } from '../services/healthCopy';
 
@@ -673,11 +674,16 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         : null;
 
       // 2. Uploaded user images via sharp — resolved before the AI call
-      let uploadedImageUrls: string[] = [];
+      // The hero is the best of the uploads; every photo gets a small copy, a focal point and an alt text.
+      let uploadedStore: AiStore | null = null;
+      let imageWarnings: ImageWarning[] = [];
       if (image_source === 'upload' && files?.user_images?.length) {
-        uploadedImageUrls = await Promise.all(
-          files.user_images.map((f) => processAndSave(f.buffer, 1200, 'image')),
+        const up = await processUploadedPhotos(
+          files.user_images.map((f) => ({ buffer: f.buffer, name: f.originalname })),
+          { businessName: business_name },
         );
+        uploadedStore = up.store;
+        imageWarnings = up.warnings;
       }
 
       // Generate a unique slug, retrying on the rare random collision.
@@ -844,10 +850,9 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       }
 
       // 4c. User-uploaded images
-      if (image_source === 'upload' && uploadedImageUrls.length > 0) {
-        // Same slot convention as stock: [0]=hero, [1]=decorative reserved (empty);
-        // uploaded images fill the service cards.
-        serializedImages = JSON.stringify(packUploads(uploadedImageUrls));
+      if (image_source === 'upload' && uploadedStore?.hero_image_url) {
+        // Object shape (hero + gallery + per-photo info), see imageSlots.ts: the best photo opens the page.
+        serializedImages = JSON.stringify(uploadedStore);
       }
 
       console.log('[LANDING] serializedImages length:', serializedImages?.length ?? 0);
@@ -922,7 +927,7 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
         console.error('[LANDING] subdomain at creation failed (non-fatal)', e);
       }
 
-      res.status(201).json(data);
+      res.status(201).json(imageWarnings.length ? { ...(data as Record<string, unknown>), image_warnings: imageWarnings } : data);
     } catch (error) {
       console.error('=== CRITICAL ERROR ===', error);
       res.status(500).json({
@@ -1193,17 +1198,9 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
     return;
   }
 
-  let url: string;
-  try {
-    url = await processAndSave(file.buffer, 1200, 'image');
-  } catch {
-    res.status(400).json({ error: 'לא הצלחנו לקרוא את התמונה. נסו קובץ אחר (JPG, PNG או WebP).' });
-    return;
-  }
-
   const { data: page, error: fetchErr } = await supabase
     .from('landing_pages')
-    .select('user_images')
+    .select('user_images, business_name, image_source')
     .eq('id', id)
     .single();
 
@@ -1212,12 +1209,27 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
     return;
   }
 
+  // Two sizes, a focal point and an alt text per photo; a small, blurry or logo-looking file is accepted
+  // and comes back as a warning, never as a refusal.
+  let processed: Awaited<ReturnType<typeof processPhoto>>;
+  try {
+    processed = await processPhoto(file.buffer, {
+      role: parsed.kind === 'hero' ? 'hero' : 'photo',
+      businessName: (page as { business_name?: string | null }).business_name ?? '',
+    });
+  } catch {
+    res.status(400).json({ error: 'לא הצלחנו לקרוא את התמונה. נסו קובץ אחר (JPG, PNG או WebP).' });
+    return;
+  }
+  const url = processed.url;
+
   const current: ImageStore | null = (() => {
     try { return JSON.parse(page.user_images ?? 'null') as ImageStore; }
     catch { return null; }
   })();
 
-  const updated = applyImageSlot(current, parsed, url);
+  const promote = (page as { image_source?: string | null }).image_source === 'upload';
+  const updated = applyImageSlot(current, parsed, url, processed.meta, promote);
   const serialized = JSON.stringify(updated);
 
   const { error } = await supabase
@@ -1228,7 +1240,7 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
   if (error) { serverError(res, error, '[LANDING]'); return; }
 
   touchDraft(id);
-  res.json({ url, user_images: serialized });
+  res.json({ url, user_images: serialized, warnings: processed.warning ? [processed.warning] : [] });
 }
 
 /**
@@ -1392,13 +1404,12 @@ export async function regenerateImageAi(req: Request, res: Response): Promise<vo
         return;
       }
 
-      // Photos the owner added to the gallery are theirs — a regenerated set must not drop them.
-      const keptGallery = galleryOf(current);
-      serialized = JSON.stringify({
+      // Photos the owner added to the gallery are theirs — a regenerated set must not drop them
+      // (nor their alt text, sizes and the about photo).
+      serialized = JSON.stringify(keepOwnerExtras(current, {
         hero_image_url: firstUrl,
         icon_urls: iconUrls,
-        ...(keptGallery.length ? { gallery_urls: keptGallery } : {}),
-      } satisfies AiStore);
+      } satisfies AiStore));
     } else {
       // Single slot regeneration. For SERVICE icons, lock the user's subject into
       // the SAME style template as the original set (3D glassmorphism icon, matching

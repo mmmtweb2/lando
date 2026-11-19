@@ -1,7 +1,7 @@
 // Unit checks for the image slot helpers (where each photo lives in landing_pages.user_images).
 import {
   parseSlot, applyImageSlot, clearImageSlot, galleryOf, galleryCount, packUploads,
-  MAX_GALLERY_IMAGES, GALLERY_ARRAY_OFFSET, type ImageStore,
+  MAX_GALLERY_IMAGES, MAX_UPLOAD_IMAGES, GALLERY_ARRAY_OFFSET, type ImageStore,
 } from '../src/services/imageSlots';
 
 function ok(c: unknown, m: string) { if (!c) { console.error('FAIL:', m); process.exit(1); } }
@@ -11,7 +11,7 @@ const eq = (a: unknown, b: unknown, m: string) => ok(JSON.stringify(a) === JSON.
 eq(parseSlot('hero'), { kind: 'hero' }, 'hero');
 eq(parseSlot(' service_2 '), { kind: 'service', index: 2 }, 'service_2');
 eq(parseSlot('gallery_5'), { kind: 'gallery', index: 5 }, 'gallery_5');
-for (const bad of ['gallery_6', 'service_6', 'gallery_-1', 'gallery_', 'portfolio_1', '', 'hero2', 'gallery_001x', undefined, null]) {
+for (const bad of ['gallery_12', 'service_6', 'gallery_-1', 'gallery_', 'portfolio_1', '', 'hero2', 'gallery_001x', undefined, null]) {
   ok(parseSlot(bad as string) === null, `rejects ${String(bad)}`);
 }
 
@@ -45,12 +45,19 @@ const b3 = clearImageSlot(ai, { kind: 'service', index: 0 }) as { icon_urls: str
 eq(b3.icon_urls, [''], 'ai service cleared');
 eq(galleryOf({ hero_image_url: null, icon_urls: [], gallery_urls: ['x'] }), ['x'], 'galleryOf ai');
 
-// wizard uploads
-eq(packUploads(['u0', 'u1']), ['', '', 'u0', 'u1'], 'two uploads');
-eq(packUploads(['u0', 'u1', 'u2']), ['', '', 'u0', 'u1', 'u2'], 'three uploads');
+// wizard uploads: the hero comes first, the others go to the gallery (the service cards stay empty)
+eq(packUploads([]), [], 'no uploads');
+eq(packUploads(['u0']), ['u0'], 'one upload is only the hero');
+eq(packUploads(['u0', 'u1']), ['u0', '', '', '', '', '', '', '', 'u1'], 'two uploads: hero + one gallery photo');
+const three = packUploads(['u0', 'u1', 'u2']);
+eq(three[0], 'u0', 'first upload is the hero');
+eq(three.slice(2, 8), ['', '', '', '', '', ''], 'service cards stay empty');
+eq(galleryOf(three), ['u1', 'u2'], 'the rest go to the gallery');
 const six = packUploads(['u0', 'u1', 'u2', 'u3', 'u4', 'u5']);
-eq(galleryOf(six), ['u3', 'u4', 'u5'], 'extra uploads go to the gallery');
-eq(six.slice(2, 5), ['u0', 'u1', 'u2'], 'first three stay services');
-eq(packUploads(Array.from({ length: 9 }, (_, i) => `u${i}`)).length, GALLERY_ARRAY_OFFSET + 3, 'capped at 6 uploads');
-ok(MAX_GALLERY_IMAGES === 6, 'gallery cap');
+eq(galleryOf(six), ['u1', 'u2', 'u3', 'u4', 'u5'], 'extra uploads go to the gallery');
+eq(packUploads(['u0', 'u1', 'u2'], 2), ['u2', '', '', '', '', '', '', '', 'u0', 'u1'], 'a chosen hero index moves that photo up, order of the rest kept');
+eq(packUploads(['u0', 'u1'], 9)[0], 'u1', 'hero index is clamped');
+eq(packUploads(Array.from({ length: 12 }, (_, i) => `u${i}`)).filter(Boolean).length, MAX_UPLOAD_IMAGES, 'capped at MAX_UPLOAD_IMAGES');
+ok(MAX_GALLERY_IMAGES === 12 && MAX_UPLOAD_IMAGES === 8, 'caps');
+ok(parseSlot('gallery_11') !== null && parseSlot('gallery_12') === null, 'gallery slot bound follows the cap');
 console.log('image slot checks passed');

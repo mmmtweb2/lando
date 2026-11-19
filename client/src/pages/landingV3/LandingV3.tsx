@@ -4,10 +4,11 @@
 // visitors who ask for reduced motion. Rendered by LandingViewer when `designV3` is on.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
-import { Phone, Plus, X } from 'lucide-react';
+import { Camera, Phone, Plus, X } from 'lucide-react';
 import { buildPalette } from './color';
 import { TeamSection, beforeAfterHasContent, renderBeforeAfter, renderPracticalGuide, teamHasContent, type Kit } from './HealthSections';
 import type { SectionKey, TeamMember } from '../../config/pageCategory';
+import { altFor, aspectOf, buildSrcSet, focalPosition, intrinsicSize, planGallery, planHero, type ImgMeta, type MetaMap } from '../../lib/landingImages';
 import './landingV3.css';
 
 // ── What LandingViewer hands over (kept structural so there is no import cycle) ──
@@ -19,6 +20,7 @@ type ImageComp = ComponentType<{
   src?: string | null; primaryColor: string; secondaryColor: string; logoUrl?: string | null;
   className?: string; style?: CSSProperties; isEditingMode: boolean; canEdit: boolean;
   onEditClick: () => void; darken?: boolean; collapseEmpty?: boolean;
+  sizes?: string; priority?: boolean; lazy?: boolean;
 }>;
 type SectionWrapComp = ComponentType<{
   children: ReactNode; isEditing: boolean; isHidden: boolean; label: string; onToggleHide: () => void;
@@ -36,6 +38,10 @@ export interface V3Ctx {
   hero: { title: string; subtitle: string; cta: string };
   about: { heading: string; content: string } | null;
   aboutImage: string | null;
+  /** alt text, sizes and focal point per photo URL (README part 140); empty for photos stored before it */
+  imageInfo: MetaMap;
+  /** AI-generated pictures carry no information of their own: alt="" */
+  decorativeImages: boolean;
   services: Array<{ id?: string; title: string; description: string }>;
   serviceImages: Array<string | null>;
   galleryUrls: string[];
@@ -199,6 +205,28 @@ function FaqItem({ q, a, open, edit, motion }: { q: ReactNode; a: ReactNode; ope
   );
 }
 
+/** One photo: its smaller copy for phones, reserved space, focal point, lazy below the fold. */
+function Photo({ src, info, alt, sizes, lazy = true, className, style }: {
+  src: string; info?: ImgMeta; alt: string; sizes?: string; lazy?: boolean; className?: string; style?: CSSProperties;
+}) {
+  const srcSet = sizes ? buildSrcSet(src, info) : undefined;
+  return (
+    <img className={className} src={src} srcSet={srcSet} sizes={srcSet ? sizes : undefined} {...intrinsicSize(info)} alt={alt}
+      loading={lazy ? 'lazy' : undefined} decoding="async" style={{ objectPosition: focalPosition(info), ...style }} />
+  );
+}
+
+/** The opening image: the phone gets the portrait crop, a wide screen the 1600px picture (or its 640px copy). */
+function HeroPicture({ src, info, alt }: { src: string; info?: ImgMeta; alt: string }) {
+  return (
+    <picture>
+      {info?.pm && <source media="(max-width: 859px)" srcSet={info.pm} width={info.pw} height={info.ph} />}
+      <img src={src} srcSet={buildSrcSet(src, info)} sizes="100vw" {...intrinsicSize(info)} alt={alt}
+        fetchPriority="high" decoding="async" />
+    </picture>
+  );
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
@@ -237,7 +265,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
     return () => cancelAnimationFrame(r);
   }, [motion]);
 
-  // scroll progress line + slow drift of the hero photo (CSS variables, no re-render)
+  // scroll progress line (CSS variable, no re-render)
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !motion) return;
@@ -248,7 +276,6 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
       requestAnimationFrame(() => {
         const max = document.documentElement.scrollHeight - innerHeight;
         root.style.setProperty('--p', String(max > 0 ? Math.min(1, scrollY / max) : 0));
-        if (scrollY < 900) root.style.setProperty('--py', `${(scrollY * 0.08).toFixed(1)}px`);
         tick = false;
       });
     };
@@ -263,9 +290,19 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
   const health = c.template === 'health';
   const facts = (health ? [] : c.badges).map(parseFact).filter((f): f is NonNullable<ReturnType<typeof parseFact>> => !!f).slice(0, 3);
   const stickerLabel = health ? null : c.badges.find((b) => !parseFact(b) && b.length <= 18) ?? null;
-  const filledGallery = c.galleryUrls.map((src, i) => ({ src, i })).filter((x) => !!x.src);
+  const infoOf = (src: string | null | undefined): ImgMeta | undefined => (src ? c.imageInfo[src] : undefined);
+  const altOf = (src: string) => altFor(infoOf(src), c.businessName, c.decorativeImages);
+  // The opening photo. A logo-looking file is never the hero: it is shown contained in the gallery instead.
+  const heroIsLogo = !!c.heroImageUrl && !!infoOf(c.heroImageUrl)?.logo;
+  const photoHero = !!c.heroImageUrl && !heroIsLogo;
+  const heroInfo = infoOf(c.heroImageUrl);
+  const heroLayout = planHero(heroInfo);
+  const filledGallery = [
+    ...(heroIsLogo && c.heroImageUrl ? [{ src: c.heroImageUrl, i: -1 }] : []),
+    ...c.galleryUrls.map((src, i) => ({ src, i })).filter((x) => !!x.src),
+  ];
   const nextFree = (() => { for (let i = 0; i < c.maxGallery; i++) if (!c.galleryUrls[i]) return i; return -1; })();
-  const hasPlate = !!c.heroImageUrl || c.isEditing;
+  const gallery = planGallery(filledGallery.map((x) => aspectOf(infoOf(x.src))));
   const cta = (href: string) => ({ href, target: '_blank' as const, rel: 'noopener noreferrer', onClick: () => c.onCta(href) });
 
   // section numbering (only visible sections count)
@@ -313,42 +350,85 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
       </header>
 
       <main>
-        {/* hero: a typographic poster; with a photo, one shaped plate */}
-        <section className={`hero wrap ${hasPlate ? 'has-img' : ''} ${ready ? 'go' : ''}`}>
-          <div className="copy">
-            {c.isEditing ? (
-              <ET as="h1" value={heroTitle} onCommit={(v) => c.setEdit('hero.title', v)} isEditing />
-            ) : (
-              <h1><Words text={heroTitle} base={0.1} hlLast={!health} /></h1>
-            )}
-            <div className="sub">
-              {(subtitle || c.isEditing) && (c.isEditing
-                ? <ET as="p" className="lead" value={subtitle} onCommit={(v) => c.setEdit('hero.subtitle', v)} isEditing />
-                : <p className="lead">{subtitle}</p>)}
-              <div className="cta-row">
-                <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
-                {c.phone && (health && c.isWhatsApp
+        {/* hero: with a photo, the photo IS the opening (full width on a phone, wide on a desktop) and the
+            headline sits on it under a scrim; without one, a typographic poster */}
+        {photoHero ? (
+          <>
+            <section className={`hero hp ${heroLayout} ${ready ? 'go' : ''}`}>
+              <div className="hp-fig" data-pm={heroInfo?.pm ? '' : undefined} style={{ ['--fp' as string]: focalPosition(heroInfo) } as CSSProperties}>
+                <HeroPicture src={c.heroImageUrl as string} info={heroInfo} alt={altOf(c.heroImageUrl as string)} />
+              </div>
+              <div className="hp-scrim" aria-hidden="true" />
+              <div className="wrap hp-in">
+                <div className="copy">
+                  {c.isEditing ? (
+                    <ET as="h1" value={heroTitle} onCommit={(v) => c.setEdit('hero.title', v)} isEditing />
+                  ) : (
+                    <h1><Words text={heroTitle} base={0.1} hlLast={!health} /></h1>
+                  )}
+                  <div className="sub">
+                    {(subtitle || c.isEditing) && (c.isEditing
+                      ? <ET as="p" className="lead" value={subtitle} onCommit={(v) => c.setEdit('hero.subtitle', v)} isEditing />
+                      : <p className="lead">{subtitle}</p>)}
+                    <div className="cta-row">
+                      <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
+                      {c.phone && (health && c.isWhatsApp
                   ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> התקשרו <span dir="ltr">{c.phone}</span></a>
                   : <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>)}
+                    </div>
+                  </div>
+                </div>
+                {stickerLabel && <div className="sticker"><small>{stickerLabel}</small></div>}
               </div>
-            </div>
-          </div>
-          {hasPlate && (
-            <div className="side">
+              {c.isEditing && c.canEdit && (
+                <button type="button" className="hp-edit" onClick={() => c.openImageModal('hero')}><Camera size={14} /> שנה תמונה</button>
+              )}
+            </section>
+            {facts.length > 0 && (
+              <div className="wrap">
+                <dl className="facts hp-facts" data-io="">
+                  {facts.map((f, i) => (
+                    <div key={i} style={d(i * 0.12)}><dt><Count pre={f.pre} num={f.num} suf={f.suf} motion={motion} /></dt><dd>{f.rest}</dd></div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </>
+        ) : (
+          <section className={`hero wrap ${ready ? 'go' : ''}`}>
+            <div className="copy">
+              {c.isEditing ? (
+                <ET as="h1" value={heroTitle} onCommit={(v) => c.setEdit('hero.title', v)} isEditing />
+              ) : (
+                <h1><Words text={heroTitle} base={0.1} hlLast={!health} /></h1>
+              )}
+              <div className="sub">
+                {(subtitle || c.isEditing) && (c.isEditing
+                  ? <ET as="p" className="lead" value={subtitle} onCommit={(v) => c.setEdit('hero.subtitle', v)} isEditing />
+                  : <p className="lead">{subtitle}</p>)}
+                <div className="cta-row">
+                  <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
+                  {c.phone && (health && c.isWhatsApp
+                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> התקשרו <span dir="ltr">{c.phone}</span></a>
+                  : <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>)}
+                </div>
+              </div>
+              {c.isEditing && c.canEdit && (
+                <button type="button" className="tile-add hero-add" onClick={() => c.openImageModal('hero')}>
+                  <Camera size={18} /> הוסיפו תמונה ראשית
+                </button>
+              )}
               {stickerLabel && <div className="sticker"><small>{stickerLabel}</small></div>}
-              <EI src={c.heroImageUrl} primaryColor={c.primary} secondaryColor={c.secondary} logoUrl={c.logoUrl}
-                className="plate" isEditingMode={c.isEditing} canEdit={c.canEdit} onEditClick={() => c.openImageModal('hero')} />
             </div>
-          )}
-          {!hasPlate && stickerLabel && <div className="sticker"><small>{stickerLabel}</small></div>}
-          {facts.length > 0 && (
-            <dl className="facts" data-io="">
-              {facts.map((f, i) => (
-                <div key={i} style={d(i * 0.12)}><dt><Count pre={f.pre} num={f.num} suf={f.suf} motion={motion} /></dt><dd>{f.rest}</dd></div>
-              ))}
-            </dl>
-          )}
-        </section>
+            {facts.length > 0 && (
+              <dl className="facts" data-io="">
+                {facts.map((f, i) => (
+                  <div key={i} style={d(i * 0.12)}><dt><Count pre={f.pre} num={f.num} suf={f.suf} motion={motion} /></dt><dd>{f.rest}</dd></div>
+                ))}
+              </dl>
+            )}
+          </section>
+        )}
 
         {/* tape of the business's own services */}
         {c.services.length > 1 && !health && (
@@ -375,7 +455,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
               ) : (
                 aboutRest && <div className="cols" data-rv=""><p className="rest">{aboutRest}</p></div>
               )}
-              {c.aboutImage && <figure className="about-fig" data-rv=""><img src={c.aboutImage} alt={c.businessName} loading="lazy" /></figure>}
+              {c.aboutImage && <figure className="about-fig" data-rv=""><Photo src={c.aboutImage} info={infoOf(c.aboutImage)} alt={altOf(c.aboutImage)} sizes="(min-width: 860px) 360px, 100vw" /></figure>}
             </div>
           </div></section>
         )),
@@ -403,7 +483,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                       {(img || c.isEditing) && (
                         <div className={img ? 'thumb-box' : 'thumb-edit'}>
                           <EI collapseEmpty src={img} primaryColor={c.primary} secondaryColor={c.secondary} logoUrl={c.logoUrl}
-                            className="thumb" isEditingMode={c.isEditing} canEdit={c.canEdit} onEditClick={() => c.openImageModal(`service_${i}`)} />
+                            className="thumb" sizes="64px" lazy isEditingMode={c.isEditing} canEdit={c.canEdit} onEditClick={() => c.openImageModal(`service_${i}`)} />
                         </div>
                       )}
                     </div>
@@ -422,32 +502,40 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
           </div></section>
         )),
 
-        // gallery: the owner's extra photos, natural proportions, no frames
+        // gallery: the owner's other photos. The layout follows how many there are and whether they are
+        // portrait or landscape; it is made of whole rows, so it never ends with a gap (see planGallery)
         gallery: () => (filledGallery.length > 0 || c.canEdit && c.isEditing) && sec(['gallery'], 'גלריה', (
           <section className="wrap"><div className="sec" style={{ '--padD': '72px', '--pad': '44px' } as CSSProperties}>
             {folio(nextNo(), c.isEditing
               ? <ET as="span" value={c.getEdit('gallery.heading', 'גלריה')} onCommit={(v) => c.setEdit('gallery.heading', v)} isEditing />
               : c.getEdit('gallery.heading', 'גלריה'))}
-            {c.isEditing ? (
-              <div className="gal-grid">
-                {filledGallery.map((x) => (
-                  <div className="tile" key={x.i}>
-                    <EI src={x.src} primaryColor={c.primary} secondaryColor={c.secondary} logoUrl={c.logoUrl}
-                      isEditingMode canEdit={c.canEdit} onEditClick={() => c.openImageModal(`gallery_${x.i}`)} />
-                    <button type="button" className="rm" aria-label="הסר תמונה" onClick={() => c.removeGalleryImage(x.i)}><X size={16} /></button>
-                  </div>
-                ))}
-                {nextFree >= 0 && (
-                  <button type="button" className="tile-add" onClick={() => c.openImageModal(`gallery_${nextFree}`)}>
-                    <Plus size={22} /> הוסף תמונה לגלריה
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="strip" data-io="">
-                {filledGallery.map((x, i) => <img key={x.i} src={x.src} alt="" loading="lazy" style={d(i * 0.12)} />)}
-              </div>
-            )}
+            <div className="gal-wrap">
+              {filledGallery.length > 0 && (
+                <div className={`gal ${gallery.kind} ${gallery.box ?? ''}`} data-io="">
+                  {filledGallery.map((x, k) => {
+                    const t = gallery.tiles[k];
+                    const info = infoOf(x.src);
+                    return (
+                      <figure key={`${x.i}-${x.src}`} className={`gt ${info?.logo ? 'is-logo' : ''}`}
+                        style={{ ['--mc' as string]: t.m.c, ['--mr' as string]: t.m.r, ['--dc' as string]: t.d.c, ['--dr' as string]: t.d.r, ...d(k * 0.1) } as CSSProperties}>
+                        <Photo src={x.src} info={info} alt={altOf(x.src)} sizes={t.sizes} />
+                        {c.isEditing && c.canEdit && x.i >= 0 && (
+                          <>
+                            <button type="button" className="rm" aria-label="הסר תמונה" onClick={() => c.removeGalleryImage(x.i)}><X size={16} /></button>
+                            <button type="button" className="chg" onClick={() => c.openImageModal(`gallery_${x.i}`)}><Camera size={14} /> שנה</button>
+                          </>
+                        )}
+                      </figure>
+                    );
+                  })}
+                </div>
+              )}
+              {c.isEditing && c.canEdit && nextFree >= 0 && (
+                <button type="button" className="tile-add" onClick={() => c.openImageModal(`gallery_${nextFree}`)}>
+                  <Plus size={22} /> הוסף תמונה לגלריה
+                </button>
+              )}
+            </div>
           </div></section>
         )),
 
