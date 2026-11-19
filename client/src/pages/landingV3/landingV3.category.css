@@ -5,7 +5,8 @@
 .lp3.q .hero h1{font-weight:800;font-size:clamp(36px,10vw,60px);line-height:1.12;letter-spacing:-.015em}
 .lp3.q .hero h1 span.w,.lp3.q .hero.has-img h1 span.w{display:inline-block}
 .lp3.q .hero h1 span.wi,.lp3.q .hero.has-img h1 span.wi{display:inline-block}
-.lp3.q .hero .lead{font-size:19px;line-height:1.6;max-width:36ch;margin-top:20px;color:var(--muted)}
+.lp3.q .hero .lead{font-size:19px;line-height:1.6;max-width:36ch;margin-top:20px}
+.lp3.q .hero:not(.hp) .lead{color:var(--muted)}
 .lp3.q .hero .cta-row{gap:12px 14px}
 .lp3.q .hero .plate{aspect-ratio:4/3}
 .lp3.q .close h2{font-weight:800;font-size:clamp(34px,8.5vw,64px);letter-spacing:-.02em}

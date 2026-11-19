@@ -80,7 +80,7 @@ export const CATEGORY_CONFIG: Record<CategoryId, CategoryConfig> = {
   health: {
     id: 'health', nameHe: 'בריאות ורפואה', implemented: true,
     // opening (fixed) → treatments → doctor & team → reviews → first visit → FAQ → practical guide → before/after (off)
-    sectionOrder: ['services', 'team', 'testimonials', 'process', 'faq', 'visit', 'before_after'],
+    sectionOrder: ['services', 'team', 'gallery', 'testimonials', 'process', 'faq', 'visit', 'before_after'],
     hiddenByDefault: ['before_after'],
     cta: { primary: 'whatsapp', secondary: 'call', labelWhatsapp: 'לקביעת תור בוואטסאפ', labelPhone: 'לקביעת תור בטלפון' },
     trustElements: ['doctor_credentials', 'license_if_provided', 'spoken_languages', 'reviews', 'practical_guide'],

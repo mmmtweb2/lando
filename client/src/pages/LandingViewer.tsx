@@ -19,7 +19,7 @@ import { safeHttpUrl } from '../lib/safeUrl';
 import ImageEditor from '../components/ImageEditor';
 import type { V3Ctx } from './landingV3/LandingV3';
 import {
-  CATEGORY_NAMES, HEALTH_HEADINGS, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, templateFor,
+  CATEGORY_NAMES, HEALTH_HEADINGS, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, hiddenByDefaultFor, templateFor,
   type CategoryId, type TeamMember,
 } from '../config/pageCategory';
 import { readImgMeta, promoteLegacyHero, altFor, buildSrcSet, focalPosition, intrinsicSize, type ImgMeta, type MetaMap } from '../lib/landingImages';
@@ -1763,6 +1763,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const pageTemplate = templateFor(page.category);
   const isHealth = pageTemplate === 'health';
   const pageOrder = sectionOrderFor(page.category);
+  // Sections a category starts with switched OFF (health: before/after) stay hidden until the owner switches them
+  // on, which stores '<id>:on' in hidden_sections (so the default needs no data written to old pages).
+  const offByDefault = hiddenByDefaultFor(page.category);
+  const sectionHidden = (id: string) => hiddenSections.includes(id) || (offByDefault.includes(id as never) && !hiddenSections.includes(`${id}:on`));
 
   // CTA text: v2 primary_cta_text, v1 contact.cta_text
   const ctaText = ai_content.hero?.primary_cta_text ?? ai_content.contact?.cta_text ?? 'צרו קשר עכשיו';
@@ -4226,8 +4230,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       getEdit, setEdit,
       openImageModal,
       removeGalleryImage: (i: number) => { void removeGalleryImage(i); },
-      isHidden: (ids: string[]) => ids.some((id) => hiddenSections.includes(id)),
+      isHidden: (ids: string[]) => ids.some((id) => sectionHidden(id)),
       toggleHidden: (ids: string[]) => {
+        const off = ids.find((id) => offByDefault.includes(id as never));
+        if (off) { void toggleSectionVisibility(`${off}:on`); return; }
         const hiddenNow = ids.find((id) => hiddenSections.includes(id));
         const inComposition = (ai_content.layout_composition ?? []).find((id) => ids.includes(id));
         void toggleSectionVisibility(hiddenNow ?? inComposition ?? ids[0]);

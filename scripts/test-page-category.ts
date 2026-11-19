@@ -106,7 +106,7 @@ assert.equal(configFor('beauty').id, 'general');
 assert.deepEqual(configFor('beauty').sectionOrder, configFor('general').sectionOrder);
 // GENERAL keeps exactly today's order; HEALTH follows the spec
 assert.deepEqual(CATEGORY_CONFIG.general.sectionOrder, ['about', 'services', 'gallery', 'process', 'testimonials', 'faq', 'visit']);
-assert.deepEqual(CATEGORY_CONFIG.health.sectionOrder, ['services', 'team', 'testimonials', 'process', 'faq', 'visit', 'before_after']);
+assert.deepEqual(CATEGORY_CONFIG.health.sectionOrder, ['services', 'team', 'gallery', 'testimonials', 'process', 'faq', 'visit', 'before_after']);
 assert.deepEqual(defaultHiddenSections('health'), ['before_after']);
 assert.deepEqual(defaultHiddenSections('general'), []);
 assert.deepEqual(defaultHiddenSections(null), []);

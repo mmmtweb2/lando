@@ -48,8 +48,8 @@ const GENERAL_ORDER: SectionKey[] = ['about', 'services', 'gallery', 'process', 
 /** Body sections in order, after the opening and before the lead form and the closing block. */
 export const SECTION_ORDER: Record<CategoryId, SectionKey[]> = {
   general: GENERAL_ORDER,
-  // treatments, doctor and team, reviews, first visit, FAQ, practical guide, before/after (off by default)
-  health: ['services', 'team', 'testimonials', 'process', 'faq', 'visit', 'before_after'],
+  // treatments, doctor and team, photos of the clinic, reviews, first visit, FAQ, practical guide, before/after (off by default)
+  health: ['services', 'team', 'gallery', 'testimonials', 'process', 'faq', 'visit', 'before_after'],
   professional: GENERAL_ORDER, nonprofit: GENERAL_ORDER, arts_events: GENERAL_ORDER, food: GENERAL_ORDER, beauty: GENERAL_ORDER, trades: GENERAL_ORDER,
 };
 
