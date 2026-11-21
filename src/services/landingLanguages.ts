@@ -125,6 +125,8 @@ function getPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
+export const isPlaceholderQuote = (q: unknown): boolean => typeof q === 'string' && (q.includes('הכנס כאן') || q.includes('ציטוט אמיתי'));
+
 const filled = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 
 function parseImages(userImages: unknown): unknown {
@@ -145,6 +147,8 @@ export function flattenTranslatable(content: AiContent | null | undefined, userI
     if (!Array.isArray(arr)) continue;
     arr.forEach((item, i) => {
       if (!item || typeof item !== 'object') return;
+      // The "write a real quote here" placeholder stays as it is: the page hides it from visitors by its Hebrew text.
+      if (list === 'testimonials' && isPlaceholderQuote((item as { quote?: unknown }).quote)) return;
       for (const f of fields) {
         const v = (item as Record<string, unknown>)[f];
         if (filled(v)) out[`${list}.${i}.${f}`] = v;

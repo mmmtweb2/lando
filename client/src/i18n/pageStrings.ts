@@ -30,6 +30,8 @@ export interface PageStrings {
   visit: string;
   waze: string;
   waPreview: string;
+  waFab: string;
+  waFabLabel: string;
   headings: { services: string; process: string; testimonials: string; faq: string };
   health: { services: string; team: string; teamNoPeople: string; testimonials: string; process: string; faq: string; visit: string; beforeAfter: string };
   closingGeneral: (name: string) => string;
@@ -68,6 +70,8 @@ const HE: PageStrings = {
   visit: 'בואו לבקר',
   waze: 'ניווט ב-Waze',
   waPreview: 'ההודעה שתישלח בוואטסאפ',
+  waFab: 'דברו איתנו',
+  waFabLabel: 'פתח שיחת WhatsApp',
   headings: { services: 'מה אנחנו מציעים', process: 'איך זה עובד', testimonials: 'מה אומרים עלינו', faq: 'שאלות נפוצות' },
   health: { ...HEALTH_HEADINGS },
   closingGeneral: (name) => `מוכנים להתחיל עם ${name}?`,
@@ -120,6 +124,8 @@ const FR: PageStrings = {
   visit: 'Nous rendre visite',
   waze: 'Itinéraire Waze',
   waPreview: 'Le message envoyé sur WhatsApp',
+  waFab: 'Écrivez-nous',
+  waFabLabel: 'Ouvrir une conversation WhatsApp',
   headings: { services: 'Ce que nous proposons', process: 'Comment ça se passe', testimonials: 'Ce qu’on dit de nous', faq: 'Questions fréquentes' },
   health: {
     services: 'Nos soins', team: 'Le médecin et l’équipe', teamNoPeople: 'À propos du cabinet', testimonials: 'Ce que disent nos patients',
@@ -176,6 +182,8 @@ const EN: PageStrings = {
   visit: 'Visit us',
   waze: 'Navigate with Waze',
   waPreview: 'The message sent on WhatsApp',
+  waFab: 'Talk to us',
+  waFabLabel: 'Open a WhatsApp chat',
   headings: { services: 'What we offer', process: 'How it works', testimonials: 'What people say', faq: 'Frequently asked questions' },
   health: {
     services: 'Our treatments', team: 'The doctor and team', teamNoPeople: 'About the clinic', testimonials: 'What our patients say',

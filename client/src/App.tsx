@@ -10,6 +10,7 @@ import type { UserProfile } from './context/UserContext';
 
 import MarketingLanding from './pages/MarketingLanding';
 import NotFound        from './pages/NotFound';
+import { TRANSLATION_LANGS } from './i18n/landingLanguages';
 
 // Route-level code splitting: only the home page and the 404 are in the main bundle. Every other
 // route loads its own chunk on first visit, so /seo and /audit (the pages visitors land on from
@@ -235,6 +236,12 @@ export default function App() {
             <Route path="/login"     element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/p/:slug"   element={<LandingViewer />} />
+            {/* Page languages (README part 142): /p/<slug>/fr, and /fr on the page's own subdomain.
+                /b/<sub>/fr is matched by the /b/:subdomain/:subSlug route below (the server resolves it). */}
+            <Route path="/p/:slug/:lang" element={<LandingViewer />} />
+            {TRANSLATION_LANGS.map((l) => (
+              <Route key={l} path={`/${l}`} element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <NotFound />} />
+            ))}
             {/* Canonical, indexed URLs. The server resolves the page (a child via its
                 parent subdomain + sub_slug) and injects its slug; no slug = unknown path. */}
             <Route path="/b/:subdomain"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <Navigate to="/" replace />} />

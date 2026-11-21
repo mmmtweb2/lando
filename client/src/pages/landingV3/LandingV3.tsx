@@ -9,6 +9,7 @@ import { buildPalette } from './color';
 import { TeamSection, beforeAfterHasContent, renderBeforeAfter, renderPracticalGuide, teamHasContent, type Kit } from './HealthSections';
 import type { SectionKey, TeamMember } from '../../config/pageCategory';
 import { altFor, aspectOf, buildSrcSet, focalPosition, intrinsicSize, planGallery, planHero, type ImgMeta, type MetaMap } from '../../lib/landingImages';
+import type { PageStrings } from '../../i18n/pageStrings';
 import './landingV3.css';
 
 // ── What LandingViewer hands over (kept structural so there is no import cycle) ──
@@ -86,6 +87,11 @@ export interface V3Ctx {
   legal: ReactNode;
   credit: ReactNode;
   waIcon: ReactNode;
+  /** Page language (README part 142): its direction, its fixed words, and the switch between languages (null = one language). */
+  lang: string;
+  dir: 'rtl' | 'ltr';
+  t: PageStrings;
+  langSwitch: ReactNode;
 }
 
 const d = (n: number): CSSProperties => ({ ['--d' as string]: `${n.toFixed(2)}s` } as CSSProperties);
@@ -156,7 +162,7 @@ function parseFact(label: string): { pre: string; num: string; suf: string; rest
   return { pre: m[1].trim(), num: m[2], suf: m[3], rest: m[4] };
 }
 
-function Typing({ text, motion }: { text: string; motion: boolean }) {
+function Typing({ text, motion, label }: { text: string; motion: boolean; label: string }) {
   const [phase, setPhase] = useState<'idle' | 'pre' | 'pop'>(motion ? 'idle' : 'pop');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -173,7 +179,7 @@ function Typing({ text, motion }: { text: string; motion: boolean }) {
   }, [motion]);
   return (
     <div ref={ref} className={`msg ${phase === 'pre' ? 'pre' : ''} ${phase === 'pop' ? 'pop' : ''}`} style={phase === 'idle' ? { opacity: 0 } : undefined}>
-      <small>ההודעה שתישלח בוואטסאפ</small>
+      <small>{label}</small>
       <span className="dots"><b /><b /><b /></span>
       <p>{text}</p>
     </div>
@@ -291,7 +297,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
   const facts = (health ? [] : c.badges).map(parseFact).filter((f): f is NonNullable<ReturnType<typeof parseFact>> => !!f).slice(0, 3);
   const stickerLabel = health ? null : c.badges.find((b) => !parseFact(b) && b.length <= 18) ?? null;
   const infoOf = (src: string | null | undefined): ImgMeta | undefined => (src ? c.imageInfo[src] : undefined);
-  const altOf = (src: string) => altFor(infoOf(src), c.businessName, c.decorativeImages);
+  const altOf = (src: string) => (infoOf(src)?.alt || c.lang === 'he' ? altFor(infoOf(src), c.businessName, c.decorativeImages) : (c.decorativeImages ? '' : c.t.altFallback(c.businessName)));
   // The opening photo. A logo-looking file is never the hero: it is shown contained in the gallery instead.
   const heroIsLogo = !!c.heroImageUrl && !!infoOf(c.heroImageUrl)?.logo;
   const photoHero = !!c.heroImageUrl && !heroIsLogo;
@@ -335,16 +341,17 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
   const ctaText = c.getEdit('hero.primary_cta_text', c.hero.cta);
 
   return (
-    <div ref={rootRef} className={`lp3 ${motion ? 'm' : ''}${health ? ' q' : ''}`} dir="rtl" style={rootStyle}>
+    <div ref={rootRef} className={`lp3 ${motion ? 'm' : ''}${health ? ' q' : ''}`} dir={c.dir} lang={c.lang} style={rootStyle}>
       {/* header: one thin line */}
-      <header className="top">
+      <header className={`top${c.langSwitch ? ' has-lsw' : ''}`}>
         <div className="wrap">
           <div className="brand">
             {c.logoUrl && <img src={c.logoUrl} alt={c.businessName} />}
             <b>{c.businessName}</b>
           </div>
           {c.headerExtra}
-          <a className="btn sm" {...cta(c.ctaHref)}>{ctaText}</a>
+          {c.langSwitch}
+          <a className="btn sm top-cta" {...cta(c.ctaHref)}>{ctaText}</a>
         </div>
         {motion && <i className="prog" />}
       </header>
@@ -373,7 +380,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                     <div className="cta-row">
                       <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
                       {c.phone && (health && c.isWhatsApp
-                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> התקשרו <span dir="ltr">{c.phone}</span></a>
+                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> {c.t.call} <span dir="ltr">{c.phone}</span></a>
                   : <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>)}
                     </div>
                   </div>
@@ -409,7 +416,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                 <div className="cta-row">
                   <a className="btn" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
                   {c.phone && (health && c.isWhatsApp
-                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> התקשרו <span dir="ltr">{c.phone}</span></a>
+                  ? <a className="btn ghost" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)}><Phone /> {c.t.call} <span dir="ltr">{c.phone}</span></a>
                   : <a className="tel" href={`tel:${c.phone}`} onClick={() => c.onCta(`tel:${c.phone}`)} dir="ltr">{c.phone}</a>)}
                 </div>
               </div>
@@ -445,7 +452,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         // about: a big statement + body copy
         about: () => c.about && (c.about.content || c.isEditing) && sec(['about'], 'קצת עלינו', (
           <section className="wrap about"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
-            {folio(nextNo(), c.getEdit('about.heading', c.about.heading || 'הסיפור שלנו'))}
+            {folio(nextNo(), c.getEdit('about.heading', c.about.heading || c.t.aboutFallback))}
             <div>
               {statement && (
                 <p className="statement" data-io="">{stWords.join(' ')} <em>{stLast}</em>.</p>
@@ -479,7 +486,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                       {c.isEditing
                         ? <ET as="p" value={desc} onCommit={(v) => c.setEdit(`services.${i}.description`, v)} isEditing />
                         : <p>{desc}</p>}
-                      {!c.isEditing && <span className="go">{c.isWhatsApp ? 'שאלו על זה בוואטסאפ' : c.hero.cta}</span>}
+                      {!c.isEditing && <span className="go">{c.isWhatsApp ? c.t.askOnWhatsApp : c.hero.cta}</span>}
                       {(img || c.isEditing) && (
                         <div className={img ? 'thumb-box' : 'thumb-edit'}>
                           <EI collapseEmpty src={img} primaryColor={c.primary} secondaryColor={c.secondary} logoUrl={c.logoUrl}
@@ -507,8 +514,8 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         gallery: () => (filledGallery.length > 0 || c.canEdit && c.isEditing) && sec(['gallery'], 'גלריה', (
           <section className="wrap"><div className="sec" style={{ '--padD': '72px', '--pad': '44px' } as CSSProperties}>
             {folio(nextNo(), c.isEditing
-              ? <ET as="span" value={c.getEdit('gallery.heading', 'גלריה')} onCommit={(v) => c.setEdit('gallery.heading', v)} isEditing />
-              : c.getEdit('gallery.heading', 'גלריה'))}
+              ? <ET as="span" value={c.getEdit('gallery.heading', c.t.gallery)} onCommit={(v) => c.setEdit('gallery.heading', v)} isEditing />
+              : c.getEdit('gallery.heading', c.t.gallery))}
             <div className="gal-wrap">
               {filledGallery.length > 0 && (
                 <div className={`gal ${gallery.kind} ${gallery.box ?? ''}`} data-io="">
@@ -632,15 +639,15 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         // visit: big address + two links, no map iframe (the health template's practical guide)
         visit: () => health ? renderPracticalGuide(kit) : (c.address || c.hours) && (
           <section className="wrap visit"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
-            {folio(nextNo(), 'בואו לבקר')}
+            {folio(nextNo(), c.t.visit)}
             <div className="cols">
               <div>
-                {c.address && <p className="addr" data-rv="">{c.address}</p>}
+                {c.address && <p className="addr" data-rv="" dir="auto">{c.address}</p>}
                 {c.hours && <p className="hours" data-rv="" style={{ whiteSpace: 'pre-line' }}>{c.hours}</p>}
               </div>
               {c.address && (
                 <div className="links">
-                  <a data-rv="" href={`https://waze.com/ul?q=${encodeURIComponent(c.address)}&navigate=yes`} target="_blank" rel="noopener noreferrer">ניווט ב-Waze</a>
+                  <a data-rv="" href={`https://waze.com/ul?q=${encodeURIComponent(c.address)}&navigate=yes`} target="_blank" rel="noopener noreferrer">{c.t.waze}</a>
                   <a data-rv="" style={d(0.09)} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`} target="_blank" rel="noopener noreferrer">Google Maps</a>
                 </div>
               )}
@@ -662,7 +669,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
             {c.closing.subline && <p style={{ marginTop: 14, maxWidth: 420 }}>{c.closing.subline}</p>}
           </div>
           <div>
-            {c.closing.waMessage && <Typing text={c.closing.waMessage} motion={motion} />}
+            {c.closing.waMessage && <Typing text={c.closing.waMessage} motion={motion} label={c.t.waPreview} />}
             <a className="btn on-accent" {...cta(c.ctaHref)}>{c.ctaIcon}{ctaText}</a>
           </div>
         </div></section>
