@@ -5,6 +5,8 @@ import { supabase } from '../config/supabase';
 import { getAccountStatus } from '../services/billing.service';
 import { canonicalUrl, resolveBPage } from '../services/subdomain.service';
 import { buildJsonLdScripts, injectSeoBody, renderSeoBody, SeoPage } from '../services/seoRender';
+import { LANGUAGES, SOURCE_LANG, buildHreflang, isTranslationLang, langDir, langUrl, type LangCode } from '../services/landingLanguages';
+import { loadTranslations, publicTranslations, translatedPage } from '../services/landingTranslations.service';
 
 function escapeHtml(str: string): string {
   return str
@@ -53,7 +55,7 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
 
   const { data: page, error } = await supabase
     .from('landing_pages')
-    .select('business_name, ai_content, user_images, logo_url, owner_email, status, slug, subdomain, address, phone_number, parent_id, sub_slug, facebook_url, instagram_url')
+    .select('id, business_name, ai_content, user_images, logo_url, owner_email, status, slug, subdomain, address, phone_number, parent_id, sub_slug, facebook_url, instagram_url')
     .eq('slug', slug)
     .single();
 
@@ -113,6 +115,24 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     return;
   }
 
+  // Page languages (README part 142): /p/<slug>/fr, <sub>.pagey.co.il/fr, /b/<sub>/fr. Top pages only, and only a
+  // PUBLISHED translation is served here (a draft is the owner's, seen in the app after sign-in). A language the
+  // page does not have (yet) gets the Hebrew head, pointing at the Hebrew address, and is not indexed.
+  const requestedLang: LangCode = isTranslationLang(res.locals.lang) ? res.locals.lang : SOURCE_LANG;
+  let publishedLangs: string[] = [];
+  let langRow: { lang: string; status: 'published'; content: Record<string, string> } | null = null;
+  if (!parentId && effectiveStatus === 'published') {
+    const t = await loadTranslations((page as { id: string }).id);
+    const pub = publicTranslations(t.rows);
+    publishedLangs = pub.map((r) => r.lang);
+    langRow = requestedLang === SOURCE_LANG ? null : pub.find((r) => r.lang === requestedLang) ?? null;
+  }
+  const lang: LangCode = langRow ? requestedLang : SOURCE_LANG;
+  const missingLang = requestedLang !== SOURCE_LANG && !langRow;
+  const view = langRow
+    ? translatedPage(page as { ai_content: unknown; user_images?: unknown }, { ...langRow, source_hash: {}, manual_keys: [] })
+    : (page as { ai_content: unknown; user_images?: unknown });
+
   // Parse first image URL
   let firstImage: string = '';
   try {
@@ -129,12 +149,13 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     firstImage = page.logo_url ?? '';
   }
 
+  const viewContent = view.ai_content as { seo_title?: string; seo_description?: string; hero?: { subtitle?: string; slogan?: string }; about?: { content?: string } };
   const description: string =
-    (page.ai_content as { seo_description?: string })?.seo_description ||
-    (page.ai_content as { hero?: { subtitle?: string } })?.hero?.subtitle ||
-    (page.ai_content as { hero?: { slogan?: string } })?.hero?.slogan ||
-    (page.ai_content as { about?: { content?: string } })?.about?.content?.slice(0, 150) ||
-    'דף נחיתה מקצועי';
+    viewContent?.seo_description ||
+    viewContent?.hero?.subtitle ||
+    viewContent?.hero?.slogan ||
+    viewContent?.about?.content?.slice(0, 150) ||
+    (lang === 'fr' ? 'Page professionnelle' : lang === 'en' ? 'Business page' : 'דף נחיתה מקצועי');
 
   let whiteLabel = false;
   if (page.owner_email) {
@@ -144,35 +165,50 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
       console.error('servePageWithOgTags: failed to resolve whiteLabel status', e);
     }
   }
-  const title = whiteLabel ? `${page.business_name}` : `${page.business_name} | Pagey`;
+  // In another language the translated title for Google is used; Hebrew keeps its long-standing title.
+  const titleBase = lang !== SOURCE_LANG ? (viewContent?.seo_title?.trim() || String(page.business_name)) : String(page.business_name);
+  const title = whiteLabel ? titleBase : `${titleBase} | Pagey`;
 
   // Canonical URL + robots directive — published pages are indexable, drafts
   // are not (drafts are still publicly fetchable via GET /:slug, so this
   // matters: without it a draft could get indexed before the owner publishes).
   const isPublished = effectiveStatus === 'published';
-  const pageUrl = canonicalUrl(
+  const baseUrl = canonicalUrl(
     { slug: page.slug as string, subdomain: (page as { subdomain?: string | null }).subdomain, sub_slug: (page as { sub_slug?: string | null }).sub_slug },
     parentSubdomain,
   );
-  const robotsContent = isPublished ? 'index,follow' : 'noindex,nofollow';
+  const pageUrl = langUrl(baseUrl, lang);
+  const robotsContent = isPublished && !missingLang ? 'index,follow' : 'noindex,nofollow';
+  // hreflang alternates: only when the page has at least one published translation.
+  const alternates = publishedLangs.length
+    ? buildHreflang(baseUrl, publishedLangs).map((a) => `<link rel="alternate" hreflang="${escapeHtml(a.hreflang)}" href="${escapeHtml(a.href)}" />`).join('\n    ')
+    : '';
+  const ogLocale = LANGUAGES[lang].ogLocale;
+  const ogAlternates = publishedLangs.length
+    ? [SOURCE_LANG, ...publishedLangs].filter((l) => l !== lang).map((l) => `<meta property="og:locale:alternate" content="${LANGUAGES[l as LangCode]?.ogLocale ?? ''}" />`).join('\n    ')
+    : '';
 
   // JSON-LD (LocalBusiness + FAQPage) — only for published pages, built only from
   // real stored data (NO_FABRICATION_RULE). Server-side ONLY: the client no
   // longer emits structured data, so there is exactly one copy.
-  const jsonLd = isPublished ? buildJsonLdScripts(page as unknown as SeoPage, pageUrl, firstImage) : '';
+  const jsonLd = isPublished
+    ? buildJsonLdScripts({ ...(page as unknown as SeoPage), ai_content: view.ai_content }, pageUrl, firstImage, { inLanguage: lang, multilingual: publishedLangs.length > 0 })
+    : '';
 
   const ogTags = `
     <title>${escapeHtml(title)}</title>
     <link rel="canonical" href="${escapeHtml(pageUrl)}" />
     <meta name="robots" content="${robotsContent}" />
-    <meta property="og:title" content="${escapeHtml(page.business_name as string)}" />
+    ${alternates}
+    <meta property="og:title" content="${escapeHtml(lang !== SOURCE_LANG ? titleBase : page.business_name as string)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${escapeHtml(pageUrl)}" />
     ${firstImage ? `<meta property="og:image" content="${escapeHtml(firstImage)}" />` : ''}
-    <meta property="og:locale" content="he_IL" />
+    <meta property="og:locale" content="${ogLocale}" />
+    ${ogAlternates}
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeHtml(page.business_name as string)}" />
+    <meta name="twitter:title" content="${escapeHtml(lang !== SOURCE_LANG ? titleBase : page.business_name as string)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     ${firstImage ? `<meta name="twitter:image" content="${escapeHtml(firstImage)}" />` : ''}
     ${jsonLd}`;
@@ -196,17 +232,19 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     .replace(/<meta property="og:url"[^>]*>\s*/gi, '')
     .replace(/<meta name="twitter:title"[^>]*>\s*/gi, '')
     .replace(/<meta name="twitter:description"[^>]*>\s*/gi, '')
-    .replace(/<meta name="twitter:image"[^>]*>\s*/gi, '');
+    .replace(/<meta name="twitter:image"[^>]*>\s*/gi, '')
+    .replace(/<meta property="og:locale"[^>]*>\s*/gi, '');
 
   // Replace the generic <title> and inject this page's own OG tags before </head>
   const withHead = shellWithoutGenericTags
+    .replace(/<html[^>]*>/i, `<html lang="${lang}" dir="${langDir(lang)}">`)
     .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
     .replace('</head>', `${ogTags}\n  </head>`);
 
   // Published pages also get their real content (h1/h2/text/FAQ) inside #root so
   // crawlers see it without running JS; createRoot replaces it on load.
   const html = isPublished
-    ? injectSeoBody(withHead, renderSeoBody(page as unknown as SeoPage))
+    ? injectSeoBody(withHead, renderSeoBody({ ...(page as unknown as SeoPage), ai_content: view.ai_content }, { lang, dir: langDir(lang) }))
     : withHead;
 
   res.status(200).setHeader('Content-Type', 'text/html').send(injectSubdomainSlug(html, res));
@@ -220,7 +258,11 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
  * own not-found screen from the same shell.
  */
 export async function serveBPage(req: Request, res: Response): Promise<void> {
-  const found = await resolveBPage(req.params.subdomain, req.params.subSlug);
+  // /b/<sub>/fr: a language of the top page. A sub_slug is at least 3 characters (subSlugFromPhrase), so a
+  // two-letter language code never hides a child page.
+  const subSlugIsLang = isTranslationLang(req.params.subSlug);
+  if (subSlugIsLang) res.locals.lang = req.params.subSlug;
+  const found = await resolveBPage(req.params.subdomain, subSlugIsLang ? undefined : req.params.subSlug);
   if (!found) {
     const shell = await loadHtmlShell();
     res.status(404).setHeader('Content-Type', 'text/html').send(shell);
@@ -228,5 +270,12 @@ export async function serveBPage(req: Request, res: Response): Promise<void> {
   }
   res.locals.pageSlug = found.slug;
   res.locals.bPath = true;
+  await servePageWithOgTags(req, res);
+}
+
+/** GET /p/:slug/:lang: the page in another language. Anything that is not a language falls through. */
+export async function servePageInLanguage(req: Request, res: Response, next: () => void): Promise<void> {
+  if (!isTranslationLang(req.params.lang)) { next(); return; }
+  res.locals.lang = req.params.lang;
   await servePageWithOgTags(req, res);
 }

@@ -7,6 +7,7 @@ import { rejectOversizeBody } from '../middleware/bodyLimit';
 import { LEAD_MAX_BODY_BYTES } from '../utils/leadInput';
 import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.middleware';
 import { prefillFromGoogle } from '../controllers/landingPrefill.controller';
+import { addTranslation, editTranslation, listTranslations, publishTranslation, refreshTranslation, removeTranslation } from '../controllers/landingTranslation.controller';
 
 const router = Router();
 
@@ -99,6 +100,13 @@ router.post('/:id/update-logo', requireAuth, requireOwnPage, handleSingleImageUp
 router.delete('/:id/logo', requireAuth, requireOwnPage, removeLogo);
 router.delete('/:id/image/:slot', requireAuth, requireOwnPage, removeImage);
 router.post('/:id/regenerate-image-ai', requireAuth, requireOwnPage, aiLimiter, regenerateImageAi);
+// Page languages (README part 142). Translating calls the model: same hourly budget as the other AI actions.
+router.get('/:id/translations', requireAuth, requireOwnPage, listTranslations);
+router.post('/:id/translations', requireAuth, requireOwnPage, aiLimiter, addTranslation);
+router.patch('/:id/translations/:lang', requireAuth, requireOwnPage, editTranslation);
+router.post('/:id/translations/:lang/refresh', requireAuth, requireOwnPage, aiLimiter, refreshTranslation);
+router.post('/:id/translations/:lang/publish', requireAuth, requireOwnPage, publishTranslation);
+router.delete('/:id/translations/:lang', requireAuth, requireOwnPage, removeTranslation);
 router.patch('/:id', requireAuth, requireOwnPage, updateLandingPage);
 router.delete('/:id', requireAuth, requireOwnPage, deleteLandingPage);
 

@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import router from './routes';
-import { servePageWithOgTags, serveBPage } from './controllers/og.controller';
+import { servePageWithOgTags, serveBPage, servePageInLanguage } from './controllers/og.controller';
+import { isTranslationLang } from './services/landingLanguages';
 import { rateLimit } from './middleware/rateLimit';
 import { serveSitemap } from './controllers/sitemap.controller';
 import { serveReviewsWidget } from './controllers/reviewsWidget.controller';
@@ -107,7 +108,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   // (utils/clientIp.ts); otherwise a client hitting the origin directly could pick its own IP.
   applyCloudflareIp(req);
 
-  if (req.method !== 'GET' || req.path !== '/') { next(); return; }
+  // '/' is the page; '/fr', '/en' are its other languages (README part 142).
+  const langSeg = req.path.replace(/^\/|\/$/g, '');
+  if (req.method !== 'GET' || (req.path !== '/' && !isTranslationLang(langSeg))) { next(); return; }
 
   ogPageLimiter(req, res, async () => {
     try {
@@ -115,6 +118,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       if (!page) { res.redirect(302, `https://${ROOT_DOMAIN}/`); return; }
       res.locals.pageSlug = page.slug;
       res.locals.bySubdomain = sub;
+      if (isTranslationLang(langSeg)) res.locals.lang = langSeg;
       await servePageWithOgTags(req, res);
     } catch (err) {
       next(err);
@@ -122,6 +126,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   });
 });
 app.get('/p/:slug', ogPageLimiter, servePageWithOgTags);
+app.get('/p/:slug/:lang', ogPageLimiter, (req: Request, res: Response, next: NextFunction) => {
+  servePageInLanguage(req, res, next).catch(next);
+});
 // Embeddable Google-reviews widget (Stage 6.2). Public + iframe-able; cost guards live in the
 // controller (per-business and total daily caps), this is the per-IP burst limit.
 const reviewsWidgetLimiter = rateLimit({

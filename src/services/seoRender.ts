@@ -35,6 +35,7 @@ interface Content {
   services_heading?: string;
   benefits_heading?: string;
   faq_heading?: string;
+  seo_title?: string;
   seo_description?: string;
   hidden_sections?: string[];
 }
@@ -74,8 +75,19 @@ function itemsHtml(list: Item[]): string {
     .join('');
 }
 
-export function renderSeoBody(page: SeoPage): string {
+/** Fallback section headings of the server-rendered body, per page language (README part 142). */
+const SEO_HEADINGS: Record<string, { about: string; services: string; benefits: string; faq: string }> = {
+  he: { about: 'קצת עלינו', services: 'השירותים שלנו', benefits: 'למה לבחור בנו', faq: 'שאלות נפוצות' },
+  fr: { about: 'À propos', services: 'Nos services', benefits: 'Pourquoi nous choisir', faq: 'Questions fréquentes' },
+  en: { about: 'About us', services: 'Our services', benefits: 'Why choose us', faq: 'Frequently asked questions' },
+};
+
+export interface SeoLangOptions { lang?: string; dir?: 'rtl' | 'ltr' }
+
+export function renderSeoBody(page: SeoPage, opts: SeoLangOptions = {}): string {
   const c = (page.ai_content ?? {}) as Content;
+  const lang = opts.lang ?? 'he';
+  const H = SEO_HEADINGS[lang] ?? SEO_HEADINGS.he;
   const h1 = text(c.hero?.title) || page.business_name;
   const sub = text(c.hero?.subtitle) || text(c.hero?.slogan);
   const out: string[] = [];
@@ -83,23 +95,23 @@ export function renderSeoBody(page: SeoPage): string {
   out.push(`<header><h1>${esc(h1)}</h1>${sub ? `<p>${esc(sub)}</p>` : ''}</header>`);
 
   if (text(c.about?.content) && !isHidden(c, 'about')) {
-    out.push(`<section><h2>${esc(text(c.about?.heading) || 'קצת עלינו')}</h2><p>${esc(c.about?.content)}</p></section>`);
+    out.push(`<section><h2>${esc(text(c.about?.heading) || H.about)}</h2><p>${esc(c.about?.content)}</p></section>`);
   }
 
   const services = items(c.services_or_benefits ?? c.services);
   if (services.length && !isHidden(c, 'services')) {
-    out.push(`<section><h2>${esc(text(c.services_heading) || 'השירותים שלנו')}</h2>${itemsHtml(services)}</section>`);
+    out.push(`<section><h2>${esc(text(c.services_heading) || H.services)}</h2>${itemsHtml(services)}</section>`);
   }
 
   const benefits = items(c.benefits);
   if (benefits.length && !isHidden(c, 'benefits')) {
-    out.push(`<section><h2>${esc(text(c.benefits_heading) || 'למה לבחור בנו')}</h2>${itemsHtml(benefits)}</section>`);
+    out.push(`<section><h2>${esc(text(c.benefits_heading) || H.benefits)}</h2>${itemsHtml(benefits)}</section>`);
   }
 
   const faq = faqItems(c);
   if (faq.length) {
     out.push(
-      `<section><h2>${esc(text(c.faq_heading) || 'שאלות נפוצות')}</h2>${faq
+      `<section><h2>${esc(text(c.faq_heading) || H.faq)}</h2>${faq
         .map((f) => `<article><h3>${esc(f.question)}</h3><p>${esc(f.answer)}</p></article>`)
         .join('')}</section>`,
     );
@@ -114,7 +126,7 @@ export function renderSeoBody(page: SeoPage): string {
     );
   }
 
-  return `<main dir="rtl" lang="he" data-ssr="1">${out.join('')}</main>`;
+  return `<main dir="${opts.dir ?? 'rtl'}" lang="${esc(lang)}" data-ssr="1">${out.join('')}</main>`;
 }
 
 /** Put the SEO body inside <div id="root">. No-op if the shell has no empty root. */
@@ -126,7 +138,7 @@ function scriptTag(data: Record<string, unknown>): string {
   return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
-export function buildJsonLdScripts(page: SeoPage, canonical: string, image: string): string {
+export function buildJsonLdScripts(page: SeoPage, canonical: string, image: string, opts: { inLanguage?: string; multilingual?: boolean } = {}): string {
   const c = (page.ai_content ?? {}) as Content;
   const tags: string[] = [];
 
@@ -150,6 +162,13 @@ export function buildJsonLdScripts(page: SeoPage, canonical: string, image: stri
   const sameAs = [page.facebook_url, page.instagram_url].map((u) => parseHttpUrl(u)).filter((u): u is string => !!u);
   if (sameAs.length) business.sameAs = sameAs;
   tags.push(scriptTag(business));
+  // A page with more than one language says which one this address is in (README part 142).
+  if (opts.multilingual) {
+    tags.push(scriptTag({
+      '@context': 'https://schema.org', '@type': 'WebPage', url: canonical, name: text(c.seo_title) || page.business_name,
+      inLanguage: opts.inLanguage ?? 'he', ...(description ? { description } : {}),
+    }));
+  }
 
   const faq = faqItems(c);
   if (faq.length) {
@@ -157,6 +176,7 @@ export function buildJsonLdScripts(page: SeoPage, canonical: string, image: stri
       scriptTag({
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
+        inLanguage: opts.inLanguage ?? 'he',
         mainEntity: faq.map((f) => ({
           '@type': 'Question',
           name: f.question,
