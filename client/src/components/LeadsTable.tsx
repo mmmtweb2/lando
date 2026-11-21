@@ -18,6 +18,8 @@ export interface LeadFeedItem {
   phone: string | null;
   email: string | null;
   message: string | null;
+  /** The page language the visitor wrote from ('fr', 'en'); null/absent = Hebrew (README part 142). */
+  lang?: string | null;
 }
 
 /** Month = calendar month, Israel time. Computed server-side (smoke-test events excluded). */
@@ -34,6 +36,9 @@ interface LeadsTableProps {
   items: LeadFeedItem[];
   summary: LeadsSummary;
 }
+
+/** Language tag on a lead that came from a page in another language. */
+const LEAD_LANG: Record<string, string> = { fr: 'צרפתית', en: 'אנגלית', ru: 'רוסית', ar: 'ערבית' };
 
 const KIND_LABEL: Record<LeadKind, string> = {
   form: 'טופס',
@@ -70,7 +75,7 @@ function toWhatsAppHref(phone: string): string {
 }
 
 function exportToCSV(items: LeadFeedItem[]) {
-  const headers = ['סוג', 'שם', 'טלפון', 'אימייל', 'הודעה', 'תאריך', 'שעה', 'עמוד'];
+  const headers = ['סוג', 'שם', 'טלפון', 'אימייל', 'הודעה', 'תאריך', 'שעה', 'עמוד', 'שפה'];
   const rows = items.map((l) => [
     KIND_LABEL[l.kind],
     l.name ?? '',
@@ -80,6 +85,7 @@ function exportToCSV(items: LeadFeedItem[]) {
     formatDate(l.created_at),
     formatTime(l.created_at),
     l.page_name ?? l.landing_page_id,
+    l.lang ? (LEAD_LANG[l.lang] ?? l.lang) : 'עברית',
   ]);
 
   const csvContent = [headers, ...rows]
@@ -221,7 +227,15 @@ export default function LeadsTable({ items, summary }: LeadsTableProps) {
                   <td className="px-4 py-3">
                     {lead.kind === 'form' ? (
                       <div className="flex flex-col gap-1">
-                        <span className="text-sm font-medium text-slate-900">{lead.name}</span>
+                        <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                          {lead.name}
+                          {lead.lang && LEAD_LANG[lead.lang] && (
+                            <span className="rounded-md bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800" title={`הפונה כתב/ה מהדף ב${LEAD_LANG[lead.lang]}`}>
+                              {LEAD_LANG[lead.lang]}
+                            </span>
+                          )}
+                        </span>
+                
                         <div className="flex items-center gap-2">
                           {lead.phone && (
                             <>
@@ -236,7 +250,7 @@ export default function LeadsTable({ items, summary }: LeadsTableProps) {
                           )}
                         </div>
                         {lead.message && (
-                          <span className="text-sm text-slate-600 line-clamp-2 leading-relaxed max-w-[320px]" title={lead.message}>
+                          <span className="text-sm text-slate-600 line-clamp-2 leading-relaxed max-w-[320px]" title={lead.message} dir="auto">
                             {lead.message}
                           </span>
                         )}

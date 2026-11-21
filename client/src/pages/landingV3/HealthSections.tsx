@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { V3Ctx } from './LandingV3';
-import { FIELD_HINTS, HEALTH_HEADINGS, MAX_TEAM, languagesLine, parseLanguages } from '../../config/pageCategory';
+import { FIELD_HINTS, MAX_TEAM, languagesLine, parseLanguages } from '../../config/pageCategory';
 import './landingV3.category.css';
 
 /** What LandingV3 hands over so these sections look and count like the rest of the page. */
@@ -53,7 +53,7 @@ export function TeamSection({ kit, no }: { kit: Kit; no: string }) {
   const people = Array.from({ length: count }, (_, i) => ({ i, m: members[i] ?? { name: '', role: '', credentials: '', experience: '' } }));
   const shown = c.isEditing ? people : people.filter(({ m }) => isFilled(m.name));
   const aboutText = c.about ? c.getEdit('about.content', c.about.content) : '';
-  const heading = shown.length > 0 || c.isEditing ? c.teamHeading : (c.about?.heading || HEALTH_HEADINGS.teamNoPeople);
+  const heading = shown.length > 0 || c.isEditing ? c.teamHeading : (c.about?.heading || c.t.health.teamNoPeople);
 
   return (
     <>{sec(['team'], 'הרופא והצוות', (
@@ -88,8 +88,8 @@ export function TeamSection({ kit, no }: { kit: Kit; no: string }) {
                         : isFilled(m.experience) && <p>{m.experience}</p>}
                       {/* a licence number only when the owner provided one */}
                       {c.isEditing
-                        ? <p className="lic"><span>מספר רישיון: </span><Field c={c} as="span" path={`team.${i}.license_number`} value={m.license_number ?? ''} hint={FIELD_HINTS.license} /></p>
-                        : isFilled(lic) && <p className="lic"><span>מספר רישיון: </span><b dir="ltr">{lic}</b></p>}
+                        ? <p className="lic"><span>{c.t.license}</span><Field c={c} as="span" path={`team.${i}.license_number`} value={m.license_number ?? ''} hint={FIELD_HINTS.license} /></p>
+                        : isFilled(lic) && <p className="lic"><span>{c.t.license}</span><b dir="ltr">{lic}</b></p>}
                     </div>
                   </li>
                 );
@@ -113,25 +113,25 @@ export function renderPracticalGuide(kit: Kit): ReactNode {
   const { c, folio, nextNo, d } = kit;
   const langs = c.spokenLanguages;
   const langsText = c.getEdit('spoken_languages', langs.join(', '));
-  const line = languagesLine(c.isEditing ? parseLanguages(langsText) : langs);
+  const line = c.lang === 'he' ? languagesLine(c.isEditing ? parseLanguages(langsText) : langs) : c.t.spokenLine(langs);
   const parking = c.getEdit('practical_info.parking', c.practical.parking ?? '');
   const access = c.getEdit('practical_info.accessibility', c.practical.accessibility ?? '');
   const no = nextNo();
   const rows: Array<{ label: string; node: ReactNode }> = [];
-  if (c.address) rows.push({ label: 'כתובת', node: <span>{c.address}</span> });
-  if (c.hours) rows.push({ label: 'שעות פעילות', node: <span style={{ whiteSpace: 'pre-line' }}>{c.hours}</span> });
-  if (c.isEditing || isFilled(parking)) rows.push({ label: 'חניה', node: c.isEditing ? <Field c={c} as="span" path="practical_info.parking" value={parking} hint={FIELD_HINTS.parking} /> : <span>{parking}</span> });
-  if (c.isEditing || isFilled(access)) rows.push({ label: 'נגישות', node: c.isEditing ? <Field c={c} as="span" path="practical_info.accessibility" value={access} hint={FIELD_HINTS.accessibility} /> : <span>{access}</span> });
+  if (c.address) rows.push({ label: c.t.guide.address, node: <span dir="auto">{c.address}</span> });
+  if (c.hours) rows.push({ label: c.t.guide.hours, node: <span style={{ whiteSpace: 'pre-line' }}>{c.hours}</span> });
+  if (c.isEditing || isFilled(parking)) rows.push({ label: c.t.guide.parking, node: c.isEditing ? <Field c={c} as="span" path="practical_info.parking" value={parking} hint={FIELD_HINTS.parking} /> : <span>{parking}</span> });
+  if (c.isEditing || isFilled(access)) rows.push({ label: c.t.guide.accessibility, node: c.isEditing ? <Field c={c} as="span" path="practical_info.accessibility" value={access} hint={FIELD_HINTS.accessibility} /> : <span>{access}</span> });
 
   return (
     <section className="wrap visit guide"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
-      {folio(no, HEALTH_HEADINGS.visit)}
+      {folio(no, c.t.health.visit)}
       <div>
         {(line || c.isEditing) && (
           <p className="langs" data-rv="">
             {c.isEditing ? (
               <>
-                <span>מדברים </span>
+                {c.lang === 'he' && <span>מדברים </span>}
                 <c.EditableText as="span" value={langsText || FIELD_HINTS.languages} isEditing
                   onCommit={(v) => { const next = v === FIELD_HINTS.languages ? '' : v; if (next !== langsText) c.setEdit('spoken_languages', next); }} />
               </>
@@ -147,7 +147,7 @@ export function renderPracticalGuide(kit: Kit): ReactNode {
         )}
         {c.address && (
           <div className="links">
-            <a data-rv="" href={`https://waze.com/ul?q=${encodeURIComponent(c.address)}&navigate=yes`} target="_blank" rel="noopener noreferrer">ניווט ב-Waze</a>
+            <a data-rv="" href={`https://waze.com/ul?q=${encodeURIComponent(c.address)}&navigate=yes`} target="_blank" rel="noopener noreferrer">{c.t.waze}</a>
             <a data-rv="" style={d(0.09)} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`} target="_blank" rel="noopener noreferrer">Google Maps</a>
           </div>
         )}
@@ -168,7 +168,7 @@ export function renderBeforeAfter(kit: Kit): ReactNode {
   const EI = c.EditableImage;
   const filled = c.galleryUrls.map((src, i) => ({ src, i })).filter((x) => !!x.src);
   const nextFree = (() => { for (let i = 0; i < c.maxGallery; i++) if (!c.galleryUrls[i]) return i; return -1; })();
-  const heading = c.getEdit('before_after.heading', HEALTH_HEADINGS.beforeAfter);
+  const heading = c.getEdit('before_after.heading', c.t.health.beforeAfter);
   const no = nextNo();
   return sec(['before_after'], 'לפני ואחרי', (
     <section className="wrap"><div className="sec" style={{ '--padD': '72px', '--pad': '44px' } as CSSProperties}>
@@ -199,7 +199,7 @@ export function renderBeforeAfter(kit: Kit): ReactNode {
             <div className="strip" data-io="">
               {filled.map((x, i) => <img key={x.i} src={x.src} alt="" loading="lazy" style={d(i * 0.12)} />)}
             </div>
-            <p className="ba-note">התוצאות משתנות מאדם לאדם.</p>
+            <p className="ba-note">{c.t.baNote}</p>
           </>
         )}
       </div>

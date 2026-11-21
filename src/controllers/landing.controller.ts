@@ -21,6 +21,8 @@ import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 import { optionalHttpUrl } from '../utils/safeUrl';
 import { serverError } from '../utils/httpErrors';
+import { loadTranslations, ownerTranslations, publicTranslations } from '../services/landingTranslations.service';
+import { isMissingTranslationsTable } from '../services/landingLanguages';
 import { applyImageSlot, clearImageSlot, parseSlot, keepOwnerExtras, type AiStore, type ImageStore } from '../services/imageSlots';
 import { processPhoto, processUploadedPhotos, type ImageWarning } from '../services/landingImages';
 import { defaultHiddenSections, detectCategory, isCategoryId, isMissingCategoryColumn, normalizeCategory, templateFor, withCategoryColumns } from '../services/pageCategory';
@@ -139,9 +141,13 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
       .in('landing_page_id', ids).eq('event_type', type).gte('created_at', monthStart).or(NOT_SMOKE);
 
   const [formsRes, eventsRes, cForm, cWa, cCall, cEmail, cLink] = await Promise.all([
-    supabase.from('leads')
-      .select('id, name, phone, email, message, created_at, landing_page_id')
-      .in('landing_page_id', ids).order('created_at', { ascending: false }).limit(FEED_LIMIT),
+    // leads.lang (migration 054): the language the visitor wrote in. Read without it before the migration.
+    (async () => {
+      const q = (cols: string) => supabase.from('leads')
+        .select(cols).in('landing_page_id', ids).order('created_at', { ascending: false }).limit(FEED_LIMIT);
+      const first = await q('id, name, phone, email, message, created_at, landing_page_id, lang');
+      return first.error && isMissingTranslationsTable(first.error) ? q('id, name, phone, email, message, created_at, landing_page_id') : first;
+    })(),
     supabase.from('lead_events')
       .select('id, event_type, created_at, landing_page_id')
       .in('landing_page_id', ids).in('event_type', ['whatsapp', 'call', 'email']).or(NOT_SMOKE)
@@ -163,8 +169,8 @@ export async function getMyLeads(req: Request, res: Response): Promise<void> {
   };
 
   const items = [
-    ...((formsRes.data ?? []) as { id: string; name: string; phone: string; email: string | null; message: string | null; created_at: string; landing_page_id: string }[])
-      .map((l) => ({ ...l, kind: 'form' as FeedKind })),
+    ...((formsRes.data ?? []) as unknown as { id: string; name: string; phone: string; email: string | null; message: string | null; created_at: string; landing_page_id: string; lang?: string | null }[])
+      .map((l) => ({ ...l, lang: l.lang ?? null, kind: 'form' as FeedKind })),
     ...((eventsRes.data ?? []) as { id: string; event_type: string; created_at: string; landing_page_id: string }[])
       .map((e) => ({ id: e.id, kind: e.event_type as FeedKind, created_at: e.created_at, landing_page_id: e.landing_page_id, name: null, phone: null, email: null, message: null })),
   ]
@@ -378,7 +384,18 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   // For a child, `status` is the parent's (what the client branches on).
   // The owner sees their own lifecycle fields; anyone else gets the page only.
   const publicData = publicPageFields(data as Record<string, unknown>, isOwner);
-  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner });
+  // Page languages (README part 142): visitors get the published ones, the owner every one with what is out
+  // of date. Top pages only. Without migration 054 there are none and nothing else changes.
+  let translations: unknown[] = [];
+  let translations_ready = false;
+  if (!parentId) {
+    const t = await loadTranslations((data as { id: string }).id);
+    translations_ready = t.ready;
+    translations = isOwner
+      ? ownerTranslations(t.rows, (data as { ai_content: AiContent }).ai_content, (data as { user_images?: unknown }).user_images)
+      : publicTranslations(t.rows);
+  }
+  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner, translations, ...(isOwner ? { translations_ready } : {}) });
 }
 
 /**

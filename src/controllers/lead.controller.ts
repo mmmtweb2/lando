@@ -3,6 +3,8 @@ import { Resend } from 'resend';
 import { supabase } from '../config/supabase';
 import { validateLeadInput } from '../utils/leadInput';
 import { releasePageLead, takePageLead } from '../services/pageLeadGuard';
+import { LANGUAGES, isMissingTranslationsTable, isTranslationLang, type LangCode } from '../services/landingLanguages';
+import { translateLeadMessageToHebrew } from '../services/landingTranslations.service';
 
 function escapeHtml(s: string): string {
   return s
@@ -21,12 +23,16 @@ function waLink(rawPhone: string): string {
   return `https://wa.me/${intl}`;
 }
 
-function buildEmailHtml(p: {
+export function buildEmailHtml(p: {
   businessName: string;
   name: string;
   phone: string;
   email: string | null;
   message: string | null;
+  /** Set when the visitor wrote from a page in another language (README part 142). */
+  lang?: LangCode | null;
+  /** Hebrew translation of the message; null = translation failed (the original is sent with a note). */
+  messageHe?: string | null;
 }): string {
   const row = (label: string, value: string, ltr = false) => `
     <tr>
@@ -65,7 +71,9 @@ function buildEmailHtml(p: {
             ${row('שם מלא', escapeHtml(p.name))}
             ${row('טלפון', escapeHtml(p.phone), true)}
             ${p.email ? row('אימייל', escapeHtml(p.email), true) : ''}
-            ${p.message ? row('הודעה', escapeHtml(p.message)) : ''}
+            ${p.lang ? row('שפת הפנייה', `הפונה כתב/ה מהדף ב${escapeHtml(LANGUAGES[p.lang].heName)}`) : ''}
+            ${p.message ? row(p.lang ? `ההודעה (במקור, ב${escapeHtml(LANGUAGES[p.lang].heName)})` : 'הודעה', `<span dir="auto">${escapeHtml(p.message)}</span>`) : ''}
+            ${p.message && p.lang ? row('ההודעה בעברית', p.messageHe ? escapeHtml(p.messageHe) : 'לא הצלחנו לתרגם את ההודעה הפעם. ההודעה המקורית מופיעה למעלה.') : ''}
           </table>
         </td>
       </tr>
@@ -106,6 +114,9 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     return;
   }
   const { name: safeName, phone: safePhone, email: safeEmail, message: safeMessage } = v.value;
+  // The page language the visitor wrote from (fr / en). Anything else = Hebrew = null.
+  const rawLang = (req.body as { lang?: unknown }).lang;
+  const leadLang: LangCode | null = isTranslationLang(rawLang) ? rawLang : null;
 
   // 1. Load the page FIRST and enforce that it is actually published.
   //
@@ -172,17 +183,16 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
   }
 
   // 2. Persist lead
-  const { data: lead, error: insertErr } = await supabase
+  const baseRow: Record<string, unknown> = { landing_page_id: id, name: safeName, phone: safePhone, email: safeEmail, message: safeMessage };
+  let { data: lead, error: insertErr } = await supabase
     .from('leads')
-    .insert({
-      landing_page_id: id,
-      name: safeName,
-      phone: safePhone,
-      email: safeEmail,
-      message: safeMessage,
-    })
+    .insert(leadLang ? { ...baseRow, lang: leadLang } : baseRow)
     .select('id')
     .single();
+  // Before migration 054 there is no leads.lang: store the lead without it (the email still says the language).
+  if (insertErr && leadLang && isMissingTranslationsTable(insertErr)) {
+    ({ data: lead, error: insertErr } = await supabase.from('leads').insert(baseRow).select('id').single());
+  }
 
   if (insertErr) {
     releasePageLead(id);
@@ -196,17 +206,22 @@ export async function submitLead(req: Request, res: Response): Promise<void> {
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
       try {
+        const messageHe = leadLang && safeMessage ? await translateLeadMessageToHebrew(safeMessage, leadLang) : null;
         const resend = new Resend(apiKey);
         await resend.emails.send({
           from: `Pagey <${process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'}>`,
           to: [page.owner_email],
-          subject: `ליד חדש התקבל מדף הנחיתה של ${page.business_name}!`,
+          subject: leadLang
+            ? `ליד חדש (${LANGUAGES[leadLang].heName}) התקבל מדף הנחיתה של ${page.business_name}!`
+            : `ליד חדש התקבל מדף הנחיתה של ${page.business_name}!`,
           html: buildEmailHtml({
             businessName: page.business_name as string,
             name: safeName,
             phone: safePhone,
             email: safeEmail,
             message: safeMessage,
+            lang: leadLang,
+            messageHe,
           }),
         });
         console.log('[LEAD] Email sent', { lead_id: (lead as { id: string }).id });

@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { shareUrl } from '../lib/pageUrl';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { shareUrl, subdomainPageSlug } from '../lib/pageUrl';
 import { isDesignV3 } from '../lib/designChoice';
 import { PRICING, perPage } from '../config/pricing';
 import { Helmet } from 'react-helmet-async';
@@ -18,8 +18,14 @@ import CouponField, { type CouponQuote } from '../components/CouponField';
 import { safeHttpUrl } from '../lib/safeUrl';
 import ImageEditor from '../components/ImageEditor';
 import type { V3Ctx } from './landingV3/LandingV3';
+import { LangSwitch, LanguagePanel, type PageTranslation } from './landingV3/PageLanguages';
+import { pageStrings } from '../i18n/pageStrings';
 import {
-  CATEGORY_NAMES, HEALTH_HEADINGS, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, hiddenByDefaultFor, templateFor,
+  SOURCE_LANG, TRANSLATION_LANGS, applyTranslation, decideRedirect, editPathToKeys, langDir, langPath, parseLangPath,
+  readLangChoice, rememberAutoRedirect, rememberLangChoice, translatedAlts, type LangCode,
+} from '../i18n/landingLanguages';
+import {
+  CATEGORY_NAMES, IMPLEMENTED_CATEGORIES, SPOKEN_LANGUAGES_DEFAULT, normalizeCategory, parseLanguages, sectionOrderFor, hiddenByDefaultFor, templateFor,
   type CategoryId, type TeamMember,
 } from '../config/pageCategory';
 import { readImgMeta, promoteLegacyHero, altFor, buildSrcSet, focalPosition, intrinsicSize, type ImgMeta, type MetaMap } from '../lib/landingImages';
@@ -169,6 +175,10 @@ interface LandingPage {
   /** Page category (migration 053). Missing or null = a page from before categories = the general template. */
   category?: string | null;
   category_source?: 'auto' | 'manual' | null;
+  /** Page languages (README part 142): visitors get the published ones; the owner every one, with what is out of date. */
+  translations?: PageTranslation[];
+  /** Owner only: false = migration 054 has not run, the languages feature is hidden. */
+  translations_ready?: boolean;
 }
 
 // Snapshot of the caller's page-publish balance + usage, fetched fresh from
@@ -1056,12 +1066,20 @@ function applyEdits(content: AiContent, changes: Record<string, string>): AiCont
   return next;
 }
 
+function designParamNow(): string | null {
+  return typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('design') : null;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LandingViewer({ slugOverride }: { slugOverride?: string } = {}) {
   const { slug: routeSlug } = useParams<{ slug: string }>();
   const slug = slugOverride ?? routeSlug;
   const { user } = useUser();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // The page language this address asks for (/p/<slug>/fr, /b/<sub>/fr, /fr on the page's subdomain).
+  const { lang: urlLang, base: langBase } = parseLangPath(location.pathname, !!subdomainPageSlug());
   const [page, setPage] = useState<LandingPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1179,6 +1197,28 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     if (page) setHiddenSections(page.ai_content.hidden_sections ?? []);
   }, [page]);
 
+  // Edits typed in one language's view never leak into another's.
+  useEffect(() => { setEdits({}); }, [urlLang]);
+
+  // First visit to the bare Hebrew address: a visitor whose browser prefers French/English goes to that
+  // published language, once. A choice made with the switch always wins. Never bots, never the owner.
+  const redirectCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!page || redirectCheckedRef.current) return;
+    redirectCheckedRef.current = true;
+    const published = (page.translations ?? []).filter((t) => t.status === 'published').map((t) => t.lang);
+    if (!published.length || !isDesignV3(designParamNow(), page)) return;
+    const { choice, auto } = readLangChoice(page.slug);
+    const target = decideRedirect({
+      urlLang, navigatorLanguages: navigator.languages ?? [navigator.language], userAgent: navigator.userAgent,
+      published, explicitChoice: choice, alreadyRedirected: auto,
+      isOwner: !!page.isOwner || sessionStorage.getItem('admin_authed') === 'true',
+    });
+    if (!target) return;
+    if (!choice) rememberAutoRedirect(page.slug, target);
+    navigate(langPath(langBase, target) + window.location.search, { replace: true });
+  }, [page, urlLang, langBase, navigate]);
+
   // Minimal v1 page-view analytics (see migrations/019_page_analytics.sql).
   // Only real visitors count — never the owner's own edit-mode views, which
   // would otherwise drown out actual traffic every time they check their
@@ -1198,8 +1238,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // Default: v2 for pages created on/after DESIGN_V2_FROM (new pages), the
   // classic design for older pages. ?design=2 / ?design=1 force either way.
   // Child (SEO/autopilot) pages are never switched by default.
-  const designParam = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('design') : null;
+  const designParam = designParamNow();
   const designV2 = designParam === '2'
     || (designParam !== '1'
       && !!page && !page.parent_id
@@ -1259,7 +1298,21 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     </div>
   );
 
-  const { ai_content, business_name, phone_number, logo_url, user_images, enable_form, design_style, whiteLabel } = page;
+  // ── Page language (README part 142) ─────────────────────────────────────
+  // Only the V3 look is multilingual; classic/v2 pages and child pages stay Hebrew. A visitor sees published
+  // languages; the owner also sees drafts. A language the page does not have shows the Hebrew page.
+  const isOwnerView = !!page.isOwner || sessionStorage.getItem('admin_authed') === 'true';
+  const multilingual = designV3 && !page.parent_id;
+  const allTranslations: PageTranslation[] = multilingual ? (page.translations ?? []) : [];
+  const visibleTranslations = allTranslations.filter((t) => t.status === 'published' || isOwnerView);
+  const activeTr = urlLang !== SOURCE_LANG ? visibleTranslations.find((t) => t.lang === urlLang) ?? null : null;
+  const viewLang: LangCode = activeTr ? urlLang : SOURCE_LANG;
+  const viewDir = langDir(viewLang);
+  const T = pageStrings(viewLang);
+  const switchLangs = [SOURCE_LANG, ...TRANSLATION_LANGS.filter((l) => visibleTranslations.some((t) => t.lang === l))];
+
+  const { business_name, phone_number, logo_url, user_images, enable_form, design_style, whiteLabel } = page;
+  const ai_content: AiContent = activeTr ? applyTranslation(page.ai_content, activeTr.content) : page.ai_content;
   // Owner-typed links become an <a href> on a public page: only absolute http(s) URLs may render
   // (a stored `javascript:` href would run script in the visitor's browser).
   const facebook_url = safeHttpUrl(page.facebook_url);
@@ -1502,7 +1555,31 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   async function save() {
     if (!page) return;
     setSaveStatus('saving');
-    const updated = applyEdits(page.ai_content, edits);
+    // In a language's view the typed texts belong to that language (they become the owner's own wording).
+    if (activeTr && Object.keys(edits).length) {
+      const changes: Record<string, string> = {};
+      for (const [path, value] of Object.entries(edits)) Object.assign(changes, editPathToKeys(path, value, page.ai_content));
+      try {
+        const r = await authFetch(`/api/landing/${page.id}/translations/${activeTr.lang}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ changes }),
+        });
+        if (!r.ok) throw new Error('save failed');
+        const d = await r.json() as { translations: PageTranslation[] };
+        setPage((prev) => prev ? { ...prev, translations: d.translations } : prev);
+        setEdits({});
+        if (!colorOverrides.primary && !colorOverrides.accent) {
+          setSaveStatus('saved');
+          setIsEditingMode(false);
+          setTimeout(() => setSaveStatus('idle'), 2500);
+          return;
+        }
+      } catch {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+        return;
+      }
+    }
+    const updated = applyEdits(page.ai_content, activeTr ? {} : edits);
     // Merge global palette edits (primary drives both primary+secondary for coherence).
     if (colorOverrides.primary) {
       updated.design_system = { ...updated.design_system, primary_color: colorOverrides.primary, secondary_color: colorOverrides.primary };
@@ -1636,6 +1713,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   })();
 
   const imgMeta: MetaMap = readImgMeta(parsedImages);
+  if (activeTr) {
+    for (const [url, alt] of Object.entries(translatedAlts(activeTr.content))) if (imgMeta[url]) imgMeta[url] = { ...imgMeta[url], alt };
+  }
 
   if (Array.isArray(parsedImages)) {
     // v1: upload or stock — array of landscape URLs. An upload page written before the hero-first change
@@ -1769,7 +1849,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const sectionHidden = (id: string) => hiddenSections.includes(id) || (offByDefault.includes(id as never) && !hiddenSections.includes(`${id}:on`));
 
   // CTA text: v2 primary_cta_text, v1 contact.cta_text
-  const ctaText = ai_content.hero?.primary_cta_text ?? ai_content.contact?.cta_text ?? 'צרו קשר עכשיו';
+  const ctaText = ai_content.hero?.primary_cta_text ?? ai_content.contact?.cta_text ?? T.ctaDefault;
 
   // Hero tagline: v2 subtitle, v1 slogan
   const heroTagline = ai_content.hero?.subtitle ?? ai_content.hero?.slogan;
@@ -1796,9 +1876,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const ctaEmail = ai_content.contact?.email || '';
   // The owner's chosen WhatsApp text is never overridden. Only a CHILD (SEO) page gets
   // a suffix naming the page, so the owner can see which page produced the inquiry.
-  const waBaseMessage = ai_content.contact?.whatsapp_message ?? `שלום, מצאתי את הדף של ${business_name} ואשמח לקבל פרטים.`;
+  // In another page language the opening message is that language's (translated, or the default in it).
+  const waBaseMessage = ai_content.contact?.whatsapp_message ?? T.waDefault(business_name);
   const waMessage = page.parent_id
-    ? `${waBaseMessage} (עמוד: ${ai_content.hero?.title || business_name})`
+    ? `${waBaseMessage}${T.waChildSuffix(ai_content.hero?.title || business_name)}`
     : waBaseMessage;
   const waUrl = buildWhatsAppUrl(phone, waMessage);
 
@@ -4011,10 +4092,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           phone: leadPhone.trim(),
           email: leadEmail.trim() || undefined,
           message: leadMessage.trim() || undefined,
+          ...(viewLang !== SOURCE_LANG ? { lang: viewLang } : {}),
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
+        // The server's messages are Hebrew; another page language gets its own words by the kind of failure.
+        if (viewLang !== SOURCE_LANG) {
+          throw new Error(res.status === 400 ? T.lead.errInvalid : res.status === 403 ? T.lead.errClosed : res.status === 429 ? T.lead.errTooMany : T.lead.errGeneric);
+        }
         throw new Error(body.error ?? `שגיאה ${res.status}`);
       }
       setLeadSent(true);
@@ -4023,38 +4109,38 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       setLeadEmail('');
       setLeadMessage('');
     } catch (err) {
-      setLeadError(err instanceof Error ? err.message : 'שגיאה בשליחת הפרטים. אנא נסו שוב.');
+      setLeadError(err instanceof Error && err.message ? err.message : T.lead.errGeneric);
     } finally {
       setLeadSubmitting(false);
     }
   }
 
   // Shown under every lead form (privacy audit 16.11): who gets the details and that they are optional.
-  const leadPrivacyNote = `הפרטים נמסרים ל${business_name || 'בעל העסק'} לצורך חזרה אליכם, ונשמרים במערכת Pagey המשמשת אותו. מסירתם אינה חובה.`;
+  const leadPrivacyNote = T.lead.privacy(business_name);
 
   function renderLeadForm(v3 = false) {
     // Design V3 (Pinkas): same state and submit handler, drawn in the page's paper and ink (landingV3.css).
     if (v3) {
       return (
         <section className="lp3-lead" aria-labelledby="lp3-lead-h" data-rv="">
-          <p className="lp3-lead-kick">השאירו פרטים</p>
-          <h2 id="lp3-lead-h">נחזור אליכם בהקדם</h2>
+          <p className="lp3-lead-kick">{T.lead.kicker}</p>
+          <h2 id="lp3-lead-h">{T.lead.heading}</h2>
           {leadSent ? (
             <div className="lp3-lead-sent" role="status">
               <span aria-hidden>✓</span>
               <div>
-                <p><b>הפרטים התקבלו.</b></p>
-                <p>ניצור איתכם קשר בהקדם האפשרי.</p>
+                <p><b>{T.lead.sentTitle}</b></p>
+                <p>{T.lead.sentBody}</p>
               </div>
             </div>
           ) : (
             <>
-              {isDraft && <p className="lp3-lead-note" role="status">הדף עדיין בטיוטה. אי אפשר לשלוח פניות דרך הטופס עד שהדף מתפרסם.</p>}
+              {isDraft && <p className="lp3-lead-note" role="status">{T.lead.draftNote}</p>}
               <form onSubmit={handleLeadSubmit} className="lp3-lead-form">
                 {[
-                  { id: 'name', label: 'שם מלא', type: 'text', value: leadName, set: setLeadName, placeholder: 'ישראל ישראלי', dir: 'rtl' as const, required: true, ac: 'name' },
-                  { id: 'phone', label: 'טלפון', type: 'tel', value: leadPhone, set: setLeadPhone, placeholder: '050-0000000', dir: 'ltr' as const, required: true, ac: 'tel' },
-                  { id: 'email', label: 'אימייל (לא חובה)', type: 'email', value: leadEmail, set: setLeadEmail, placeholder: 'you@example.com', dir: 'ltr' as const, required: false, ac: 'email' },
+                  { id: 'name', label: T.lead.name, type: 'text', value: leadName, set: setLeadName, placeholder: T.lead.namePh, dir: 'auto' as const, required: true, ac: 'name' },
+                  { id: 'phone', label: T.lead.phone, type: 'tel', value: leadPhone, set: setLeadPhone, placeholder: '050-0000000', dir: 'ltr' as const, required: true, ac: 'tel' },
+                  { id: 'email', label: T.lead.email, type: 'email', value: leadEmail, set: setLeadEmail, placeholder: 'you@example.com', dir: 'ltr' as const, required: false, ac: 'email' },
                 ].map((f) => (
                   <div key={f.id} className="lp3-field">
                     <label htmlFor={`lp3-${f.id}`}>{f.label}</label>
@@ -4063,12 +4149,12 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   </div>
                 ))}
                 <div className="lp3-field">
-                  <label htmlFor="lp3-msg">הודעה (לא חובה)</label>
+                  <label htmlFor="lp3-msg">{T.lead.message}</label>
                   <textarea id="lp3-msg" rows={3} value={leadMessage} onChange={(e) => setLeadMessage(e.target.value)}
-                    placeholder="ספרו לנו איך נוכל לעזור" disabled={leadSubmitting} />
+                    placeholder={T.lead.messagePh} dir="auto" disabled={leadSubmitting} />
                 </div>
                 {leadError && <p className="lp3-lead-err" role="alert">{leadError}</p>}
-                <button type="submit" className="lp3-submit" disabled={isDraft || leadSubmitting}>{leadSubmitting ? 'שולח…' : 'שליחה'}</button>
+                <button type="submit" className="lp3-submit" disabled={isDraft || leadSubmitting}>{leadSubmitting ? T.lead.sending : T.lead.submit}</button>
                 <p className="lp3-lead-privacy" style={{ fontSize: 13, opacity: 0.75, marginTop: 8 }}>{leadPrivacyNote}</p>
               </form>
             </>
@@ -4197,23 +4283,23 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       template: isHealth ? 'health' : 'general',
       order: pageOrder,
       team: ai_content.team ?? [],
-      teamHeading: HEALTH_HEADINGS.team,
+      teamHeading: T.health.team,
       spokenLanguages: ai_content.spoken_languages?.length ? ai_content.spoken_languages : SPOKEN_LANGUAGES_DEFAULT,
       practical: ai_content.practical_info ?? {},
       reviewsSlot: null,
       headings: isHealth ? {
-        services: HEALTH_HEADINGS.services,
-        process: HEALTH_HEADINGS.process,
-        testimonials: HEALTH_HEADINGS.testimonials,
-        faq: HEALTH_HEADINGS.faq,
+        services: T.health.services,
+        process: T.health.process,
+        testimonials: T.health.testimonials,
+        faq: T.health.faq,
       } : {
-        services: ai_content.services_heading || 'מה אנחנו מציעים',
-        process: ai_content.process_heading || 'איך זה עובד',
-        testimonials: ai_content.testimonials_heading || 'מה אומרים עלינו',
-        faq: ai_content.faq_heading || 'שאלות נפוצות',
+        services: ai_content.services_heading || T.headings.services,
+        process: ai_content.process_heading || T.headings.process,
+        testimonials: ai_content.testimonials_heading || T.headings.testimonials,
+        faq: ai_content.faq_heading || T.headings.faq,
       },
       closing: {
-        headline: isHealth ? 'נשמח לשמוע מכם' : `מוכנים להתחיל עם ${business_name}?`,
+        headline: isHealth ? T.closingHealth : T.closingGeneral(business_name),
         subline: ai_content.cta_banner_subline || '',
         waMessage: !useExternalLink && waUrl ? waMessage : null,
       },
@@ -4223,7 +4309,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       reduceMotion: !!reduceMotion, topPad: isDraft ? 112 : 64,
       ctaHref: primaryCtaHref, ctaIcon, isWhatsApp: !useExternalLink,
       serviceHref: (title: string) => {
-        const u = buildWhatsAppUrl(phone, `שלום, אשמח לשמוע על ${title}`);
+        const u = buildWhatsAppUrl(phone, T.waService(title));
         return !useExternalLink && u ? u : primaryCtaHref;
       },
       onCta: (href: string) => handleCtaClick(href),
@@ -4247,6 +4333,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       legal: (
         <PageLegalFooter
           variant="v3"
+          lang={viewLang}
           businessName={business_name}
           phone={ai_content.contact?.phone || phone_number || undefined}
           email={ai_content.contact?.email || undefined}
@@ -4257,10 +4344,17 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       ),
       credit: whiteLabel ? null : (
         <div className={`lp3-credit${toolbarVisible ? ' pad' : ''}`}>
-          <a href="/"><LandoMark size={16} /> נוצר באמצעות Pagey</a>
+          <a href="/" lang={viewLang}><LandoMark size={16} /> {T.credit}</a>
         </div>
       ),
       waIcon: <WhatsAppIcon size={20} />,
+      lang: viewLang,
+      dir: viewDir,
+      t: T,
+      langSwitch: switchLangs.length > 1 ? (
+        <LangSwitch current={viewLang} langs={switchLangs} base={langBase} label={T.langNavLabel}
+          onPick={(l, href) => { rememberLangChoice(page!.slug, l); navigate(href + window.location.search); window.scrollTo(0, 0); }} />
+      ) : null,
     };
   }
 
@@ -4293,14 +4387,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             (Two independent passes today hit this same bug — logic below is
             the merged, equivalent fix.) */}
         <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
-        <link rel="canonical" href={page.canonical_url ?? shareUrl(page.slug, page.subdomain)} />
+        <html lang={viewLang} dir={viewDir} />
+        <link rel="canonical" href={langPath(page.canonical_url ?? shareUrl(page.slug, page.subdomain), viewLang)} />
         <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
         <meta name="description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta property="og:description" content={ai_content.seo_description ?? ogDescription} />
         <meta property="og:type" content="website" />
         {heroImageUrl && <meta property="og:image" content={heroImageUrl} />}
-        <meta property="og:locale" content="he_IL" />
+        <meta property="og:locale" content={viewLang === 'fr' ? 'fr_FR' : viewLang === 'en' ? 'en_US' : 'he_IL'} />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={(ai_content.seo_title || business_name || 'דף נחיתה')} />
         <meta name="twitter:description" content={ai_content.seo_description ?? ogDescription} />
@@ -4454,21 +4549,21 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       {/* Primary CTA FAB — WhatsApp or external link */}
       {designV2 ? (
         <motion.a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
-          aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
+          aria-label={useExternalLink ? ctaText : T.waFabLabel}
           initial={reduceMotion ? false : { scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 1.2 }}
           whileHover={reduceMotion ? undefined : { scale: 1.06 }} whileTap={reduceMotion ? undefined : { scale: 0.95 }}
-          className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center gap-2.5 h-14 w-14 sm:w-auto sm:px-6 rounded-full text-white font-bold text-sm`}
+          className={`fixed ${fabBottom} ${viewDir === 'ltr' ? 'right-6' : 'left-6'} z-50 flex items-center justify-center gap-2.5 h-14 w-14 sm:w-auto sm:px-6 rounded-full text-white font-bold text-sm`}
           style={{ backgroundColor: useExternalLink ? primary : '#25D366', boxShadow: '0 14px 34px -8px rgba(0,0,0,0.4)' }}>
           <span className="absolute inset-0 rounded-full animate-ping opacity-25 pointer-events-none"
             style={{ backgroundColor: useExternalLink ? primary : '#4ade80' }} />
-          <span className="relative hidden sm:inline">{useExternalLink ? ctaText : 'דברו איתנו'}</span>
+          <span className="relative hidden sm:inline">{useExternalLink ? ctaText : T.waFab}</span>
           <span className="relative">{useExternalLink ? <ExternalLinkIcon size={22} /> : <WhatsAppIcon size={26} />}</span>
         </motion.a>
       ) : (
       <a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
-        aria-label={useExternalLink ? ctaText : 'פתח שיחת WhatsApp'}
-        className={`fixed ${fabBottom} left-6 z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
+        aria-label={useExternalLink ? ctaText : T.waFabLabel}
+        className={`fixed ${fabBottom} ${viewDir === 'ltr' ? 'right-6' : 'left-6'} z-50 flex items-center justify-center w-14 h-14 rounded-full text-white shadow-xl transition-all duration-300`}
         style={{ backgroundColor: useExternalLink ? primary : '#25D366' }}>
         <span className="absolute inset-0 rounded-full animate-ping opacity-30"
           style={{ backgroundColor: useExternalLink ? primary : '#4ade80' }} />
@@ -4849,8 +4944,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
           {isEditingMode && (
             <div className="flex items-center gap-3 min-w-0">
-              {/* AI rewrite buttons — coming soon */}
-              <div className="flex items-center gap-2 flex-shrink-0">
+              {/* AI rewrite buttons — coming soon. Not in another language's view: they rewrite the Hebrew. */}
+              <div className={`flex items-center gap-2 flex-shrink-0${activeTr ? ' hidden' : ''}`}>
                 <button
                   onClick={() => handleRewrite('hero')}
                   disabled={rewriteStatus === 'rewriting'}
@@ -5018,6 +5113,19 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             </div>
           )}
         </>
+      )}
+
+      {canEdit && multilingual && (
+        <LanguagePanel
+          pageId={page.id}
+          ready={!!page.translations_ready}
+          translations={allTranslations}
+          current={viewLang}
+          isHealth={isHealth}
+          editing={isEditingMode}
+          onChange={(t) => setPage((prev) => prev ? { ...prev, translations: t } : prev)}
+          onGo={(l) => { navigate(langPath(langBase, l) + window.location.search); window.scrollTo(0, 0); }}
+        />
       )}
 
       {imageNote && (
