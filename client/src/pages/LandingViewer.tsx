@@ -1902,7 +1902,10 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     ?? (ctaEmail ? `mailto:${ctaEmail}` : phone ? `tel:${phone}` : externalLink ?? '#');
 
   // Non-WhatsApp methods use the brand-color styling; WhatsApp keeps its green.
-  const useExternalLink = ctaMethod !== 'whatsapp';
+  // No WhatsApp number on the page = never a WhatsApp button (the CTA falls back to what exists).
+  const useExternalLink = ctaMethod !== 'whatsapp' || !waUrl;
+  // Nothing usable at all = no floating button rather than a dead one.
+  const showFab = primaryCtaHref !== '#';
 
   // Minimal v1 CTA-click analytics (see migrations/019_page_analytics.sql).
   // Fire-and-forget alongside the CTA's own href navigation (`target="_blank"`,
@@ -4547,7 +4550,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       {designV2 && !designV3 && <ScrollProgress color={primary} />}
 
       {/* Primary CTA FAB — WhatsApp or external link */}
-      {designV2 ? (
+      {!showFab ? null : designV2 ? (
         <motion.a href={primaryCtaHref} target="_blank" rel="noopener noreferrer" onClick={() => handleCtaClick()}
           aria-label={useExternalLink ? ctaText : T.waFabLabel}
           initial={reduceMotion ? false : { scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}

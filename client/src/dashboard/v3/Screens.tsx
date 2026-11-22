@@ -141,7 +141,7 @@ function Leads({ summary }: { summary: LeadsSummary }) {
       {summary.month_total > 0 ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Tile icon={<MessageCircle size={18} />} label="וואטסאפ" value={summary.month_whatsapp} />
-          <Tile icon={<Phone size={18} />} label="שיחות" value={summary.month_call} />
+          <Tile icon={<Phone size={18} />} label="לחיצות לחיוג" value={summary.month_call} />
           <Tile icon={<FileText size={18} />} label="טפסים" value={summary.month_form} />
           <Tile icon={<Mail size={18} />} label="אימייל" value={summary.month_email} />
         </div>
