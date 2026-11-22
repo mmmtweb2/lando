@@ -22,6 +22,32 @@ const TAB_KEY = 'pagey_admin_tab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+const CATEGORY_HE: Record<string, string> = { general: 'כללי', health: 'בריאות', professional: 'שירותים מקצועיים', nonprofit: 'עמותה', arts_events: 'אמנים ואירועים', food: 'אוכל ואירוח', beauty: 'יופי וטיפוח', trades: 'בעלי מלאכה' };
+
+/** Bring an existing page up to date: the matching template, and French/English (README part 145). */
+function PageUpgrade({ id, adminFetch }: { id: string; adminFetch: (u: string, i?: RequestInit) => Promise<Response> }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = async (key: string, url: string, body?: unknown) => {
+    setBusy(key); setMsg(null);
+    try {
+      const r = await adminFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      const j = await r.json().catch(() => ({})) as { error?: string; category?: string; reason?: string; failed?: number };
+      if (!r.ok) setMsg(j.error ?? 'הפעולה נכשלה');
+      else if (key === 'cat') setMsg(j.reason === 'manual' ? `בעל הדף בחר בעצמו: ${CATEGORY_HE[j.category ?? ''] ?? j.category}` : `תבנית: ${CATEGORY_HE[j.category ?? 'general'] ?? j.category}`);
+      else setMsg(j.failed ? `נוספה, ${j.failed} טקסטים נשארו בעברית` : 'השפה נוספה');
+    } catch { setMsg('הפעולה נכשלה'); } finally { setBusy(null); }
+  };
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <button type="button" disabled={!!busy} onClick={() => void run('cat', `/api/admin/pages/${id}/category`)} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'cat' ? 'מזהה…' : 'תבנית לפי סוג העסק'}</button>
+      <button type="button" disabled={!!busy} onClick={() => void run('fr', `/api/admin/pages/${id}/translations`, { lang: 'fr' })} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'fr' ? 'מתרגם…' : '+ צרפתית'}</button>
+      <button type="button" disabled={!!busy} onClick={() => void run('en', `/api/admin/pages/${id}/translations`, { lang: 'en' })} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'en' ? 'מתרגם…' : '+ אנגלית'}</button>
+      {msg && <span className="text-slate-500" role="status">{msg}</span>}
+    </div>
+  );
+}
+
 interface PageRow {
   id: string;
   slug: string;
@@ -1493,6 +1519,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3.5">
                           <span className="font-semibold text-slate-700">{p.business_name}</span>
                           <p className="text-xs text-slate-400 mt-0.5 font-mono" dir="ltr">{p.slug}</p>
+                          <PageUpgrade id={p.id} adminFetch={adminFetch} />
                         </td>
 
                         {/* Owner */}
