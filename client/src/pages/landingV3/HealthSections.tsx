@@ -120,8 +120,15 @@ export function renderPracticalGuide(kit: Kit): ReactNode {
   const rows: Array<{ label: string; node: ReactNode }> = [];
   if (c.address) rows.push({ label: c.t.guide.address, node: <span dir="auto">{c.address}</span> });
   if (c.hours) rows.push({ label: c.t.guide.hours, node: <span style={{ whiteSpace: 'pre-line' }}>{c.hours}</span> });
-  if (c.isEditing || isFilled(parking)) rows.push({ label: c.t.guide.parking, node: c.isEditing ? <Field c={c} as="span" path="practical_info.parking" value={parking} hint={FIELD_HINTS.parking} /> : <span>{parking}</span> });
-  if (c.isEditing || isFilled(access)) rows.push({ label: c.t.guide.accessibility, node: c.isEditing ? <Field c={c} as="span" path="practical_info.accessibility" value={access} hint={FIELD_HINTS.accessibility} /> : <span>{access}</span> });
+  if (c.areas) rows.push({ label: c.t.guide.areas, node: <span dir="auto">{c.areas}</span> });
+  // parking / accessibility the Google listing states come from the business card (README part 143): shown, not edited here
+  const fromCard = (k: string) => c.cardFacts.includes(k);
+  const cardValue = (k: 'parking' | 'accessibility') => (k === 'parking' ? c.practical.parking : c.practical.accessibility) ?? '';
+  const cardNote = c.isEditing ? <small className="card-src"> · מהכרטיס בגוגל</small> : null;
+  if (fromCard('parking')) rows.push({ label: c.t.guide.parking, node: <span>{cardValue('parking')}{cardNote}</span> });
+  else if (c.isEditing || isFilled(parking)) rows.push({ label: c.t.guide.parking, node: c.isEditing ? <Field c={c} as="span" path="practical_info.parking" value={parking} hint={FIELD_HINTS.parking} /> : <span>{parking}</span> });
+  if (fromCard('accessibility')) rows.push({ label: c.t.guide.accessibility, node: <span>{cardValue('accessibility')}{cardNote}</span> });
+  else if (c.isEditing || isFilled(access)) rows.push({ label: c.t.guide.accessibility, node: c.isEditing ? <Field c={c} as="span" path="practical_info.accessibility" value={access} hint={FIELD_HINTS.accessibility} /> : <span>{access}</span> });
 
   return (
     <section className="wrap visit guide"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>

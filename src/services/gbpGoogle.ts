@@ -171,6 +171,23 @@ export async function listReviews(access: string, account: string, location: str
   return parseReviews(body);
 }
 
+/**
+ * The overall rating and review count of the listing (`averageRating`, `totalReviewCount` on the v4
+ * reviews.list answer), or null when Google sent no usable numbers.
+ */
+export function parseReviewSummary(resp: any): { average: number; total: number } | null {
+  const average = Number(resp?.averageRating), total = Number(resp?.totalReviewCount);
+  if (!Number.isFinite(average) || !Number.isInteger(total) || average < 1 || average > 5 || total < 0) return null;
+  return { average, total };
+}
+
+/** Newest 50 reviews of a location with the listing's overall rating and count (the landing page's reviews, README part 143). */
+export async function listReviewsWithSummary(access: string, account: string, location: string, f: Fetch = fetch): Promise<{ reviews: GbpReview[]; summary: { average: number; total: number } | null }> {
+  if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location)) throw new GbpError('google', 'bad_location');
+  const body = await getJson(`https://mybusiness.googleapis.com/v4/${account}/${location}/reviews?pageSize=50&orderBy=updateTime%20desc`, access, f, 'reviews');
+  return { reviews: parseReviews(body), summary: parseReviewSummary(body) };
+}
+
 /** Publishes (or replaces) the owner's reply to one review. Called only after the owner approved the text. */
 export async function postReply(access: string, account: string, location: string, reviewId: string, comment: string, f: Fetch = fetch): Promise<void> {
   if (!ACCOUNT_RE.test(account) || !LOCATION_RE.test(location) || !/^[\w-]{5,200}$/.test(reviewId)) throw new GbpError('google', 'bad_location');

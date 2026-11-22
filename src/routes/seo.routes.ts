@@ -18,6 +18,7 @@ import * as gbp from '../controllers/gbp.controller';
 import * as auto from '../controllers/autopilot.controller';
 import * as profile from '../controllers/gbpProfile.controller';
 import { postPolish } from '../controllers/businessPolish.controller';
+import * as pageGoogle from '../controllers/pageGoogle.controller';
 import { handlePhotoUpload } from '../middleware/upload.middleware';
 import { sendFeedback } from '../controllers/feedback.controller';
 import { unsubscribeApply, unsubscribePage } from '../controllers/digest.controller';
@@ -163,5 +164,8 @@ router.post('/gbp/profile/:field/polish', ...profileGated, polishLimiter, postPo
 router.get('/gbp/photos', ...profileGated, profile.getPhotos);
 router.post('/gbp/photos', ...profileGated, photoLimiter, handlePhotoUpload, profile.postPhoto);
 router.delete('/gbp/photos/:id', ...profileGated, profile.deletePhoto);
+// What the business's landing page and the listing share (README part 143).
+router.get('/gbp/page-link', ...profileGated, pageGoogle.getPageLink);
+router.post('/gbp/page-link/photos', ...profileGated, photoLimiter, pageGoogle.postPagePhotos);
 
 export default router;

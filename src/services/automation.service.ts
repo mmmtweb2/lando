@@ -8,41 +8,60 @@ export type PostsMode = 'auto' | 'approve' | 'off';
 export type RepliesMode = 'auto_positive' | 'approve' | 'off';
 /** What happens to the Google listing's website when the business's own page is published (migration 050). */
 export type WebsiteMode = 'auto' | 'ask' | 'off';
-export interface Automation { postsMode: PostsMode; repliesMode: RepliesMode; websiteMode: WebsiteMode; consentAt: string | null }
+/** What happens to a new photo of the business's own page: added to the Google listing by itself, offered in the dashboard, or never (migration 055). */
+export type PhotosMode = 'auto' | 'ask' | 'off';
+export interface Automation { postsMode: PostsMode; repliesMode: RepliesMode; websiteMode: WebsiteMode; photosMode: PhotosMode; consentAt: string | null }
 
 export const POSTS_MODES: PostsMode[] = ['auto', 'approve', 'off'];
 export const REPLIES_MODES: RepliesMode[] = ['auto_positive', 'approve', 'off'];
 export const WEBSITE_MODES: WebsiteMode[] = ['auto', 'ask', 'off'];
+export const PHOTOS_MODES: PhotosMode[] = ['auto', 'ask', 'off'];
 /** What an account gets before it chose anything. Nothing runs without consentAt. */
-export const DEFAULT_AUTOMATION: Automation = { postsMode: 'auto', repliesMode: 'auto_positive', websiteMode: 'auto', consentAt: null };
+export const DEFAULT_AUTOMATION: Automation = { postsMode: 'auto', repliesMode: 'auto_positive', websiteMode: 'auto', photosMode: 'auto', consentAt: null };
 
 export const autopilotEnabled = (): boolean => process.env.AUTOPILOT_ENABLED === 'true';
 export const missingTable = (m?: string, code?: string): boolean => code === '42P01' || /does not exist|schema cache|PGRST205/i.test(m ?? '');
 
-/** Before migration 050 the website_mode column does not exist: never let that look like "no row" (it would drop the consent). */
-const noWebsiteCol = (e: { message?: string; code?: string } | null): boolean => !!e && (e.code === '42703' || /website_mode/.test(e.message ?? ''));
+/** A column added by a later migration is missing: 050 (website_mode) or 055 (photos_mode). Never let that look like "no row" (it would drop the consent). */
+const noCol = (e: { message?: string; code?: string } | null, col: 'website_mode' | 'photos_mode'): boolean =>
+  !!e && (new RegExp(col).test(e.message ?? '') || (e.code === '42703' && !/column/.test(e.message ?? '')));
+const noWebsiteCol = (e: { message?: string; code?: string } | null): boolean => noCol(e, 'website_mode');
+const noPhotosCol = (e: { message?: string; code?: string } | null): boolean => noCol(e, 'photos_mode');
+
+const BASE_COLS = 'posts_mode, replies_mode, consent_at';
 
 export async function getAutomation(email: string): Promise<Automation> {
-  let { data, error } = await supabase.from('seo_automation').select('posts_mode, replies_mode, consent_at, website_mode').eq('owner_email', email).maybeSingle();
-  if (noWebsiteCol(error)) ({ data, error } = await supabase.from('seo_automation').select('posts_mode, replies_mode, consent_at').eq('owner_email', email).maybeSingle());
+  let { data, error } = await supabase.from('seo_automation').select(`${BASE_COLS}, website_mode, photos_mode`).eq('owner_email', email).maybeSingle();
+  if (noPhotosCol(error) && !noWebsiteCol(error)) ({ data, error } = await supabase.from('seo_automation').select(`${BASE_COLS}, website_mode`).eq('owner_email', email).maybeSingle());
+  if (noWebsiteCol(error) || noPhotosCol(error)) ({ data, error } = await supabase.from('seo_automation').select(BASE_COLS).eq('owner_email', email).maybeSingle());
   if (error) { if (missingTable(error.message, error.code)) return DEFAULT_AUTOMATION; throw new Error(error.message); }
-  const r = data as { posts_mode: PostsMode; replies_mode: RepliesMode; consent_at: string | null; website_mode?: WebsiteMode | null } | null;
-  return r ? { postsMode: r.posts_mode, repliesMode: r.replies_mode, websiteMode: r.website_mode && WEBSITE_MODES.includes(r.website_mode) ? r.website_mode : 'auto', consentAt: r.consent_at } : DEFAULT_AUTOMATION;
+  const r = data as { posts_mode: PostsMode; replies_mode: RepliesMode; consent_at: string | null; website_mode?: WebsiteMode | null; photos_mode?: PhotosMode | null } | null;
+  return r ? {
+    postsMode: r.posts_mode, repliesMode: r.replies_mode,
+    websiteMode: r.website_mode && WEBSITE_MODES.includes(r.website_mode) ? r.website_mode : 'auto',
+    photosMode: r.photos_mode && PHOTOS_MODES.includes(r.photos_mode) ? r.photos_mode : 'auto',
+    consentAt: r.consent_at,
+  } : DEFAULT_AUTOMATION;
 }
 
 /** Saves the customer's choice. `consent: true` stamps the moment they agreed to automatic publishing. */
-export async function setAutomation(email: string, patch: { postsMode?: PostsMode; repliesMode?: RepliesMode; websiteMode?: WebsiteMode; consent?: boolean }, now = new Date()): Promise<Automation> {
+export async function setAutomation(email: string, patch: { postsMode?: PostsMode; repliesMode?: RepliesMode; websiteMode?: WebsiteMode; photosMode?: PhotosMode; consent?: boolean }, now = new Date()): Promise<Automation> {
   const cur = await getAutomation(email);
   const next: Automation = {
     postsMode: patch.postsMode ?? cur.postsMode,
     repliesMode: patch.repliesMode ?? cur.repliesMode,
     websiteMode: patch.websiteMode ?? cur.websiteMode,
+    photosMode: patch.photosMode ?? cur.photosMode,
     consentAt: patch.consent ? (cur.consentAt ?? now.toISOString()) : cur.consentAt,
   };
   const base = { owner_email: email, posts_mode: next.postsMode, replies_mode: next.repliesMode, consent_at: next.consentAt, updated_at: now.toISOString() };
-  let { error } = await supabase.from('seo_automation').upsert({ ...base, website_mode: next.websiteMode }, { onConflict: 'owner_email' });
+  let { error } = await supabase.from('seo_automation').upsert({ ...base, website_mode: next.websiteMode, photos_mode: next.photosMode }, { onConflict: 'owner_email' });
+  if (noPhotosCol(error) && !noWebsiteCol(error)) {
+    if (patch.photosMode) throw new Error('photos_mode needs migration 055');
+    ({ error } = await supabase.from('seo_automation').upsert({ ...base, website_mode: next.websiteMode }, { onConflict: 'owner_email' }));
+  }
   if (noWebsiteCol(error)) {
-    if (patch.websiteMode) throw new Error('website_mode needs migration 050');
+    if (patch.websiteMode || patch.photosMode) throw new Error('website_mode needs migration 050');
     ({ error } = await supabase.from('seo_automation').upsert(base, { onConflict: 'owner_email' }));
   }
   if (error) throw new Error(error.message);
@@ -57,7 +76,9 @@ export type ActivityKind =
   | 'reply_published' | 'reply_drafted'
   | 'page_created'
   // docs/gbp-sync-spec.md: what we changed in the customer's Google listing.
-  | 'card_field_synced' | 'photo_added' | 'photo_removed';
+  | 'card_field_synced' | 'photo_added' | 'photo_removed'
+  // README part 143: photos taken from the Google listing into the landing page.
+  | 'photo_to_page';
 export interface Activity { id: string; kind: ActivityKind; title: string; detail: string | null; createdAt: string }
 
 /**

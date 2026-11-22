@@ -8,6 +8,7 @@ import { LEAD_MAX_BODY_BYTES } from '../utils/leadInput';
 import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.middleware';
 import { prefillFromGoogle } from '../controllers/landingPrefill.controller';
 import { addTranslation, editTranslation, listTranslations, publishTranslation, refreshTranslation, removeTranslation } from '../controllers/landingTranslation.controller';
+import { getGooglePhotos, postGooglePhotos } from '../controllers/pageGoogle.controller';
 
 const router = Router();
 
@@ -107,6 +108,11 @@ router.patch('/:id/translations/:lang', requireAuth, requireOwnPage, editTransla
 router.post('/:id/translations/:lang/refresh', requireAuth, requireOwnPage, aiLimiter, refreshTranslation);
 router.post('/:id/translations/:lang/publish', requireAuth, requireOwnPage, publishTranslation);
 router.delete('/:id/translations/:lang', requireAuth, requireOwnPage, removeTranslation);
+// Photos from the business's Google listing into the page gallery (README part 143). Each import fetches and
+// processes photos: same hourly budget as the other heavy editor actions.
+const googlePhotosLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.get('/:id/google-photos', googlePhotosLimiter, requireAuth, requireOwnPage, getGooglePhotos);
+router.post('/:id/google-photos', aiLimiter, requireAuth, requireOwnPage, postGooglePhotos);
 router.patch('/:id', requireAuth, requireOwnPage, updateLandingPage);
 router.delete('/:id', requireAuth, requireOwnPage, deleteLandingPage);
 

@@ -16,6 +16,9 @@ export interface ImgMeta {
   fx?: number;
   fy?: number;
   logo?: boolean;
+  /** README part 143: taken from the business's Google listing (never sent back there), and its Google media id. */
+  from?: 'google';
+  gid?: string;
 }
 
 export type MetaMap = Record<string, ImgMeta>;
@@ -51,6 +54,8 @@ export function readImgMeta(parsed: unknown): MetaMap {
       pm: str(m.pm), pw: num(m.pw), ph: num(m.ph),
       fx: typeof m.fx === 'number' ? m.fx : undefined, fy: typeof m.fy === 'number' ? m.fy : undefined,
       logo: m.logo === true ? true : undefined,
+      from: m.from === 'google' ? 'google' : undefined,
+      gid: str(m.gid),
     };
   }
   return out;

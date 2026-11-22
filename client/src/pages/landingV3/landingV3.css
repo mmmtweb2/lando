@@ -416,3 +416,32 @@
 .lp3[dir="ltr"] .hp .sticker{left:auto;right:40px}
 .lp3[dir="ltr"] .hp.split .sticker{right:auto;left:calc(50% - 62px)}
 }
+
+/* ── Google reviews (README part 143): the owner's own listing, shown as written, with a clear attribution ── */
+.lp3 .greviews{margin-top:8px}
+.lp3 .qwrap+.gr-slot{margin-top:48px;padding-top:36px;border-top:1px solid var(--rule)}
+.lp3 .gr-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.lp3 .gr-score{font-family:var(--head);font-weight:900;font-size:56px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.lp3 .gr-sum{display:flex;flex-direction:column;gap:4px}
+.lp3 .gr-count{font-size:15px;color:var(--muted);font-weight:600}
+.lp3 .gr-attr{margin-inline-start:auto;display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1f1f1f;border:1px solid var(--rule);border-radius:999px;padding:7px 14px;background:#fff}
+.lp3 .gr-g{flex:none}
+.lp3 .gr-stars{position:relative;display:inline-block;font-size:18px;line-height:1;letter-spacing:2px;white-space:nowrap}
+.lp3 .gr-stars-off{color:color-mix(in srgb,var(--ink) 18%,transparent)}
+.lp3 .gr-stars-on{position:absolute;inset-block:0;left:0;overflow:hidden;color:#E8A317}
+.lp3 .gr-list{list-style:none;padding:0;margin:28px 0 0;display:grid;gap:0}
+.lp3 .gr-list li{border-top:1px solid var(--rule);padding:22px 0}
+.lp3 .gr-list li:first-child{border-top:0;padding-top:4px}
+.lp3 .gr-list blockquote{margin:10px 0 0;font-size:17px;line-height:1.6;max-width:60ch;white-space:pre-line;overflow-wrap:anywhere}
+.lp3 .gr-list figcaption{margin-top:10px}
+.lp3 .gr-all{display:inline-flex;align-items:center;min-height:44px;margin-top:14px;font-weight:800;color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:5px}
+.lp3 .gr-note{margin-top:14px;font-size:14px;color:var(--muted);background:color-mix(in srgb,var(--accent) 10%,transparent);border-radius:10px;padding:10px 14px;max-width:60ch}
+@media (min-width:860px){
+.lp3 .sec>.gr-slot{grid-column:2}
+.lp3 .gr-list{grid-template-columns:1fr 1fr;gap:0 56px}
+.lp3 .gr-list li:nth-child(2){border-top:0;padding-top:4px}
+.lp3 .gr-score{font-size:72px}
+}
+/* the editor's button that opens the picker of the listing's photos */
+.lp3 .gpick-open{justify-self:start;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;min-height:44px;margin-top:14px;padding:10px 18px;border-radius:999px;border:1.5px dashed var(--rule);background:transparent;font-weight:700;font-size:15px;color:var(--ink);cursor:pointer}
+.lp3 .gpick-open:hover{border-color:var(--ink)}

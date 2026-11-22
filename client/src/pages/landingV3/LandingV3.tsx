@@ -34,6 +34,8 @@ export interface V3Ctx {
   email: string;
   address: string;
   hours: string;
+  /** The regions the business serves, from the business card (README part 143); '' when the page is not linked. */
+  areas: string;
   facebookUrl: string | null;
   instagramUrl: string | null;
   hero: { title: string; subtitle: string; cta: string };
@@ -60,8 +62,12 @@ export interface V3Ctx {
   /** Languages spoken at the business; the health template shows "מדברים ...". */
   spokenLanguages: string[];
   practical: { parking?: string; accessibility?: string };
-  /** Hook for the live Google reviews (a later task): drawn in the reviews section. The page is complete without it. */
+  /** The business's Google reviews (README part 143), drawn in the reviews section. The page is complete without it. */
   reviewsSlot: ReactNode | null;
+  /** Practical details that come from the business card (Google), not from the page: not editable here. */
+  cardFacts: string[];
+  /** Editor only: "photos from the Google listing" next to "add a photo" in the gallery (null when the page is not linked). */
+  galleryExtra: ReactNode | null;
   headings: { services: string; process: string; testimonials: string; faq: string };
   closing: { headline: string; subline: string; waMessage: string | null };
   // palette / type
@@ -542,6 +548,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                   <Plus size={22} /> הוסף תמונה לגלריה
                 </button>
               )}
+              {c.isEditing && c.canEdit && c.galleryExtra}
             </div>
           </div></section>
         )),
@@ -572,7 +579,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         testimonials: () => (testimonials.length > 0 || !!c.reviewsSlot) && sec(['testimonials_grid'], 'המלצות', (
           <section className="wrap"><div className="sec" style={{ '--pad': '64px' } as CSSProperties}>
             {folio(nextNo(), c.headings.testimonials)}
-            <div className="qwrap">
+            {testimonials.length > 0 && <div className="qwrap">
               {testimonials.slice(0, 1).map((t, i) => (
                 <figure className="qbig" key={i} data-io="">
                   <div className="qm" aria-hidden="true">”</div>
@@ -613,8 +620,8 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
                   })}
                 </div>
               )}
-            </div>
-            {c.reviewsSlot}
+            </div>}
+            {c.reviewsSlot && <div className="gr-slot">{c.reviewsSlot}</div>}
           </div></section>
         )),
 
@@ -637,13 +644,17 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         )),
 
         // visit: big address + two links, no map iframe (the health template's practical guide)
-        visit: () => health ? renderPracticalGuide(kit) : (c.address || c.hours) && (
+        visit: () => health ? renderPracticalGuide(kit) : (c.address || c.hours || c.areas) && (
           <section className="wrap visit"><div className="sec" style={{ '--pad': '56px' } as CSSProperties}>
             {folio(nextNo(), c.t.visit)}
             <div className="cols">
               <div>
                 {c.address && <p className="addr" data-rv="" dir="auto">{c.address}</p>}
                 {c.hours && <p className="hours" data-rv="" style={{ whiteSpace: 'pre-line' }}>{c.hours}</p>}
+                {/* README part 143: what the Google listing states (service area, accessibility, parking) */}
+                {c.areas && <p className="hours" data-rv=""><b>{c.t.guide.areas}:</b> <span dir="auto">{c.areas}</span></p>}
+                {c.cardFacts.includes('accessibility') && <p className="hours" data-rv=""><b>{c.t.guide.accessibility}:</b> {c.practical.accessibility}</p>}
+                {c.cardFacts.includes('parking') && <p className="hours" data-rv=""><b>{c.t.guide.parking}:</b> {c.practical.parking}</p>}
               </div>
               {c.address && (
                 <div className="links">

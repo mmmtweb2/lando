@@ -7,6 +7,8 @@ import { canonicalUrl, resolveBPage } from '../services/subdomain.service';
 import { buildJsonLdScripts, injectSeoBody, renderSeoBody, SeoPage } from '../services/seoRender';
 import { LANGUAGES, SOURCE_LANG, buildHreflang, isTranslationLang, langDir, langUrl, type LangCode } from '../services/landingLanguages';
 import { loadTranslations, publicTranslations, translatedPage } from '../services/landingTranslations.service';
+import { googleBlockForPage } from '../services/pageGoogle.service';
+import { withCardFacts } from '../services/pageGoogle';
 
 function escapeHtml(str: string): string {
   return str
@@ -129,9 +131,12 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   }
   const lang: LangCode = langRow ? requestedLang : SOURCE_LANG;
   const missingLang = requestedLang !== SOURCE_LANG && !langRow;
-  const view = langRow
+  const baseView = langRow
     ? translatedPage(page as { ai_content: unknown; user_images?: unknown }, { ...langRow, source_hash: {}, manual_keys: [] })
     : (page as { ai_content: unknown; user_images?: unknown });
+  // The business's own page states the business card's phone, address and hours (README part 143), here too.
+  const cardFacts = (await googleBlockForPage(page as { id: string; owner_email?: string | null; parent_id?: string | null }, false))?.facts ?? null;
+  const view = { ...baseView, ai_content: withCardFacts(baseView.ai_content, cardFacts, lang) };
 
   // Parse first image URL
   let firstImage: string = '';

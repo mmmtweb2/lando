@@ -1,11 +1,11 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { shareUrl, subdomainPageSlug } from '../lib/pageUrl';
 import { isDesignV3 } from '../lib/designChoice';
 import { PRICING, perPage } from '../config/pricing';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion, useTransform, useInView } from 'framer-motion';
-import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft, X, Plus, Tag } from 'lucide-react';
+import { Loader2, MapPin, Mail, Phone, Pencil, Check, ChevronDown, ExternalLink as ExternalLinkIcon, Camera, Upload, Sparkles, EyeOff, Eye, LayoutDashboard, Clock, Share2, Star, Zap, Gem, Award, Target, Layers, Compass, ChevronLeft, X, Plus, Tag, ImagePlus } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import WalletBadge from '../components/WalletBadge';
 import { authFetch } from '../lib/api';
@@ -29,6 +29,9 @@ import {
   type CategoryId, type TeamMember,
 } from '../config/pageCategory';
 import { readImgMeta, promoteLegacyHero, altFor, buildSrcSet, focalPosition, intrinsicSize, type ImgMeta, type MetaMap } from '../lib/landingImages';
+import { REVIEWS_SECTION_ID, practicalDetails, readPageGoogle } from '../lib/pageGoogle';
+import { GoogleReviews } from './landingV3/GoogleReviews';
+import { GooglePhotosPicker, serverGooglePhotos } from './landingV3/GooglePhotosPicker';
 
 // Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
 const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
@@ -179,6 +182,8 @@ interface LandingPage {
   translations?: PageTranslation[];
   /** Owner only: false = migration 054 has not run, the languages feature is hidden. */
   translations_ready?: boolean;
+  /** README part 143: the business card's practical details and the Google reviews (the business's own page, listing connected). */
+  google?: unknown;
 }
 
 // Snapshot of the caller's page-publish balance + usage, fetched fresh from
@@ -1097,6 +1102,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // A quiet, never blocking hint after a photo upload (small / blurry / looks like a logo).
   const [imageNote, setImageNote] = useState<string | null>(null);
+  // README part 143: the editor's picker of the Google listing's photos
+  const [googlePickOpen, setGooglePickOpen] = useState(false);
+  const googlePhotosApi = useMemo(() => serverGooglePhotos(page?.id ?? ''), [page?.id]);
   useEffect(() => {
     if (!imageNote) return;
     const t = setTimeout(() => setImageNote(null), 14000);
@@ -1317,6 +1325,17 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // (a stored `javascript:` href would run script in the visitor's browser).
   const facebook_url = safeHttpUrl(page.facebook_url);
   const instagram_url = safeHttpUrl(page.instagram_url);
+  // README part 143: the business's own page, linked to its Google listing, states the business card's practical
+  // details (Google or our dashboard change them, the page follows) and shows the Google reviews. Design V3 only.
+  const pageGoogle = designV3 ? readPageGoogle(page.google) : null;
+  const cardPractical = practicalDetails({
+    phone: ai_content.contact?.phone || phone_number || '',
+    address: ai_content.contact?.address ?? '',
+    hours: ai_content.contact?.business_hours ?? '',
+    areas: '',
+    parking: ai_content.practical_info?.parking ?? '',
+    accessibility: ai_content.practical_info?.accessibility ?? '',
+  }, pageGoogle?.facts, viewLang, T);
   const externalLink = safeHttpUrl(page.external_link);
 
   async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -4261,13 +4280,20 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   // ── Design V3 hand-over: everything LandingV3 needs, nothing more ──────────
   function buildV3Ctx(): V3Ctx {
     const heroSubtitle = heroTagline ?? '';
+    // README part 143: Google reviews (the section's quiet switch is REVIEWS_SECTION_ID in hidden_sections)
+    const googleReviews = pageGoogle?.reviews ?? null;
+    const reviewsHidden = sectionHidden(REVIEWS_SECTION_ID);
+    const realReviewsShown = !!googleReviews && !reviewsHidden;
+    const typedTestimonials = (ai_content.testimonials ?? []).some((t) => t.quote && !t.quote.includes('הכנס כאן') && !t.quote.includes('ציטוט אמיתי'));
     return {
       businessName: business_name,
       logoUrl: logo_url,
-      phone,
+      // the number to call: the business card's when the page is linked (WhatsApp keeps the page's own number)
+      phone: cardPractical.phone || phone,
       email: ctaEmail,
-      address: ai_content.contact?.address ?? '',
-      hours: ai_content.contact?.business_hours ?? '',
+      address: cardPractical.address,
+      hours: cardPractical.hours,
+      areas: cardPractical.areas,
       facebookUrl: facebook_url,
       instagramUrl: instagram_url,
       hero: { title: ai_content.hero?.title ?? business_name, subtitle: heroSubtitle, cta: ctaText },
@@ -4280,7 +4306,8 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       galleryUrls,
       heroImageUrl,
       process: ai_content.process_steps ?? [],
-      testimonials: ai_content.testimonials ?? [],
+      // real Google reviews replace the typed testimonials, never mixed with them (README part 143)
+      testimonials: realReviewsShown ? [] : ai_content.testimonials ?? [],
       faq: ai_content.faq ?? [],
       badges: (ai_content.trust_badges ?? []).map((b) => b.label),
       template: isHealth ? 'health' : 'general',
@@ -4288,8 +4315,20 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       team: ai_content.team ?? [],
       teamHeading: T.health.team,
       spokenLanguages: ai_content.spoken_languages?.length ? ai_content.spoken_languages : SPOKEN_LANGUAGES_DEFAULT,
-      practical: ai_content.practical_info ?? {},
-      reviewsSlot: null,
+      practical: { ...(ai_content.practical_info ?? {}), parking: cardPractical.parking, accessibility: cardPractical.accessibility },
+      cardFacts: cardPractical.fromCard,
+      reviewsSlot: googleReviews && (!reviewsHidden || (isEditingMode && !!canEdit)) ? (
+        <SectionEditorWrapper isEditing={isEditingMode && !!canEdit} isHidden={reviewsHidden} label={T.reviews.fromGoogle}
+          onToggleHide={() => { void toggleSectionVisibility(REVIEWS_SECTION_ID); }}>
+          <GoogleReviews reviews={googleReviews} t={T}
+            editNote={isEditingMode && canEdit && typedTestimonials ? 'הביקורות מגוגל מוצגות במקום ההמלצות שכתבתם. כדי להציג את ההמלצות שלכם, הסתירו את הביקורות מגוגל.' : null} />
+        </SectionEditorWrapper>
+      ) : null,
+      galleryExtra: pageGoogle?.linked && canEdit ? (
+        <button type="button" className="gpick-open" onClick={() => setGooglePickOpen(true)}>
+          <ImagePlus size={18} aria-hidden /> תמונות מהכרטיס בגוגל
+        </button>
+      ) : null,
       headings: isHealth ? {
         services: T.health.services,
         process: T.health.process,
@@ -4896,6 +4935,18 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Photos from the Google listing (README part 143) ───────────────── */}
+      {googlePickOpen && pageGoogle?.linked && canEdit && (
+        <GooglePhotosPicker api={googlePhotosApi} primaryColor={primary} onClose={() => setGooglePickOpen(false)}
+          onAdded={(userImages, _added, warning) => {
+            setGooglePickOpen(false);
+            setImageNote(warning);
+            setPage((prev) => (prev ? { ...prev, user_images: userImages } : prev));
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2500);
+          }} />
       )}
 
       {/* ── Image selector modal ────────────────────────────────────────────── */}

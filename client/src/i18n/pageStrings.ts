@@ -41,7 +41,16 @@ export interface PageStrings {
   waService: (title: string) => string;
   waChildSuffix: (page: string) => string;
   license: string;
-  guide: { address: string; hours: string; parking: string; accessibility: string };
+  guide: { address: string; hours: string; parking: string; accessibility: string; areas: string };
+  /** README part 143: the Google reviews section. The reviews themselves are shown as written, never translated. */
+  reviews: {
+    fromGoogle: string; outOf: string; count: (n: number) => string; seeAll: string; anonymous: string;
+    stars: (n: number) => string; locale: string;
+  };
+  /** Short day names for opening hours read from the business card, Sunday first. */
+  days: [string, string, string, string, string, string, string];
+  /** Accessibility and parking details from the Google listing, by Google's attribute id (Hebrew uses Google's own words). */
+  attrs: Record<string, string>;
   spokenLine: (list: string[]) => string;
   baNote: string;
   credit: string;
@@ -81,7 +90,27 @@ const HE: PageStrings = {
   waService: (title) => `שלום, אשמח לשמוע על ${title}`,
   waChildSuffix: (page) => ` (עמוד: ${page})`,
   license: 'מספר רישיון: ',
-  guide: { address: 'כתובת', hours: 'שעות פעילות', parking: 'חניה', accessibility: 'נגישות' },
+  guide: { address: 'כתובת', hours: 'שעות פעילות', parking: 'חניה', accessibility: 'נגישות', areas: 'אזורי שירות' },
+  reviews: {
+    fromGoogle: 'ביקורות מגוגל', outOf: 'מתוך 5', count: (n) => (n === 1 ? 'ביקורת אחת' : `${n.toLocaleString('he-IL')} ביקורות`),
+    seeAll: 'לכל הביקורות בגוגל', anonymous: 'לקוח/ה מגוגל', stars: (n) => `${n} מתוך 5 כוכבים`, locale: 'he-IL',
+  },
+  days: ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'],
+  attrs: {
+    has_wheelchair_accessible_entrance: 'כניסה נגישה לכיסאות גלגלים',
+    has_wheelchair_accessible_restroom: 'שירותים נגישים',
+    has_wheelchair_accessible_seating: 'ישיבה נגישה',
+    has_wheelchair_accessible_parking: 'חניית נכים',
+    has_wheelchair_accessible_elevator: 'מעלית נגישה',
+    has_hearing_loop: 'לולאת השראה',
+    has_free_parking_lot: 'חניון חינם',
+    has_paid_parking_lot: 'חניון בתשלום',
+    has_free_street_parking: 'חניה חינם ברחוב',
+    has_paid_street_parking: 'חניה בתשלום ברחוב',
+    has_free_parking_garage: 'חניון מקורה חינם',
+    has_paid_parking_garage: 'חניון מקורה בתשלום',
+    has_valet_parking: 'שירות חניה (ולה)',
+  },
   spokenLine: (l) => { const s = formatLanguages(l); return s ? `מדברים ${s}` : ''; },
   baNote: 'התוצאות משתנות מאדם לאדם.',
   credit: 'נוצר באמצעות Pagey',
@@ -138,7 +167,27 @@ const FR: PageStrings = {
   waService: (title) => `Bonjour, j’aimerais en savoir plus sur : ${title}`,
   waChildSuffix: (page) => ` (page : ${page})`,
   license: 'Numéro de licence : ',
-  guide: { address: 'Adresse', hours: 'Horaires', parking: 'Stationnement', accessibility: 'Accessibilité' },
+  guide: { address: 'Adresse', hours: 'Horaires', parking: 'Stationnement', accessibility: 'Accessibilité', areas: 'Zones desservies' },
+  reviews: {
+    fromGoogle: 'Avis Google', outOf: 'sur 5', count: (n) => (n === 1 ? '1 avis' : `${n.toLocaleString('fr-FR')} avis`),
+    seeAll: 'Tous les avis sur Google', anonymous: 'Client Google', stars: (n) => `${n} étoiles sur 5`, locale: 'fr-FR',
+  },
+  days: ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'],
+  attrs: {
+    has_wheelchair_accessible_entrance: 'Entrée accessible en fauteuil roulant',
+    has_wheelchair_accessible_restroom: 'Toilettes accessibles',
+    has_wheelchair_accessible_seating: 'Places assises accessibles',
+    has_wheelchair_accessible_parking: 'Parking accessible',
+    has_wheelchair_accessible_elevator: 'Ascenseur accessible',
+    has_hearing_loop: 'Boucle magnétique',
+    has_free_parking_lot: 'Parking gratuit',
+    has_paid_parking_lot: 'Parking payant',
+    has_free_street_parking: 'Stationnement gratuit dans la rue',
+    has_paid_street_parking: 'Stationnement payant dans la rue',
+    has_free_parking_garage: 'Parking couvert gratuit',
+    has_paid_parking_garage: 'Parking couvert payant',
+    has_valet_parking: 'Voiturier',
+  },
   spokenLine: (l) => { const s = list(l, 'et'); return s ? `Nous parlons ${s}` : ''; },
   baNote: 'Les résultats varient d’une personne à l’autre.',
   credit: 'Créé avec Pagey',
@@ -196,7 +245,27 @@ const EN: PageStrings = {
   waService: (title) => `Hello, I would like to hear about: ${title}`,
   waChildSuffix: (page) => ` (page: ${page})`,
   license: 'License number: ',
-  guide: { address: 'Address', hours: 'Opening hours', parking: 'Parking', accessibility: 'Accessibility' },
+  guide: { address: 'Address', hours: 'Opening hours', parking: 'Parking', accessibility: 'Accessibility', areas: 'Areas served' },
+  reviews: {
+    fromGoogle: 'Google reviews', outOf: 'out of 5', count: (n) => (n === 1 ? '1 review' : `${n.toLocaleString('en-US')} reviews`),
+    seeAll: 'All reviews on Google', anonymous: 'Google user', stars: (n) => `${n} out of 5 stars`, locale: 'en-GB',
+  },
+  days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  attrs: {
+    has_wheelchair_accessible_entrance: 'Wheelchair-accessible entrance',
+    has_wheelchair_accessible_restroom: 'Wheelchair-accessible restroom',
+    has_wheelchair_accessible_seating: 'Wheelchair-accessible seating',
+    has_wheelchair_accessible_parking: 'Wheelchair-accessible parking',
+    has_wheelchair_accessible_elevator: 'Wheelchair-accessible lift',
+    has_hearing_loop: 'Hearing loop',
+    has_free_parking_lot: 'Free parking lot',
+    has_paid_parking_lot: 'Paid parking lot',
+    has_free_street_parking: 'Free street parking',
+    has_paid_street_parking: 'Paid street parking',
+    has_free_parking_garage: 'Free parking garage',
+    has_paid_parking_garage: 'Paid parking garage',
+    has_valet_parking: 'Valet parking',
+  },
   spokenLine: (l) => { const s = list(l, 'and'); return s ? `We speak ${s}` : ''; },
   baNote: 'Results vary from person to person.',
   credit: 'Made with Pagey',

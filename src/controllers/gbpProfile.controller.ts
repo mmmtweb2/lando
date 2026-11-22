@@ -5,6 +5,7 @@ import {
 } from '../services/gbpSync.service';
 import { PhotoInputError, fetchPageImage, storeGooglePhoto, toGooglePhoto } from '../services/gbpPhotos';
 import { writeBackEnabled } from '../services/businessTruth.service';
+import { recordManualSend } from '../services/pageGoogle.service';
 
 // The customer's Google listing, edited from our dashboard (docs/gbp-sync-spec.md). Every route is
 // behind requireAuth + requireProduct('seo_autopilot') (routes/seo.routes.ts).
@@ -126,6 +127,8 @@ export async function postPhoto(req: Request, res: Response): Promise<void> {
     const src = file ? { buffer: file.buffer, mime: file.mimetype } : await fetchPageImage(email, fromPage);
     const jpeg = await toGooglePhoto(src.buffer, src.mime);
     const r = await addPhoto(email, category, () => storeGooglePhoto(email, jpeg.buffer));
+    // a page photo sent by hand is remembered, so it is never sent again by itself (README part 143)
+    if (fromPage && !file) void recordManualSend(email, fromPage, r.id);
     res.status(201).json({ ok: true, id: r.id, small: jpeg.small });
   } catch (e) { fail(res, e); }
 }
