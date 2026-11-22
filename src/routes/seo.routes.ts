@@ -17,6 +17,7 @@ import { getSetup, putSetup } from '../controllers/seoSetup.controller';
 import * as gbp from '../controllers/gbp.controller';
 import * as auto from '../controllers/autopilot.controller';
 import * as profile from '../controllers/gbpProfile.controller';
+import { postPolish } from '../controllers/businessPolish.controller';
 import { handlePhotoUpload } from '../middleware/upload.middleware';
 import { sendFeedback } from '../controllers/feedback.controller';
 import { unsubscribeApply, unsubscribePage } from '../controllers/digest.controller';
@@ -156,6 +157,9 @@ router.get('/gbp/profile', ...profileGated, profile.getProfileView);
 router.post('/gbp/profile/website-from-page', ...profileGated, profile.useWebsiteFromPage);
 router.put('/gbp/profile/:field', ...profileGated, profile.putField);
 router.post('/gbp/profile/:field/resolve', ...profileGated, profile.resolve);
+// "שיפור הניסוח" (README part 144): one suggestion, nothing saved. 3 a day per field (in the service), and no bursts.
+const polishLimiter = rateLimit({ windowMs: 60 * 1000, max: 6, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.', key: (req) => `polish:${req.authEmail ?? req.ip}` });
+router.post('/gbp/profile/:field/polish', ...profileGated, polishLimiter, postPolish);
 router.get('/gbp/photos', ...profileGated, profile.getPhotos);
 router.post('/gbp/photos', ...profileGated, photoLimiter, handlePhotoUpload, profile.postPhoto);
 router.delete('/gbp/photos/:id', ...profileGated, profile.deletePhoto);

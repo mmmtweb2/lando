@@ -9,8 +9,10 @@ import { sampleFlag } from './sample';
 import type { Day, TruthHours } from './types';
 import {
   FIELD_KEYS, type AreaValue, type AttributeItem, type AttributeValues, type FieldKey, type FieldStatus, type FieldValues, type GbpPhoto, type GbpProfile,
-  type HolidaySuggestion, type PhotoCategory, type PhotoState, type ProfileField, type ProfileFields, type SaveResult, type ServiceItem, type SpecialDay,
+  type HolidaySuggestion, type PhotoCategory, type PhotoState, type PolishField, type PolishIssue, type PolishRequest, type PolishResult, type PolishedService,
+  type ProfileField, type ProfileFields, type SaveResult, type ServiceItem, type SpecialDay,
 } from './profileTypes';
+import { POLISH_FAILED, POLISH_LIMIT, POLISH_UNAVAILABLE, samplePolish } from './polishSample';
 
 export interface ProfileApi {
   profile(): Promise<GbpProfile>;
@@ -23,6 +25,8 @@ export interface ProfileApi {
   upload(file: File, category: PhotoCategory, onProgress: (p: number) => void): Promise<{ small: boolean }>;
   addFromPage(url: string, category: PhotoCategory): Promise<{ small: boolean }>;
   remove(id: string): Promise<void>;
+  /** "שיפור הניסוח": one suggestion, nothing saved (README part 144). Never throws. */
+  polish<F extends PolishField>(field: F, req: PolishRequest<F>): Promise<PolishResult>;
 }
 
 export class ProfileError extends Error {
@@ -144,6 +148,34 @@ export function normalizePhotos(raw: unknown): GbpPhoto[] {
   });
 }
 
+function polishIssues(v: unknown): PolishIssue[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((i) => {
+    const o = (i ?? {}) as Record<string, unknown>;
+    if (!str(o.code) || !HEBREW.test(str(o.text))) return [];
+    return [{ code: str(o.code), level: o.level === 'error' ? 'error' : 'warn', text: str(o.text), ...(Number.isInteger(o.index) ? { index: o.index as number } : {}) }];
+  });
+}
+
+/** The answer of POST /gbp/profile/:field/polish in the screen's shape; null when it is not usable. */
+export function normalizePolish(field: PolishField, raw: unknown): PolishResult | null {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const remaining = Number.isInteger(b.remaining) ? Math.max(0, b.remaining as number) : 0;
+  const base = { issues: polishIssues(b.issues), unchanged: b.unchanged === true, remaining };
+  if (field === 'description') {
+    const suggestion = str(b.suggestion).trim();
+    return suggestion ? { ok: true, field, before: str(b.before), suggestion, ...base } : null;
+  }
+  const rows: PolishedService[] = (Array.isArray(b.suggestion) ? b.suggestion : []).flatMap((s) => {
+    const o = (s ?? {}) as Record<string, unknown>;
+    const from = Array.isArray(o.from) ? o.from.filter((n): n is number => Number.isInteger(n)) : [];
+    return str(o.name) ? [{ name: str(o.name), description: str(o.description), from, locked: o.locked === true }] : [];
+  });
+  if (!rows.length) return null;
+  const forgotten = (Array.isArray(b.forgotten) ? b.forgotten : []).map(str).filter(Boolean).slice(0, 3);
+  return { ok: true, field, before: services(b.before), suggestion: rows, forgotten, ...base };
+}
+
 // ── server ───────────────────────────────────────────────────────────────────
 
 async function send(url: string, method: string, body?: unknown): Promise<{ ok: boolean; status: number; b: Record<string, unknown> | null }> {
@@ -233,6 +265,16 @@ export const serverProfileApi: ProfileApi = {
     const r = await send(`/api/seo/gbp/photos/${encodeURIComponent(id)}`, 'DELETE');
     if (!r.ok) throw new ProfileError(said(r.b) ?? GENERIC_ERROR);
   },
+  polish: async (k, req) => {
+    let r;
+    try { r = await send(fieldUrl(k, '/polish'), 'POST', { draft: req.draft, previous: req.previous }); } catch { return { ok: false, code: 'error', message: GENERIC_ERROR }; }
+    const code = typeof r.b?.code === 'string' ? r.b.code : null;
+    if (r.ok) return normalizePolish(k, r.b) ?? { ok: false, code: 'failed', message: POLISH_FAILED };
+    if (code === 'limit' || r.status === 429) return { ok: false, code: 'limit', message: said(r.b) ?? POLISH_LIMIT };
+    if (code === 'unavailable') return { ok: false, code: 'unavailable', message: said(r.b) ?? POLISH_UNAVAILABLE };
+    if (code === 'failed') return { ok: false, code: 'failed', message: said(r.b) ?? POLISH_FAILED };
+    return { ok: false, code: 'error', message: said(r.b) ?? GENERIC_ERROR };
+  },
 };
 
 /** The images of the business's own landing page, for "מדף הנחיתה". Never throws: [] = none to offer. */
@@ -275,6 +317,14 @@ const SAMPLE_ATTRS_OURS: AttributeValues = {
   'attributes/has_wheelchair_accessible_entrance': true, 'attributes/pay_credit_card': true, 'attributes/pay_debit_card': true,
   'attributes/offers_onsite_services': true, 'attributes/requires_appointments': true, 'attributes/has_free_parking_lot': false,
 };
+const SAMPLE_MESSY_SERVICES: ServiceItem[] = [
+  { name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' },
+  { name: 'החלפת דוד שמש', description: '' },
+  { name: 'תיקון נזילות', description: '' },
+  { name: 'תיקון נזילות מים.', description: 'ברזים וצנרת' },
+  { name: 'התקנה של ברזים ואביזרי אמבטיה ומטבח מכל הסוגים', description: '' },
+  { name: '- איתור נזילות', description: '' },
+];
 const SAMPLE_HOLIDAYS: HolidaySuggestion[] = [
   { id: 'pesach-2027-04-22', name: 'פסח', date: '2027-04-22' },
   { id: 'pesach7-2027-04-28', name: 'שביעי של פסח', date: '2027-04-28' },
@@ -303,7 +353,10 @@ export function sampleProfileApi(): ProfileApi {
         status: st('google_changed'), error: null,
       },
       specialHours: { ours: [{ date: '2026-12-25', closed: true, open: '', close: '' }], google: [], status: st(sampleFlag('special') === 'error' ? 'local_only' : 'pending'), error: sampleFlag('special') === 'error' ? 'גוגל לא קיבלה את השינוי: צריך להגדיר קודם שעות פעילות רגילות.' : null },
-      services: { ours: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], google: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], status: st('live'), error: null },
+      services: sampleFlag('services') === 'messy'
+        // `&services=messy`: a list worth tidying ("שיפור הניסוח"): a near-duplicate, punctuation, a long name
+        ? { ours: SAMPLE_MESSY_SERVICES, google: SAMPLE_MESSY_SERVICES.slice(0, 2), status: st('pending'), error: null }
+        : { ours: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], google: [{ name: 'פתיחת סתימות', description: 'במטבח, באמבטיה ובשירותים' }, { name: 'החלפת דוד שמש', description: '' }], status: st('live'), error: null },
       serviceArea: {
         ours: { type: 'CUSTOMER_AND_BUSINESS_LOCATION', places: SAMPLE_AREAS },
         google: { type: 'CUSTOMER_AND_BUSINESS_LOCATION', places: sampleFlag('area') === 'changed' ? [...SAMPLE_AREAS.slice(0, 4), 'עכו'] : SAMPLE_AREAS },
@@ -351,5 +404,6 @@ export function sampleProfileApi(): ProfileApi {
     },
     addFromPage: async (url, category) => { await wait(600); photos = [{ id: `pg${photos.length}`, url, thumbUrl: url, category, createdAt: new Date().toISOString(), state: 'processing' }, ...photos]; return { small: false }; },
     remove: async (id) => { await wait(300); photos = photos.filter((x) => x.id !== id); },
+    polish: samplePolish(),
   };
 }

@@ -77,3 +77,17 @@ export const PHOTO_CATEGORIES: PhotoCategory[] = ['COVER', 'PROFILE', 'EXTERIOR'
 /** live: on the listing · processing: Google is still processing it (Google gives no "not approved" signal) */
 export type PhotoState = 'live' | 'processing';
 export interface GbpPhoto { id: string; url: string; thumbUrl: string; category: PhotoCategory | (string & {}); createdAt: string | null; state: PhotoState }
+
+// ── "שיפור הניסוח" (README part 144): one suggestion for the description or the services ─────────
+
+export type PolishField = 'description' | 'services';
+/** error: Google would refuse it (or it is not grounded) · warn: a quality hint */
+export interface PolishIssue { code: string; level: 'error' | 'warn'; text: string; index?: number }
+/** A row of the suggested list: the owner's rows it stands for (2+ = merged), and whether its name is kept as on Google. */
+export interface PolishedService extends ServiceItem { from: number[]; locked: boolean }
+export type PolishResult =
+  | { ok: true; field: 'description'; before: string; suggestion: string; issues: PolishIssue[]; unchanged: boolean; remaining: number }
+  | { ok: true; field: 'services'; before: ServiceItem[]; suggestion: PolishedService[]; forgotten: string[]; issues: PolishIssue[]; unchanged: boolean; remaining: number }
+  | { ok: false; code: 'limit' | 'unavailable' | 'failed' | 'error'; message: string };
+/** What the owner has now (their unsaved draft counts), and the earlier suggestions of this dialog. */
+export interface PolishRequest<F extends PolishField = PolishField> { draft: FieldValues[F]; previous: FieldValues[F][] }
