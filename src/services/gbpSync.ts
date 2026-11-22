@@ -153,10 +153,13 @@ export function buildPatch(field: SyncField, c: TruthCard, raw: any): FieldPatch
     }
     case 'services': {
       const category = typeof raw?.categories?.primaryCategory?.name === 'string' ? raw.categories.primaryCategory.name : '';
-      const existing = Array.isArray(raw?.serviceItems) ? raw.serviceItems : [];
+      const read = Array.isArray(raw?.serviceItems) ? raw.serviceItems : [];
       const have = new Set(parseLocation(raw).services.map((s) => s.name.toLowerCase()));
-      const added = c.services.filter((s) => !have.has(s.name.toLowerCase()));
-      if (!category || !added.length) return null;
+      const added = category ? c.services.filter((s) => !have.has(s.name.toLowerCase())) : [];
+      // An item Google already has keeps its name and everything else as read; only a new description the
+      // owner gave it here replaces Google's (README part 144: "שיפור הניסוח" rewrites descriptions).
+      const { items: existing, changed } = redescribe(read, raw, c.services);
+      if (!added.length && !changed) return null;
       if (existing.length + added.length > 100) throw new CardInputError('services');
       return {
         mask: ['serviceItems'],
@@ -165,6 +168,34 @@ export function buildPatch(field: SyncField, c: TruthCard, raw: any): FieldPatch
     }
     case 'serviceArea': return serviceAreaPatch(c, raw);
   }
+}
+
+/**
+ * Google's service items as read, with the description of each item replaced by ours when we have a
+ * different, non-empty one for the same name. Names, ids, categories and prices are never touched,
+ * and an empty description here never clears Google's.
+ */
+export function redescribe(items: any[], raw: any, ours: TruthCard['services']): { items: any[]; changed: number } {
+  const mine = new Map(ours.filter((s) => s.description.trim()).map((s) => [s.name.trim().toLowerCase(), s.description.trim()]));
+  const typeNames = new Map<string, string>();
+  const cats = [raw?.categories?.primaryCategory, ...(Array.isArray(raw?.categories?.additionalCategories) ? raw.categories.additionalCategories : [])];
+  for (const cat of cats) for (const t of (Array.isArray(cat?.serviceTypes) ? cat.serviceTypes : [])) {
+    if (typeof t?.serviceTypeId === 'string' && typeof t?.displayName === 'string') typeNames.set(t.serviceTypeId, t.displayName.trim());
+  }
+  let changed = 0;
+  const out = items.map((it) => {
+    const free = it?.freeFormServiceItem, st = it?.structuredServiceItem;
+    const name = (free ? free?.label?.displayName : typeNames.get(st?.serviceTypeId)) ?? '';
+    const want = typeof name === 'string' ? mine.get(name.trim().toLowerCase()) : undefined;
+    if (!want) return it;
+    const now = String((free ? free?.label?.description : st?.description) ?? '').replace(/\s+/g, ' ').trim();
+    if (now === want.replace(/\s+/g, ' ')) return it;
+    changed++;
+    return free
+      ? { ...it, freeFormServiceItem: { ...free, label: { ...free.label, description: want } } }
+      : { ...it, structuredServiceItem: { ...st, description: want } };
+  });
+  return { items: out, changed };
 }
 
 // ── Comparing and status ─────────────────────────────────────────────────────

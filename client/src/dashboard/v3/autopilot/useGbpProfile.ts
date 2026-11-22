@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GENERIC_ERROR } from '../autopilotCopy';
 import { ProfileError, sampleProfileApi, serverProfileApi, type ProfileApi } from './profileApi';
-import type { FieldKey, FieldValues, GbpPhoto, GbpProfile, PhotoCategory, SaveResult } from './profileTypes';
+import type { FieldKey, FieldValues, GbpPhoto, GbpProfile, PhotoCategory, PolishField, PolishRequest, PolishResult, SaveResult } from './profileTypes';
 import type { Loadable } from './types';
 
 const msg = (e: unknown) => (e instanceof ProfileError ? e.message : GENERIC_ERROR);
@@ -20,6 +20,8 @@ export interface GbpProfileState {
   upload: (file: File, category: PhotoCategory, onProgress: (p: number) => void) => Promise<{ error: string } | { small: boolean }>;
   addFromPage: (url: string, category: PhotoCategory) => Promise<{ error: string } | { small: boolean }>;
   removePhoto: (id: string) => Promise<string | null>;
+  /** "שיפור הניסוח": one suggestion; nothing is saved until the owner accepts (then `save`). */
+  polish: <F extends PolishField>(field: F, req: PolishRequest<F>) => Promise<PolishResult>;
 }
 
 const apiFor = (preview: boolean): ProfileApi => (preview ? sampleProfileApi() : serverProfileApi);
@@ -72,7 +74,11 @@ export function useGbpProfile(preview: boolean, enabled = true): GbpProfileState
     } catch (e) { return msg(e); }
   }, [api]);
 
-  return { profile, photos, reload, save, resolve, acceptWebsite, upload, addFromPage, removePhoto };
+  const polish = useCallback(<F extends PolishField>(field: F, req: PolishRequest<F>): Promise<PolishResult> => (
+    api.polish(field, req).catch((e: unknown): PolishResult => ({ ok: false, code: 'error', message: msg(e) }))
+  ), [api]);
+
+  return { profile, photos, reload, save, resolve, acceptWebsite, upload, addFromPage, removePhoto, polish };
 }
 
 /**

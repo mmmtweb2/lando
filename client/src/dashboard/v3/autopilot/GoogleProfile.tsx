@@ -4,6 +4,7 @@ import { Skeleton } from '../../ui';
 import { ViewShell } from '../Views';
 import HoursField from './HoursField';
 import { LoadError, Notice, SampleBanner } from './bits';
+import { PolishButton, PolishHints } from './PolishDialog';
 import { hoursLines, hoursProblems, relTime } from './format';
 import { addHolidayRows, pendingHolidays, usuallyClosed } from './holidays';
 import { pageImages } from './profileApi';
@@ -335,6 +336,18 @@ function FieldCard<K extends FieldKey>({ k, f, state, ctx }: { k: K; f: ProfileF
     setEditing(true);
     setNote({ kind: 'info', text: HOLIDAYS.added(next.length - base.length) });
   };
+  // "שיפור הניסוח" (README part 144): the accepted suggestion goes through the same save as "שמירה".
+  const polishable = k === 'description' || k === 'services';
+  const areas = state.profile.status === 'ok' ? (state.profile.data.fields.serviceArea?.ours?.places ?? []) : [];
+  const acceptPolish = async (v: FieldValues[K]): Promise<string | null> => {
+    const { value, problem } = prepare(k, v);
+    if (problem) return problem;
+    const r = await state.save(k, value);
+    if (!r.ok) return r.detail ? `${r.message} ${r.detail}` : r.message;
+    setEditing(false);
+    setNote(r.localOnly ? { kind: 'info', text: r.message ?? PROFILE.savedLocal } : { kind: 'ok', text: `${PROFILE.saved} ${PROFILE.googleDelay}` });
+    return null;
+  };
   const resolve = async (keep: 'google' | 'ours') => {
     setBusy(true); setNote(null);
     const r = await state.resolve(k, keep);
@@ -381,6 +394,8 @@ function FieldCard<K extends FieldKey>({ k, f, state, ctx }: { k: K; f: ProfileF
         <div className="dv3-p-value"><Value k={k} v={f.ours} items={ctx.items} /></div>
       )}
 
+      {polishable && f.status !== 'google_changed' && <PolishHints field={k as 'description' | 'services'} value={(editing ? draft : f.ours) as FieldValues['description' | 'services'] | null} areas={areas} />}
+
       {k === 'specialHours' && !(f.status === 'google_changed' && !editing) && (
         <HolidaySuggest list={pendingHolidays(ctx.holidays, (editing ? draft : (f.ours ?? [])) as SpecialDay[])} hours={ctx.hours} onAdd={addHolidays} />
       )}
@@ -399,6 +414,10 @@ function FieldCard<K extends FieldKey>({ k, f, state, ctx }: { k: K; f: ProfileF
           </>
         ) : f.status !== 'google_changed' && (
           <button type="button" className="dv3-btn dv3-btn-ghost dv3-a-small" onClick={open} aria-label={`${PROFILE.edit}: ${FIELD_LABEL[k]}`}><Pencil size={16} aria-hidden /> {PROFILE.edit}</button>
+        )}
+        {polishable && f.status !== 'google_changed' && (
+          <PolishButton field={k as 'description' | 'services'} label={FIELD_LABEL[k]} current={(editing ? draft : (f.ours ?? EMPTY[k])) as FieldValues['description' | 'services']} polish={state.polish} areas={areas} disabled={busy}
+            onAccept={acceptPolish as (v: FieldValues['description' | 'services']) => Promise<string | null>} />
         )}
       </div>
     </section>
