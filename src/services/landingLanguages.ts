@@ -62,8 +62,10 @@ export type TranslationStatus = 'draft' | 'published';
  * A medical page in another language waits for the owner's approval (someone who reads that language
  * should check it); every other page is published as soon as it is translated, and stays editable.
  */
-export function initialStatus(category: string | null | undefined): TranslationStatus {
-  return category === 'health' ? 'draft' : 'published';
+export function initialStatus(_category?: string | null): TranslationStatus {
+  // Decision 22.11: no separate approval step. The owner reviews the translation together with the page,
+  // before the page goes live; a translation is served to visitors only when the page itself is.
+  return 'published';
 }
 
 /**

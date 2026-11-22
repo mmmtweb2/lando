@@ -159,6 +159,7 @@ export function LanguagePanel({ pageId, ready, translations, current, isHealth, 
             <p className="text-xs font-bold text-slate-700">שפות הדף</p>
             <button onClick={() => setOpen(false)} aria-label="סגירה" className="w-5 h-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs leading-none">×</button>
           </div>
+          <p className="text-xs leading-relaxed text-slate-500">כל שפה עולה לאוויר יחד עם הדף. עברו עליה ב&quot;הצגה ועריכה&quot; כמו שאתם עוברים על הדף בעברית, ותקנו ישירות בדף מה שצריך.</p>
           <ul className="flex flex-col gap-2">
             <li className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm">
               <span><b>עברית</b> <span className="text-slate-400">(המקור)</span></span>
@@ -169,7 +170,7 @@ export function LanguagePanel({ pageId, ready, translations, current, isHealth, 
               return (
                 <li key={t.lang} className="flex flex-col gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm">
                   <div className="flex items-center justify-between gap-2">
-                    <span><b>{LANGUAGES[t.lang as LangCode].heName}</b> <span className={t.status === 'draft' ? 'text-amber-700' : 'text-emerald-700'}>· {t.status === 'draft' ? 'טיוטה' : 'מפורסמת'}</span></span>
+                    <span><b>{LANGUAGES[t.lang as LangCode].heName}</b> <span className={t.status === 'draft' ? 'text-amber-700' : 'text-emerald-700'}>· {t.status === 'draft' ? 'טיוטה' : 'פעילה'}</span></span>
                     {current !== t.lang && <button onClick={() => onGo(t.lang)} className="text-xs font-bold text-slate-600 underline underline-offset-4">הצגה ועריכה</button>}
                   </div>
                   {stale > 0 && (
