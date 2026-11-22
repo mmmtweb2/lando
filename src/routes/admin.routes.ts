@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { getAllLandingPages } from '../controllers/landing.controller';
+import { adminDetectCategory } from '../controllers/adminPageUpgrade.controller';
+import { addTranslation } from '../controllers/landingTranslation.controller';
 import { listReviewPayments, reverifyPayment, forceActivatePayment } from '../controllers/payment.controller';
 import { listCoupons, createCoupon, updateCoupon } from '../controllers/coupon.controller';
 import { listUsers, getRevenueStats, getSiteTraffic, getFunnelStats } from '../controllers/adminStats.controller';
@@ -35,6 +37,9 @@ router.use(requireAuth, requireAdmin, requireAdminPanelPassword);
 
 // Admin-only: real login + is_admin flag, verified server-side.
 router.get('/pages', getAllLandingPages);
+// Bring an existing page up to date: category template and languages (README part 145).
+router.post('/pages/:id/category', adminDetectCategory);
+router.post('/pages/:id/translations', addTranslation);
 
 // Customer list + revenue overview (admin dashboard upgrade).
 router.get('/users', listUsers);
