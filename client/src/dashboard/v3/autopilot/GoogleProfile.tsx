@@ -5,6 +5,7 @@ import { ViewShell } from '../Views';
 import HoursField from './HoursField';
 import { LoadError, Notice, SampleBanner } from './bits';
 import { PolishButton, PolishHints } from './PolishDialog';
+import { PageLinkSection } from './PageLinkSection';
 import { hoursLines, hoursProblems, relTime } from './format';
 import { addHolidayRows, pendingHolidays, usuallyClosed } from './holidays';
 import { pageImages } from './profileApi';
@@ -627,6 +628,7 @@ export function GoogleProfileBody({ state, pageSlug, onMore }: { state: GbpProfi
         <p className="dv3-a-hint">{p.checkedAt ? PROFILE.checked(relTime(p.checkedAt)) : PROFILE.googleDelay}</p>
         {p.metadata.mapsUri && <a className="dv3-linkbtn dv3-p-maps" href={p.metadata.mapsUri} target="_blank" rel="noopener noreferrer">{PROFILE.openMaps} <ExternalLink size={14} aria-hidden /></a>}
       </div>
+      <PageLinkSection preview={state.preview} />
       {ORDER.map((k) => {
         const f = p.fields[k];
         if (!f || (k === 'attributes' && !p.attributeItems.length)) return null;

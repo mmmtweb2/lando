@@ -10,7 +10,7 @@ import { underKitLimit } from './seoContent.controller';
 import { logActivity } from '../services/automation.service';
 import { businessPageId } from '../services/seoPageAddon.service';
 import { TruthError, approve, getTruth, saveEdit, syncFromGoogle, writeBackToGoogle } from '../services/businessTruth.service';
-import { POSTS_MODES, REPLIES_MODES, WEBSITE_MODES, autopilotEnabled, getAutomation, listActivity, setAutomation } from '../services/automation.service';
+import { PHOTOS_MODES, POSTS_MODES, REPLIES_MODES, WEBSITE_MODES, autopilotEnabled, getAutomation, listActivity, setAutomation } from '../services/automation.service';
 import { PostError, editPost, listPosts, planPostFor, publishNow, skipPost } from '../services/gbpPosts.service';
 import { EDIT_WINDOW_HOURS } from '../services/gbpPosts';
 
@@ -97,16 +97,17 @@ export async function getSettings(req: Request, res: Response): Promise<void> {
   try { res.json({ ...(await getAutomation(req.authEmail)), live: autopilotEnabled(), editWindowHours: EDIT_WINDOW_HOURS }); } catch (e) { fail(res, e); }
 }
 
-/** PUT /api/seo/automation {postsMode?, repliesMode?, websiteMode?} */
+/** PUT /api/seo/automation {postsMode?, repliesMode?, websiteMode?, photosMode?} */
 export async function putSettings(req: Request, res: Response): Promise<void> {
   if (!req.authEmail) return needAuth(res);
   const b = (req.body ?? {}) as Record<string, unknown>;
-  const posts = b.postsMode, replies = b.repliesMode, website = b.websiteMode;
+  const posts = b.postsMode, replies = b.repliesMode, website = b.websiteMode, photos = b.photosMode;
   if ((posts !== undefined && !POSTS_MODES.includes(posts as never)) || (replies !== undefined && !REPLIES_MODES.includes(replies as never))
-    || (website !== undefined && !WEBSITE_MODES.includes(website as never)) || (posts === undefined && replies === undefined && website === undefined)) {
+    || (website !== undefined && !WEBSITE_MODES.includes(website as never)) || (photos !== undefined && !PHOTOS_MODES.includes(photos as never))
+    || (posts === undefined && replies === undefined && website === undefined && photos === undefined)) {
     res.status(400).json({ error: 'בקשה לא תקינה.', code: 'bad_input' }); return;
   }
-  try { res.json({ ...(await setAutomation(req.authEmail, { postsMode: posts as never, repliesMode: replies as never, websiteMode: website as never })), live: autopilotEnabled(), editWindowHours: EDIT_WINDOW_HOURS }); } catch (e) { fail(res, e); }
+  try { res.json({ ...(await setAutomation(req.authEmail, { postsMode: posts as never, repliesMode: replies as never, websiteMode: website as never, photosMode: photos as never })), live: autopilotEnabled(), editWindowHours: EDIT_WINDOW_HOURS }); } catch (e) { fail(res, e); }
 }
 
 /** GET /api/seo/posts — the last 12 posts, newest first. */

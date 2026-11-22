@@ -27,6 +27,7 @@ import { applyImageSlot, clearImageSlot, parseSlot, keepOwnerExtras, type AiStor
 import { processPhoto, processUploadedPhotos, type ImageWarning } from '../services/landingImages';
 import { defaultHiddenSections, detectCategory, isCategoryId, isMissingCategoryColumn, normalizeCategory, templateFor, withCategoryColumns } from '../services/pageCategory';
 import { carryOverOwnerData } from '../services/healthCopy';
+import { googleBlockForPage, onPagePhotosAdded } from '../services/pageGoogle.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -395,7 +396,10 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
       ? ownerTranslations(t.rows, (data as { ai_content: AiContent }).ai_content, (data as { user_images?: unknown }).user_images)
       : publicTranslations(t.rows);
   }
-  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner, translations, ...(isOwner ? { translations_ready } : {}) });
+  // The business's Google listing (README part 143): the card's practical details and the Google reviews, for the
+  // business's own page when its listing is connected. Never fails the page.
+  const google = parentId ? null : await googleBlockForPage(data as { id: string; owner_email?: string | null; parent_id?: string | null; ai_content?: unknown }, isOwner);
+  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner, translations, ...(isOwner ? { translations_ready } : {}), ...(google ? { google } : {}) });
 }
 
 /**
@@ -1257,6 +1261,8 @@ export async function updateImageUpload(req: Request, res: Response): Promise<vo
   if (error) { serverError(res, error, '[LANDING]'); return; }
 
   touchDraft(id);
+  // A new photo of the business's own page goes to its Google listing too, when the owner's setting says so (README part 143).
+  void onPagePhotosAdded(id, [url]);
   res.json({ url, user_images: serialized, warnings: processed.warning ? [processed.warning] : [] });
 }
 

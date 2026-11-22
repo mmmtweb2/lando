@@ -40,7 +40,7 @@ export interface Post {
 }
 
 export type ActivityKind = 'card_synced' | 'card_approved' | 'post_planned' | 'post_published' | 'post_skipped' | 'post_failed' | 'reply_published' | 'reply_drafted' | 'page_created'
-  | 'card_field_synced' | 'photo_added' | 'photo_removed';
+  | 'card_field_synced' | 'photo_added' | 'photo_removed' | 'photo_to_page';
 export interface Activity { id: string; kind: ActivityKind | (string & {}); title: string; detail: string | null; createdAt: string }
 
 export interface GbpStatus { enabled: boolean; connected: boolean; needsReconnect: boolean }

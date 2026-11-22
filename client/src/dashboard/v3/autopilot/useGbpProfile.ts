@@ -9,6 +9,8 @@ import type { Loadable } from './types';
 const msg = (e: unknown) => (e instanceof ProfileError ? e.message : GENERIC_ERROR);
 
 export interface GbpProfileState {
+  /** the preview's sample data (no server) */
+  preview: boolean;
   profile: Loadable<GbpProfile>;
   photos: Loadable<GbpPhoto[]>;
   reload: () => void;
@@ -78,7 +80,7 @@ export function useGbpProfile(preview: boolean, enabled = true): GbpProfileState
     api.polish(field, req).catch((e: unknown): PolishResult => ({ ok: false, code: 'error', message: msg(e) }))
   ), [api]);
 
-  return { profile, photos, reload, save, resolve, acceptWebsite, upload, addFromPage, removePhoto, polish };
+  return { preview, profile, photos, reload, save, resolve, acceptWebsite, upload, addFromPage, removePhoto, polish };
 }
 
 /**

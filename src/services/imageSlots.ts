@@ -36,6 +36,9 @@ export interface ImgMeta {
   fy?: number;
   /** The file looks like a logo (small, flat colours or transparent): never the hero, shown contained, never cropped. */
   logo?: boolean;
+  /** README part 143: the photo was taken from the business's Google listing (never sent back there), and its Google media id. */
+  from?: 'google';
+  gid?: string;
 }
 
 export type AiStore = {

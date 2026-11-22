@@ -13,7 +13,7 @@ const ICON: Record<ActivityKind, LucideIcon> = {
   reply_published: MessageSquare, reply_drafted: Pencil,
   page_created: FileText,
   card_field_synced: MapPin,
-  photo_added: ImagePlus, photo_removed: ImageMinus,
+  photo_added: ImagePlus, photo_removed: ImageMinus, photo_to_page: ImagePlus,
 };
 
 const newestFirst = (items: Activity[]) => [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
