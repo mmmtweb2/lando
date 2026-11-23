@@ -1083,8 +1083,21 @@ interface RawGeneration {
  * the headline, and category stock-photo words. (A page the writer could not produce falls back to the
  * neutral mock, which goes through the same template.)
  */
-export async function generateAiContent(input: GenerateInput): Promise<AiContent> {
-  const raw = await generateRaw(input);
+export interface GenerateOptions {
+  /** Per model call, in ms (the SDK's own timeout). Unset: the SDK default, as page creation always had. */
+  timeoutMs?: number;
+  /**
+   * Never fall back to the neutral mock: throw instead (no API key -> GenerationUnavailable, a failed call ->
+   * the error). Used where a neutral template would REPLACE real text, e.g. "עדכון הדף לפי פרטי העסק".
+   */
+  strict?: boolean;
+}
+
+/** strict generation without ANTHROPIC_API_KEY. */
+export class GenerationUnavailable extends Error { constructor() { super('unavailable'); } }
+
+export async function generateAiContent(input: GenerateInput, opts: GenerateOptions = {}): Promise<AiContent> {
+  const raw = await generateRaw(input, opts);
   if (templateFor(input.category) !== 'health') return raw.content;
   const sourceText = sourceTextOf(input);
   if (raw.isMock) raw.content = { ...raw.content, services_or_benefits: [] };
@@ -1102,15 +1115,16 @@ export async function generateAiContent(input: GenerateInput): Promise<AiContent
   return content;
 }
 
-async function generateRaw(input: GenerateInput): Promise<RawGeneration> {
+async function generateRaw(input: GenerateInput, opts: GenerateOptions = {}): Promise<RawGeneration> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
+    if (opts.strict) throw new GenerationUnavailable();
     console.warn('[AI] ANTHROPIC_API_KEY not set — using mock content');
     return { content: getMockContent(input), isMock: true };
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic(opts.timeoutMs ? { apiKey, timeout: opts.timeoutMs, maxRetries: 1 } : { apiKey });
 
   try {
     // ── Build Call A message content (may include logo image for vision) ──────
@@ -1200,6 +1214,7 @@ async function generateRaw(input: GenerateInput): Promise<RawGeneration> {
 
     return { content: aiContent, doctor: core.doctor, practical: core.practical };
   } catch (err) {
+    if (opts.strict) throw err;
     console.error('[AI] Generation failed, falling back to mock:', err);
     return { content: getMockContent(input), isMock: true };
   }
