@@ -4,7 +4,7 @@
 // Hints only: nothing here blocks a save, except what Google refuses anyway (links, phone numbers, length).
 import type { ServiceItem } from './profileTypes';
 
-export type HintCode = 'too_short' | 'too_long' | 'url' | 'email' | 'phone' | 'caps' | 'no_area' | 'dup' | 'name_long' | 'desc_long';
+export type HintCode = 'too_short' | 'too_long' | 'url' | 'email' | 'phone' | 'caps' | 'no_area' | 'dup' | 'name_long' | 'desc_long' | 'desc_missing';
 export interface Hint { code: HintCode; level: 'error' | 'warn'; index?: number }
 
 export const DESC_MAX = 750;
@@ -83,5 +83,7 @@ export function servicesHints(list: ServiceItem[]): Hint[] {
     if (desc.length > SERVICE_DESC_MAX) out.push({ code: 'desc_long', level: 'warn', index });
     for (let j = 0; j < index; j++) if (nearDuplicate(list[j].name, name)) { out.push({ code: 'dup', level: 'warn', index }); break; }
   });
+  // Many owners list services without a word about them: one quiet hint for the whole list.
+  if (list.length && list.some((s) => !s.description.trim())) out.push({ code: 'desc_missing', level: 'warn' });
   return out;
 }
