@@ -22,7 +22,9 @@ ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-RUN cd client && npm run build
+# Type-checking (tsc -b, ~600MB RAM) runs before every merge, not here: in the image we only bundle,
+# so a small build server doesn't run out of memory while the runtime stage installs in parallel.
+RUN cd client && npx vite build
 
 # Backend build (tsc → dist/)
 RUN npm run build
