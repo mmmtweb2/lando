@@ -94,6 +94,8 @@ interface CouponRow {
   expires_at: string | null;
   created_by: string | null;
   notes: string | null;
+  /** Migration 056: how long a Google-promotion discount lasts. Absent before 056. */
+  seo_duration?: 'first' | 'forever';
 }
 
 interface UserRow {
@@ -151,6 +153,14 @@ const PURPOSE_LABELS: Record<string, string> = {
   credits: 'קרדיטים',
   bundle:  'חבילות',
 };
+
+/** Coupon purposes: the landing-page purchases plus the Google-promotion subscription (README part 148). */
+const COUPON_PURPOSE_LABELS: Record<string, string> = {
+  ...PURPOSE_LABELS,
+  seo_monthly: 'קידום בגוגל — חודשי',
+  seo_annual:  'קידום בגוגל — שנתי',
+};
+const isSeoPurpose = (p: string) => p === 'seo_monthly' || p === 'seo_annual';
 
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   upload:  { label: 'העלאה',  color: '#2E63F6' },
@@ -606,8 +616,10 @@ export default function AdminDashboard() {
     maxRedemptions: '',
     maxPerUser: '1',
     purposes: [] as string[],
+    seoDuration: 'first' as 'first' | 'forever',
     notes: '',
   });
+  const seoTicked = form.purposes.some(isSeoPurpose);
 
   function loadCoupons() {
     setCouponsLoading(true);
@@ -644,13 +656,15 @@ export default function AdminDashboard() {
           max_per_user: form.maxPerUser === '' ? null : Number(form.maxPerUser),
           expires_at: form.expiresAt || null,
           notes: form.notes || null,
+          // Only for a Google-promotion coupon (and only then does it need migration 056).
+          ...(form.purposes.some(isSeoPurpose) ? { seo_duration: form.seoDuration } : {}),
         }),
       });
       const data = await r.json().catch(() => ({})) as CouponRow & { error?: string };
       if (!r.ok) throw new Error(data.error ?? 'יצירת הקופון נכשלה');
       setCoupons((prev) => [data, ...prev]);
       setCouponMsg({ text: `הקופון ${data.code} נוצר.`, ok: true });
-      setForm({ code: '', discountType: 'percent', discountValue: '', expiresAt: '', maxRedemptions: '', maxPerUser: '1', purposes: [], notes: '' });
+      setForm({ code: '', discountType: 'percent', discountValue: '', expiresAt: '', maxRedemptions: '', maxPerUser: '1', purposes: [], seoDuration: 'first', notes: '' });
     } catch (err) {
       setCouponMsg({ text: err instanceof Error ? err.message : 'יצירת הקופון נכשלה', ok: false });
     } finally {
@@ -1274,7 +1288,7 @@ export default function AdminDashboard() {
               <div>
                 <h2 className="font-semibold text-slate-700 text-sm">קופונים</h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  קוד הנחה מוריד את המחיר של תשלום אחד. השימוש נספר ברגע שנפתח דף התשלום —
+                  קוד הנחה מוריד את המחיר של תשלום אחד (במנוי הקידום בגוגל אפשר לבחור: רק התשלום הראשון, או כל התשלומים). השימוש נספר ברגע שנפתח דף התשלום —
                   כך שגם אם הלקוח לא סיים לשלם, השימוש נוצל. כיבוי קופון ("פעיל") הוא המחיקה —
                   קופון שכבר שימש בתשלום אמיתי לא נמחק לעולם.
                 </p>
@@ -1338,8 +1352,8 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-medium text-slate-500">תקף עבור (לא נבחר = הכול):</span>
-                {Object.entries(PURPOSE_LABELS).map(([key, label]) => (
+                <span className="text-xs font-medium text-slate-500">תקף עבור (לא נבחר = כל רכישות הדפים, בלי הקידום בגוגל):</span>
+                {Object.entries(COUPON_PURPOSE_LABELS).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-1.5 text-xs text-slate-600">
                     <input type="checkbox" checked={form.purposes.includes(key)}
                       onChange={(e) => setForm((f) => ({
@@ -1349,6 +1363,34 @@ export default function AdminDashboard() {
                     {label}
                   </label>
                 ))}
+              </div>
+
+              {seoTicked && (
+                <fieldset className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex flex-col gap-2">
+                  <legend className="px-1 text-xs font-medium text-slate-500">במנוי הקידום בגוגל, ההנחה חלה על:</legend>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 min-h-[32px]">
+                      <input type="radio" name="seoDuration" checked={form.seoDuration === 'first'}
+                        onChange={() => setForm((f) => ({ ...f, seoDuration: 'first' }))} />
+                      הנחה על התשלום הראשון בלבד
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 min-h-[32px]">
+                      <input type="radio" name="seoDuration" checked={form.seoDuration === 'forever'}
+                        onChange={() => setForm((f) => ({ ...f, seoDuration: 'forever' }))} />
+                      הנחה על כל התשלומים
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {form.seoDuration === 'forever'
+                      ? 'במנוי החודשי הוראת הקבע נוצרת על הסכום המוזל, וכל חודש מחויב בו.'
+                      : 'במנוי החודשי החודש הראשון מוזל, ומהחיוב הבא המחיר הרגיל.'}
+                    {form.purposes.includes('seo_annual') && ' במנוי השנתי יש תשלום אחד בלי חידוש אוטומטי, ולכן ההנחה חלה רק עליו בשתי האפשרויות.'}
+                  </p>
+                </fieldset>
+              )}
+
+              {/* After the SEO choice, so the duration is picked before the coupon is created. */}
+              <div className="flex">
                 <button type="submit" disabled={couponCreateBusy}
                   className="mr-auto px-4 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
                   style={{ background: '#2E63F6' }}>
@@ -1402,8 +1444,13 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3.5 hidden md:table-cell text-slate-500">{c.max_per_user ?? '∞'}</td>
                           <td className="px-4 py-3.5 hidden lg:table-cell text-slate-500 text-xs">
                             {c.applicable_purposes && c.applicable_purposes.length > 0
-                              ? c.applicable_purposes.map((x) => PURPOSE_LABELS[x] ?? x).join(', ')
-                              : 'הכול'}
+                              ? c.applicable_purposes.map((x) => COUPON_PURPOSE_LABELS[x] ?? x).join(', ')
+                              : 'כל רכישות הדפים'}
+                            {c.applicable_purposes?.some(isSeoPurpose) && (
+                              <span className="block text-slate-400">
+                                {c.seo_duration === 'forever' ? 'קידום: כל התשלומים' : 'קידום: תשלום ראשון בלבד'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3.5 hidden sm:table-cell text-slate-500 text-xs">
                             {c.expires_at ? formatDate(c.expires_at) : '—'}

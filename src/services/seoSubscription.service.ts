@@ -17,11 +17,14 @@ import {
   SubState, SubStatus, applyCancel, applyChargeFailed, applyChargeOk, expire, sameState, toEntitlementRow,
 } from './subscriptionState';
 import { ChargeEvent, RefundOffer, refundOffer } from './seoRefund';
+import {
+  CouponRow, checkCoupon, checkCouponRetry, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
+} from './coupon.service';
 import { sendRefundMails } from './refundMail';
 
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type SubErrorCode = 'bad_plan' | 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit';
+export type SubErrorCode = 'coupon' | 'bad_plan' | 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit';
 export class SubError extends Error {
   constructor(public code: SubErrorCode, message?: string) { super(message ?? code); }
 }
@@ -40,9 +43,49 @@ export interface SubRow {
   cycle: SeoCycle;
   with_page: boolean;
   reminder_for_period_end: string | null;
+  // Migration 056 (README part 148). Absent on a database where it has not run.
+  coupon_id?: string | null;
+  /** What the standing order charges each month. NULL/absent = same as `amount`. */
+  recurring_amount?: number | string | null;
+  /** ₪ taken off the first payment by the coupon. */
+  discount_amount?: number | string | null;
 }
 
-const COLS = 'id, email, status, amount, sumit_customer_id, sumit_recurring_item_id, current_period_end, cancel_at_period_end, needs_manual_cancel, plan_id, cycle, with_page, reminder_for_period_end';
+// '*' rather than a column list: it reads the coupon columns of migration 056 when they exist and does not
+// fail when they do not (a named missing column would make every subscription read fail before 056 runs).
+const COLS = '*';
+
+/** The coupon columns hold something: a new checkout without a code must clear them, or a stale discount survives. */
+function hasCouponFields(r: SubRow | null): boolean {
+  return !!r && (r.coupon_id != null || r.recurring_amount != null || r.discount_amount != null);
+}
+
+/** What each later payment (the standing order) must be: the coupon's recurring price, else the subscription amount. */
+export function recurringAmountOf(r: Pick<SubRow, 'amount' | 'recurring_amount'>): number {
+  return r.recurring_amount != null ? Number(r.recurring_amount) : Number(r.amount);
+}
+
+export interface PricingView {
+  /** The plan's catalog price for one cycle. */
+  list: number;
+  /** What the first payment cost with the coupon, or null when no coupon priced it. */
+  first: number | null;
+  /** What the next automatic charge will be (monthly), or null (annual: nothing renews). */
+  next: number | null;
+  couponDuration: 'first' | 'forever' | null;
+}
+
+/** The prices the customer's card shows. Derived from the row only: no coupon lookup, nothing secret. */
+export function pricingView(r: SubRow): PricingView {
+  const list = planOf(r).price;
+  const discount = r.discount_amount != null ? Number(r.discount_amount) : 0;
+  const hasCoupon = !!r.coupon_id && discount > 0;
+  const first = hasCoupon ? Math.round((list - discount) * 100) / 100 : null;
+  const next = autoRenews(r) ? recurringAmountOf(r) : null;
+  const couponDuration = !hasCoupon ? null
+    : r.recurring_amount != null && Number(r.recurring_amount) < list ? 'forever' : 'first';
+  return { list, first, next, couponDuration };
+}
 
 /** An annual subscription is one payment for the year: nothing renews, so nothing can be "past due". */
 export function autoRenews(r: Pick<SubRow, 'cycle'>): boolean {
@@ -152,13 +195,19 @@ async function mirrorEntitlement(email: string, s: SubState): Promise<void> {
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-export async function startSubscription(email: string, planId: unknown = 'monthly'): Promise<{ redirectUrl: string }> {
+/** The coupon purpose of a plan: the monthly and the annual plan are ticked separately in the admin panel. */
+export function couponPurposeFor(plan: Pick<SeoPlan, 'cycle'>): 'seo_monthly' | 'seo_annual' {
+  return plan.cycle === 'year' ? 'seo_annual' : 'seo_monthly';
+}
+
+export async function startSubscription(email: string, planId: unknown = 'monthly', opts: { couponCode?: string } = {}): Promise<{ redirectUrl: string }> {
   if (!seoSubscriptionEnabled() || !summitConfigured()) throw new SubError('disabled');
   const plan = isSellable(planId) ? getSeoPlan(planId) : null;
   if (!plan) throw new SubError('bad_plan');
   // Payment test mode (SEO_TEST_PRICE + SEO_TEST_EMAILS): listed accounts pay the test amount on any plan.
+  // The test price WINS over a coupon: a code sent by a test account is ignored and no use is counted.
   const testPrice = seoTestPrice(email);
-  const price = testPrice ?? plan.price;
+  let price = testPrice ?? plan.price;
   if (testPrice !== null) console.warn('[SUBSCRIPTION] payment test mode: charging the test price for a listed account');
 
   // Already has the product some other way (e.g. a manual grant)? Do not bill them for it.
@@ -174,6 +223,30 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
       && isEntitled({ status: existing.status, current_period_end: existing.current_period_end })) {
     throw new SubError('already_subscribed');
   }
+
+  // ── Coupon (optional, README part 148). Checked read-only HERE, before anything changes (the old
+  // standing order below is stopped only once the code is known to be good). Consumed further down, by the
+  // same compare-and-swap as a landing-page checkout, right before the checkout is written.
+  const code = (opts.couponCode ?? '').trim();
+  const purpose = couponPurposeFor(plan);
+  let coupon: CouponRow | null = null;
+  let alreadyCounted = false;
+  if (code && testPrice !== null) {
+    console.warn('[SUBSCRIPTION] payment test mode: the test price wins, the coupon code is ignored');
+  } else if (code) {
+    // Re-opening the checkout of the same unpaid subscription with the same code: that use was counted
+    // when the first checkout opened. Without this a closed SUMIT tab would lock the customer out of
+    // their own one-per-customer code.
+    if (existing?.status === 'pending' && existing.coupon_id) {
+      const retry = await checkCouponRetry(code, purpose, existing.coupon_id);
+      if (retry.ok) { coupon = retry.coupon; alreadyCounted = true; }
+    }
+    if (!coupon) {
+      const check = await checkCoupon(code, purpose, email);
+      if (!check.ok) throw new SubError('coupon', check.error);
+      coupon = check.coupon;
+    }
+  }
   // A customer whose last charge failed re-enters their card through a NEW standing order.
   // Stop the old one first, or both could charge them once the card works again.
   // A canceled row can still carry the id of an order that was never stopped: stop it too, or the stale
@@ -184,20 +257,41 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
     await supabase.from('seo_subscriptions').update({ sumit_recurring_item_id: null }).eq('id', existing.id);
   }
 
+  // Consume one use (unless this checkout already holds one). A lost CAS = exhausted or switched off since
+  // the check: no discounted checkout opens.
+  let claimed: CouponRow | null = null;
+  if (coupon && !alreadyCounted) {
+    claimed = await redeemCoupon(coupon.id);
+    if (!claimed) throw new SubError('coupon', 'הקופון מוצה או אינו פעיל עוד. נסו שוב ללא קופון.');
+    coupon = claimed;
+  }
+  const giveBack = async () => { if (claimed) await releaseRedemption(claimed.id, claimed.redemptions_count); };
+
+  // The first payment is the discounted price (never below MIN_CHARGE). The standing order charges
+  // recurring_amount: the discounted price for 'forever', the list price for 'first'.
+  let couponFields: Record<string, unknown> = {};
+  if (coupon) {
+    const priced = seoCouponPricing(coupon, plan.price);
+    price = priced.firstAmount;
+    couponFields = { coupon_id: coupon.id, recurring_amount: priced.recurringAmount, discount_amount: priced.discountAmount };
+  } else if (hasCouponFields(existing)) {
+    couponFields = { coupon_id: null, recurring_amount: null, discount_amount: null };   // no stale discount
+  }
+
   let subId: string;
   if (!existing) {
     const { data, error } = await supabase.from('seo_subscriptions')
-      .insert({ email, status: 'pending', amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage }).select('id').single();
-    if (error || !data) throw dbError(error ?? { message: 'insert failed' });
+      .insert({ email, status: 'pending', amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage, ...couponFields }).select('id').single();
+    if (error || !data) { await giveBack(); throw dbError(error ?? { message: 'insert failed' }); }
     subId = (data as { id: string }).id;
   } else {
     subId = existing.id;
     const patch: Record<string, unknown> = {
-      amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage, updated_at: new Date().toISOString(),
+      amount: price, plan_id: plan.id, cycle: plan.cycle, with_page: plan.withPage, updated_at: new Date().toISOString(), ...couponFields,
     };
     if (existing.status === 'canceled' || existing.status === 'pending') patch.status = 'pending';
     const { error } = await supabase.from('seo_subscriptions').update(patch).eq('id', subId);
-    if (error) throw dbError(error);
+    if (error) { await giveBack(); throw dbError(error); }
   }
 
   const common = {
@@ -208,15 +302,28 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
     cancelRedirectUrl: `${API_URL}/api/seo/subscription/return?ref=${subId}&cancel=1`,
     customerEmail: email,
   };
+  let opened: { redirectUrl: string };
   try {
     // Monthly = a standing order. Annual = ONE payment (installments are the customer's choice on
     // SUMIT's page), never auto-renewed.
-    return plan.cycle === 'year'
+    opened = plan.cycle === 'year'
       ? await beginSinglePaymentRedirect({ ...common, maxInstallments: 12 })
       : await beginRecurringRedirect(common);
   } catch (e) {
+    // SUMIT's page never opened: give the use back and take the coupon off the row, so a later retry
+    // counts it again (otherwise the retry path above would reuse a use that was returned).
+    if (claimed) {
+      await giveBack();
+      const { error: clrErr } = await supabase.from('seo_subscriptions')
+        .update({ coupon_id: null, recurring_amount: null, discount_amount: null }).eq('id', subId);
+      if (clrErr) console.error('[COUPON] ALERT could not clear the coupon of an unopened checkout', { subId, error: clrErr.message });
+    }
     throw new SubError('sumit', e instanceof Error ? e.message : undefined);
   }
+  // Audit row (who used which code), after the page opened; payment_id stays NULL: the subscription has no
+  // payments row. Never blocks: the counter is the source of truth for the cap.
+  if (claimed) await recordRedemption(claimed.id, email, null);
+  return opened;
 }
 
 // ─── A SUMIT payment was reported (return redirect, trigger, or sweep) ──────
@@ -232,6 +339,9 @@ export async function applyVerifiedPayment(
   const row = await getById(subscriptionId);
   if (!row) return 'unknown';
 
+  // `amount` is what THIS payment must cover: the (possibly discounted) checkout price until the first payment
+  // of a monthly plan is verified, then the standing order's price (moved there below). So renewals of a
+  // 'first' coupon must be the list price, those of a 'forever' coupon the discounted price; less is refused.
   const sufficient = payment.valid && payment.amount + 0.01 >= Number(row.amount);
   const kind = sufficient ? 'charge_ok' : 'charge_failed';
 
@@ -272,8 +382,12 @@ export async function applyVerifiedPayment(
       return 'ignored';
     }
     try {
+      // A monthly coupon checkout: from now on the payments to expect are the standing order's.
+      const due = recurringAmountOf(row);
+      const moveAmount = autoRenews(row) && row.recurring_amount != null && Math.abs(due - Number(row.amount)) > 0.001;
       await saveState(row, state, {
         needs_manual_cancel: false,
+        ...(moveAmount ? { amount: due } : {}),
         ...(extra.sumitCustomerId ? { sumit_customer_id: extra.sumitCustomerId } : {}),
         ...(extra.sumitRecurringItemId ? { sumit_recurring_item_id: extra.sumitRecurringItemId } : {}),
       });
@@ -292,7 +406,7 @@ export async function applyVerifiedPayment(
     // id is seen (replay guard above), and only while no standing order is on record. It starts
     // charging at the end of the period that was just paid. Off unless SUMIT_STANDING_ORDER=after_payment.
     if (planOf(row).cycle === 'month' && !standingOrderId && customerId && state.currentPeriodEnd && standingOrderAfterPayment()) {
-      const so = await createStandingOrder({ customerId, itemName: 'קידום העסק בגוגל – מנוי חודשי', amount: Number(row.amount), firstCharge: state.currentPeriodEnd }, now);
+      const so = await createStandingOrder({ customerId, itemName: 'קידום העסק בגוגל – מנוי חודשי', amount: recurringAmountOf(row), firstCharge: state.currentPeriodEnd }, now);
       if (so.recurringItemId) {
         standingOrderId = so.recurringItemId;
         const { error: soErr } = await supabase.from('seo_subscriptions').update({ sumit_recurring_item_id: so.recurringItemId }).eq('id', row.id);

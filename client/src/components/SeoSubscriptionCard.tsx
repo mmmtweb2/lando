@@ -19,6 +19,8 @@ interface Status {
     page?: { included: boolean; pageId: string | null; status: string | null };
     /** Cancelling now returns the first payment in full (14 days from it, once per account). */
     refund?: { eligible: boolean; amount: number | null; until: string | null };
+    /** Prices of this subscription (README part 148): list price, the first payment with a coupon, the next charge. */
+    pricing?: { list: number; first: number | null; next: number | null; couponDuration: 'first' | 'forever' | null };
   } | null;
 }
 
@@ -70,8 +72,17 @@ export default function SeoSubscriptionCard() {
   else if (sub.renews === false) line = `המנוי השנתי פעיל${end ? ` ותקף עד ${end}` : ''}, ולא מתחדש אוטומטית. נשלח תזכורת לפני שהוא מסתיים.`;
   else {
     // The plan's own price (the catalog carries all four), not the base monthly price.
-    const planPrice = st.catalog?.plans.find(p => p.id === sub.planId)?.price ?? st.price;
+    // With a coupon the next charge can differ from the catalog price: the server says what it will be.
+    const planPrice = sub.pricing?.next ?? st.catalog?.plans.find(p => p.id === sub.planId)?.price ?? st.price;
     line = `המנוי פעיל${end ? ` ועד ${end}` : ''}, ומתחדש כל חודש${planPrice ? ` ב-₪${fmt(planPrice)}` : ''}.`;
+  }
+  // The coupon, in one plain line: what was paid, and (for a first-payment coupon) the price from the next charge.
+  const pr = sub.pricing;
+  let couponLine = '';
+  if (pr && pr.first !== null && sub.status !== 'canceled') {
+    if (sub.cycle === 'year') couponLine = `שילמתם ₪${fmt(pr.first)} במקום ₪${fmt(pr.list)}, עם קוד הנחה.`;
+    else if (pr.couponDuration === 'forever') couponLine = `עם קוד ההנחה אתם משלמים ₪${fmt(pr.first)} לחודש במקום ₪${fmt(pr.list)}, בכל חודש.`;
+    else couponLine = `החודש הראשון עלה ₪${fmt(pr.first)} עם קוד הנחה. מהחיוב הבא: ₪${fmt(pr.next ?? pr.list)}.`;
   }
   const kind = sub.cycle ? planLabel(sub.cycle, !!sub.withPage) : '';
   const pl = pageLine(sub.page);
@@ -93,6 +104,7 @@ export default function SeoSubscriptionCard() {
       <h3 className="text-base font-semibold text-slate-900">{st.planName}, המנוי שלכם</h3>
       {kind && <p className="text-xs font-medium text-slate-500">{kind}</p>}
       <p className="text-sm text-slate-700">{line}</p>
+      {couponLine && <p className="text-sm text-slate-600">{couponLine}</p>}
       {pl && <p className="text-sm text-slate-700">{pl}</p>}
       {refund && !confirming && (
         <p className="text-xs text-slate-500">ביטול עד {refundUntil}: החזר מלא של ₪{fmt(refund.amount as number)}.</p>

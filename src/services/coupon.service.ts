@@ -20,13 +20,30 @@ import { supabase } from '../config/supabase';
 
 export type DiscountType = 'percent' | 'fixed';
 
-/** The purposes a coupon can be restricted to — mirrors `payments.purpose`. */
-export const COUPON_PURPOSES = ['publish', 'renew', 'credits', 'bundle'] as const;
+/**
+ * The purposes a coupon can be restricted to. The first four mirror `payments.purpose` (landing-page
+ * purchases). The two `seo_*` ones are the Google-promotion subscription (README part 148, migration
+ * 056): it has no `payments` row, and a coupon reaches it only when one of them is listed EXPLICITLY.
+ */
+export const COUPON_PURPOSES = ['publish', 'renew', 'credits', 'bundle', 'seo_monthly', 'seo_annual'] as const;
 export type CouponPurpose = (typeof COUPON_PURPOSES)[number];
 
 export function isCouponPurpose(value: unknown): value is CouponPurpose {
   return typeof value === 'string' && (COUPON_PURPOSES as readonly string[]).includes(value);
 }
+
+export const SEO_COUPON_PURPOSES = ['seo_monthly', 'seo_annual'] as const;
+export type SeoCouponPurpose = (typeof SEO_COUPON_PURPOSES)[number];
+export function isSeoCouponPurpose(value: unknown): value is SeoCouponPurpose {
+  return typeof value === 'string' && (SEO_COUPON_PURPOSES as readonly string[]).includes(value);
+}
+
+/** 'first' = only the first payment of the subscription is discounted; 'forever' = every payment. */
+export type SeoDuration = 'first' | 'forever';
+export const isSeoDuration = (v: unknown): v is SeoDuration => v === 'first' || v === 'forever';
+
+/** Shown for a subscription coupon that cannot be used (wrong product, or migration 056 not run yet). */
+export const SEO_COUPON_INVALID = 'הקוד לא תקף.';
 
 export interface CouponRow {
   id: string;
@@ -42,6 +59,8 @@ export interface CouponRow {
   expires_at: string | null;
   created_by: string | null;
   notes: string | null;
+  /** Migration 056. `undefined` on a database where 056 has not run: subscription coupons are then unavailable. */
+  seo_duration?: SeoDuration;
 }
 
 /**
@@ -71,6 +90,21 @@ export function priceWithCoupon(coupon: CouponRow, amount: number): { finalAmoun
   // numbers can never disagree (discountAmount is always amount - finalAmount).
   const finalAmount = round(Math.max(MIN_CHARGE, amount - raw));
   return { finalAmount, discountAmount: round(amount - finalAmount) };
+}
+
+/**
+ * A subscription coupon priced against the plan's list price.
+ *   firstAmount      what the checkout (the first payment) charges; never below MIN_CHARGE
+ *   discountAmount   listPrice - firstAmount
+ *   recurringAmount  what each later payment (the standing order) charges: the discounted price for
+ *                    'forever', the list price for 'first'. Meaningless on the annual plan (no renewals).
+ */
+export function seoCouponPricing(coupon: CouponRow, listPrice: number): {
+  firstAmount: number; discountAmount: number; recurringAmount: number; duration: SeoDuration;
+} {
+  const { finalAmount, discountAmount } = priceWithCoupon(coupon, listPrice);
+  const duration: SeoDuration = coupon.seo_duration === 'forever' ? 'forever' : 'first';
+  return { firstAmount: finalAmount, discountAmount, recurringAmount: duration === 'forever' ? finalAmount : listPrice, duration };
 }
 
 /** Case-insensitive lookup. Codes are written uppercase, so the normalized
@@ -115,7 +149,12 @@ export async function checkCoupon(code: string, purpose: string, email: string):
   }
 
   const purposes = coupon.applicable_purposes ?? [];
-  if (purposes.length > 0 && !purposes.includes(purpose)) {
+  if (isSeoCouponPurpose(purpose)) {
+    // The subscription is never covered by "any purpose": a landing-page promo must not quietly discount
+    // a recurring charge. And without migration 056 there is no seo_duration, so nothing can say how long
+    // the discount lasts: the code is simply not valid there.
+    if (!purposes.includes(purpose) || !isSeoDuration(coupon.seo_duration)) return { ok: false, error: SEO_COUPON_INVALID };
+  } else if (purposes.length > 0 && !purposes.includes(purpose)) {
     return { ok: false, error: 'הקופון אינו תקף לרכישה זו.' };
   }
 
@@ -141,6 +180,26 @@ export async function checkCoupon(code: string, purpose: string, email: string):
     }
   }
 
+  return { ok: true, coupon };
+}
+
+/**
+ * The same customer re-opening the checkout of the SAME still-unpaid subscription with the SAME code
+ * (they closed SUMIT's page, or asked for a link to pay from another device). Their use was already
+ * counted when the first checkout opened, so this neither counts again nor trips the per-user cap: it
+ * only re-checks that the coupon is still live and still valid for this plan. Read-only.
+ */
+export async function checkCouponRetry(code: string, purpose: string, couponId: string): Promise<CouponCheck> {
+  const coupon = await findCouponByCode(code);
+  if (!coupon || coupon.id !== couponId) return { ok: false, error: 'קוד הקופון אינו קיים.' };
+  if (!coupon.active) return { ok: false, error: 'הקופון אינו פעיל.' };
+  if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= Date.now()) return { ok: false, error: 'תוקף הקופון פג.' };
+  const purposes = coupon.applicable_purposes ?? [];
+  if (isSeoCouponPurpose(purpose)) {
+    if (!purposes.includes(purpose) || !isSeoDuration(coupon.seo_duration)) return { ok: false, error: SEO_COUPON_INVALID };
+  } else if (purposes.length > 0 && !purposes.includes(purpose)) {
+    return { ok: false, error: 'הקופון אינו תקף לרכישה זו.' };
+  }
   return { ok: true, coupon };
 }
 

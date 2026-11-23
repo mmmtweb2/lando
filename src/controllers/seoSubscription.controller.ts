@@ -10,7 +10,7 @@ import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
 import { diagLog, keysOf } from '../services/sumitDiag';
 import {
-  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, findBySumitCustomer, getSubscription, planOf, refundOfferFor, startSubscription,
+  SubError, SubRow, applyVerifiedPayment, autoRenews, cancelSubscription, findBySumitCustomer, getSubscription, planOf, pricingView, refundOfferFor, startSubscription,
 } from '../services/seoSubscription.service';
 
 const APP_URL = (process.env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -20,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function fail(res: Response, e: unknown): void {
   if (e instanceof SubError) {
     switch (e.code) {
+      case 'coupon': res.status(400).json({ error: e.message, code: 'coupon' }); return;
       case 'bad_plan': res.status(400).json({ error: 'תוכנית לא מוכרת.', code: 'bad_plan' }); return;
       case 'disabled': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_disabled' }); return;
       case 'not_migrated': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_not_migrated' }); return;
@@ -74,6 +75,8 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         // Cancelling now returns the first payment in full (14 days from it, once per account). The card
         // says which case applies, with the amount, before the customer confirms.
         refund: await refundView(row),
+        // What was paid and what the next charge will be, when a coupon priced the subscription (part 148).
+        pricing: pricingView(row),
       };
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
@@ -92,7 +95,10 @@ export async function start(req: Request, res: Response): Promise<void> {
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
   try {
     const planId = typeof req.body?.plan === 'string' ? req.body.plan : 'monthly';
-    const started = await startSubscription(email, planId);
+    // Optional discount code (README part 148). Only the code is taken from the browser: the server checks
+    // it, prices the checkout and counts the use itself.
+    const couponCode = typeof req.body?.couponCode === 'string' ? req.body.couponCode.slice(0, 64) : undefined;
+    const started = await startSubscription(email, planId, { couponCode });
     void logEvent({ event: 'payment_started', email });
     res.json(started);
   } catch (e) { fail(res, e); }
