@@ -671,7 +671,7 @@ export function servicesPrompt(i: ServicesPromptInput): PromptPair {
     '- Merge rows only when they are the same service written twice (e.g. "התקנת מזגן" and "התקנת מזגנים"): one item with both row numbers.',
     '- "name": a short Hebrew name, 2 to 5 words, the way a customer would search for it ("פתיחת סתימות", "החלפת דוד שמש"). One consistent style for all items (noun phrases, no verbs in the imperative, no punctuation at the end).',
     '- A row marked [ON GOOGLE] keeps its name EXACTLY as written (you may still write its description).',
-    `- "description": one line, at most ${SERVICE_DESC_MAX} characters, saying concretely what the service includes. Only facts from the FACTS block and the row itself; if there is nothing true to add, use "" or the row's own description.`,
+    `- "description": EVERY item gets one, one line, at most ${SERVICE_DESC_MAX} characters, saying concretely what the service includes. Use facts from the FACTS block and the row when there are some. When a row has no description and no facts about it, write a neutral, generally true explanation of what this kind of service covers (e.g. "פתיחת סתימות" -> "טיפול בסתימות בכיורים, באסלות ובקווי ניקוז"), never anything specific to this business: no speed, quality, experience, price, guarantee, brand, number or "הכי". Keep an existing description unless it is unclear, too long or breaks a rule.`,
     '- "forgotten": up to 3 short service names that businesses of this kind very commonly offer and that are NOT in the list. They are only suggestions the owner may tick. If unsure, return [].',
     '',
     'GROUNDING:',
