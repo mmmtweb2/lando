@@ -30,7 +30,7 @@ async function loadPage(id: string): Promise<PageRow | null> {
 
 async function listFor(page: PageRow) {
   const all = await loadTranslations(page.id);
-  return ownerTranslations(all.rows, page.ai_content, page.user_images);
+  return ownerTranslations(all.rows, withName(page), page.user_images);
 }
 
 function langParam(req: Request, res: Response): LangCode | null {
@@ -45,7 +45,7 @@ export async function listTranslations(req: Request, res: Response): Promise<voi
   if (!page) { res.status(404).json({ error: 'הדף לא נמצא.' }); return; }
   const all = await loadTranslations(page.id);
   if (!all.ready) { res.status(503).json(NOT_MIGRATED); return; }
-  res.json({ translations: ownerTranslations(all.rows, page.ai_content, page.user_images) });
+  res.json({ translations: ownerTranslations(all.rows, withName(page), page.user_images) });
 }
 
 /** POST /api/landing/:id/translations {lang}: translate the whole page in one click. */
@@ -61,7 +61,7 @@ export async function addTranslation(req: Request, res: Response): Promise<void>
     const existing = await loadTranslation(page.id, lang);
     if (!existing.ready) { res.status(503).json(NOT_MIGRATED); return; }
 
-    const flat = flattenTranslatable(page.ai_content, page.user_images);
+    const flat = flattenTranslatable(withName(page), page.user_images);
     const health = page.category === 'health';
     const result = await translateFlat(flat, lang, { health, businessName: page.business_name, call: translateCall });
     if (Object.keys(result.value).length === 0) { res.status(502).json({ error: TRANSLATE_FAILED }); return; }
@@ -93,7 +93,7 @@ export async function editTranslation(req: Request, res: Response): Promise<void
     const { ready, row } = await loadTranslation(page.id, lang);
     if (!ready) { res.status(503).json(NOT_MIGRATED); return; }
     if (!row) { res.status(404).json({ error: 'השפה הזו עדיין לא נוספה לדף.' }); return; }
-    const flat = flattenTranslatable(page.ai_content, page.user_images);
+    const flat = flattenTranslatable(withName(page), page.user_images);
     const { row: next, applied } = applyManualEdits(flat, row, changes as Record<string, unknown>);
     if (applied.length) await saveTranslation(page.id, lang, { ...next, status: row.status });
     res.json({ applied, translations: await listFor(page) });
@@ -118,7 +118,7 @@ export async function refreshTranslation(req: Request, res: Response): Promise<v
     const { ready, row } = await loadTranslation(page.id, lang);
     if (!ready) { res.status(503).json(NOT_MIGRATED); return; }
     if (!row) { res.status(404).json({ error: 'השפה הזו עדיין לא נוספה לדף.' }); return; }
-    const flat = flattenTranslatable(page.ai_content, page.user_images);
+    const flat = flattenTranslatable(withName(page), page.user_images);
     const plan = planRefresh(flat, row, manualMode);
     if (plan.manualConflicts.length && !manualMode) {
       res.status(409).json({
@@ -179,4 +179,9 @@ export async function removeTranslation(req: Request, res: Response): Promise<vo
   } catch (e) {
     serverError(res, e, '[LANG]');
   }
+}
+
+/** The page's texts plus its business name, so the name is translated with the page (decision 23.11). */
+function withName(page: { ai_content: unknown; business_name?: string | null }) {
+  return { ...((page.ai_content ?? {}) as object), business_name: page.business_name ?? '' } as never;
 }

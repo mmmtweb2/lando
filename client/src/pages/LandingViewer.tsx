@@ -1102,6 +1102,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
 
   // ── Inline editor state ──────────────────────────────────────────────────
   const [isEditingMode, setIsEditingMode] = useState(false);
+  // "?edit=1" (the "עריכת הדף" link in the Google-promotion dashboard) opens the owner straight in edit mode.
+  const editOnOpen = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === '1');
+  useEffect(() => {
+    if (!editOnOpen.current || !page) return;
+    editOnOpen.current = false;
+    if (page.isOwner || sessionStorage.getItem('admin_authed') === 'true') setIsEditingMode(true);
+  }, [page]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // A quiet, never blocking hint after a photo upload (small / blurry / looks like a logo).
@@ -1330,7 +1337,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const T = pageStrings(viewLang);
   const switchLangs = [SOURCE_LANG, ...TRANSLATION_LANGS.filter((l) => visibleTranslations.some((t) => t.lang === l))];
 
-  const { business_name, phone_number, logo_url, user_images, enable_form, design_style, whiteLabel } = page;
+  const { phone_number, logo_url, user_images, enable_form, design_style, whiteLabel } = page;
+  // In another language the name is shown the way the translation renders it (Hebrew names transliterated, decision 23.11).
+  const business_name = (activeTr?.content.business_name ?? '').trim() || page.business_name;
   const ai_content: AiContent = activeTr ? applyTranslation(page.ai_content, activeTr.content) : page.ai_content;
   // Owner-typed links become an <a href> on a public page: only absolute http(s) URLs may render
   // (a stored `javascript:` href would run script in the visitor's browser).

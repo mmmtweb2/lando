@@ -45,6 +45,8 @@ export function IncludedCard({ auto, page, onBusiness, onPlan }: Omit<Props, 'mo
   const blocked = !approved ? SITE.needApproval : !ready ? SITE.needDetails : null;
   const draftHref = cur ? `/p/${encodeURIComponent(cur.slug)}` : '#';
   const liveHref = cur && cur.url ? cur.url : draftHref;
+  // Editing happens on the page itself, on our domain (where the owner is signed in), opened in edit mode.
+  const editHref = cur ? `/p/${encodeURIComponent(cur.slug)}?edit=1` : '#';
 
   // A draft is "included" only when the server says so: the subscription's one page may already be another page.
   const draftId = state === 'draft' && cur?.id ? cur.id : null;
@@ -116,12 +118,17 @@ export function IncludedCard({ auto, page, onBusiness, onPlan }: Omit<Props, 'mo
               <button type="button" className="dv3-btn" disabled={included === 'wait' || publishing} aria-busy={included === 'wait' || publishing} onClick={() => draftId && auto.publishPage(draftId)}>
                 {publishing ? SITE.publishing : SITE.publish}
               </button>
-              {second(draftHref, SITE.openDraft)}
+              {second(editHref, SITE.editPage)}
             </>
           )}
           {state === 'draft' && included === 'error' && open(draftHref, SITE.openDraft)}
           {state === 'draft' && included === 'no' && open(draftHref, needsPayment ? SITE.toPage : SITE.openDraft)}
-          {(state === 'published' || state === 'other') && open(liveHref, SITE.openLive)}
+          {(state === 'published' || state === 'other') && (
+            <>
+              {open(liveHref, SITE.openLive)}
+              {second(editHref, SITE.editPage)}
+            </>
+          )}
           {state === 'frozen' && <button type="button" className="dv3-btn" onClick={onPlan}>{SITE.toPlan} <ArrowLeft size={16} aria-hidden /></button>}
         </div>
       </div>
