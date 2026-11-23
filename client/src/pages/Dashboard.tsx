@@ -31,6 +31,8 @@ import { AREA_LABEL, PAGES_LABEL, PROMO_LABEL, accountKind, isPromoArea, navFor,
 import { dropQuery, useArea } from '../dashboard/shell/useArea';
 import type { IncludedPage, PromoBridge } from '../dashboard/shell/bridge';
 import CouponField, { type CouponQuote } from '../components/CouponField';
+import { PageRefreshButton } from '../components/PageRefreshDialog';
+import { REFRESH } from '../lib/pageRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,8 @@ interface PageRow {
   // counters, no dashboard/charts yet, just "does this page get traffic".
   view_count: number | null;
   cta_click_count: number | null;
+  /** README part 146: a business card stands behind this page ("עדכון הדף לפי פרטי העסק"). */
+  card_refresh?: boolean;
 }
 
 // Display prices come from config/pricing.ts (the server charges from src/config/billing.ts).
@@ -351,6 +355,7 @@ function PageGrid({
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrPage, setQrPage] = useState<{ url: string; name: string } | null>(null);
+  const [refreshed, setRefreshed] = useState<{ id: string; text: string } | null>(null);
   if (pages.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 flex flex-col items-center gap-3 text-center">
@@ -405,6 +410,16 @@ function PageGrid({
           )}
           {onToggleOptOut && includedId !== p.id && (
             <RenewalChoice page={p} onToggle={onToggleOptOut} busy={optOutBusyId === p.id} />
+          )}
+          {p.card_refresh && (
+            <div className="flex flex-col gap-1.5">
+              <PageRefreshButton
+                pageId={p.id}
+                className="self-start flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                onApplied={(r) => setRefreshed({ id: p.id, text: REFRESH.done(r.applied.length) })}
+              />
+              {refreshed?.id === p.id && <p role="status" className="text-xs text-emerald-700">{refreshed.text}</p>}
+            </div>
           )}
           <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 min-w-0">

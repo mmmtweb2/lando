@@ -9,6 +9,7 @@ import { requireAuth, requireOwnPage, optionalAuth } from '../middleware/auth.mi
 import { prefillFromGoogle } from '../controllers/landingPrefill.controller';
 import { addTranslation, editTranslation, listTranslations, publishTranslation, refreshTranslation, removeTranslation } from '../controllers/landingTranslation.controller';
 import { getGooglePhotos, postGooglePhotos } from '../controllers/pageGoogle.controller';
+import { postRefreshApply, postRefreshPreview } from '../controllers/pageRefresh.controller';
 
 const router = Router();
 
@@ -113,6 +114,10 @@ router.delete('/:id/translations/:lang', requireAuth, requireOwnPage, removeTran
 const googlePhotosLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
 router.get('/:id/google-photos', googlePhotosLimiter, requireAuth, requireOwnPage, getGooglePhotos);
 router.post('/:id/google-photos', aiLimiter, requireAuth, requireOwnPage, postGooglePhotos);
+// "עדכון הדף לפי פרטי העסק" (README part 146): a burst limit here; 3 a day per page and the timeouts in the service.
+const refreshLimiter = rateLimit({ windowMs: 60 * 1000, max: 6, message: 'יותר מדי בקשות. נסו שוב בעוד דקה.' });
+router.post('/:id/refresh-from-card', refreshLimiter, requireAuth, requireOwnPage, postRefreshPreview);
+router.post('/:id/refresh-from-card/apply', refreshLimiter, requireAuth, requireOwnPage, postRefreshApply);
 router.patch('/:id', requireAuth, requireOwnPage, updateLandingPage);
 router.delete('/:id', requireAuth, requireOwnPage, deleteLandingPage);
 

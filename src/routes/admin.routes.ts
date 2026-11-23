@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getAllLandingPages } from '../controllers/landing.controller';
 import { adminDetectCategory } from '../controllers/adminPageUpgrade.controller';
+import { adminPostRefresh } from '../controllers/pageRefresh.controller';
 import { addTranslation } from '../controllers/landingTranslation.controller';
 import { listReviewPayments, reverifyPayment, forceActivatePayment } from '../controllers/payment.controller';
 import { listCoupons, createCoupon, updateCoupon } from '../controllers/coupon.controller';
@@ -40,6 +41,8 @@ router.get('/pages', getAllLandingPages);
 // Bring an existing page up to date: category template and languages (README part 145).
 router.post('/pages/:id/category', adminDetectCategory);
 router.post('/pages/:id/translations', addTranslation);
+// Rewrite the page's texts from the current business card, all sections at once (README part 146).
+router.post('/pages/:id/refresh-from-card', adminPostRefresh);
 
 // Customer list + revenue overview (admin dashboard upgrade).
 router.get('/users', listUsers);

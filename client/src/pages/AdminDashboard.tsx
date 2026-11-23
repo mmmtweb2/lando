@@ -32,9 +32,10 @@ function PageUpgrade({ id, adminFetch }: { id: string; adminFetch: (u: string, i
     setBusy(key); setMsg(null);
     try {
       const r = await adminFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-      const j = await r.json().catch(() => ({})) as { error?: string; category?: string; reason?: string; failed?: number };
+      const j = await r.json().catch(() => ({})) as { error?: string; category?: string; reason?: string; failed?: number; applied?: string[] };
       if (!r.ok) setMsg(j.error ?? 'הפעולה נכשלה');
       else if (key === 'cat') setMsg(j.reason === 'manual' ? `בעל הדף בחר בעצמו: ${CATEGORY_HE[j.category ?? ''] ?? j.category}` : `תבנית: ${CATEGORY_HE[j.category ?? 'general'] ?? j.category}`);
+      else if (key === 'refresh') setMsg(`הטקסטים עודכנו (${j.applied?.length ?? 0} חלקים)${j.category ? `, תבנית: ${CATEGORY_HE[j.category] ?? j.category}` : ''}`);
       else setMsg(j.failed ? `נוספה, ${j.failed} טקסטים נשארו בעברית` : 'השפה נוספה');
     } catch { setMsg('הפעולה נכשלה'); } finally { setBusy(null); }
   };
@@ -43,6 +44,9 @@ function PageUpgrade({ id, adminFetch }: { id: string; adminFetch: (u: string, i
       <button type="button" disabled={!!busy} onClick={() => void run('cat', `/api/admin/pages/${id}/category`)} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'cat' ? 'מזהה…' : 'תבנית לפי סוג העסק'}</button>
       <button type="button" disabled={!!busy} onClick={() => void run('fr', `/api/admin/pages/${id}/translations`, { lang: 'fr' })} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'fr' ? 'מתרגם…' : '+ צרפתית'}</button>
       <button type="button" disabled={!!busy} onClick={() => void run('en', `/api/admin/pages/${id}/translations`, { lang: 'en' })} className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'en' ? 'מתרגם…' : '+ אנגלית'}</button>
+      <button type="button" disabled={!!busy} title="כותב מחדש את כל הטקסטים מכרטיס העסק ושומר מיד. המלצות שבעל הדף כתב, הצוות, התמונות והעיצוב נשארים."
+        onClick={() => { if (window.confirm('לעדכן את כל הטקסטים בדף לפי כרטיס העסק? השינוי נשמר מיד.')) void run('refresh', `/api/admin/pages/${id}/refresh-from-card`); }}
+        className="text-[#3B5BDB] underline disabled:opacity-50">{busy === 'refresh' ? 'כותב…' : 'עדכון טקסטים לפי הכרטיס'}</button>
       {msg && <span className="text-slate-500" role="status">{msg}</span>}
     </div>
   );

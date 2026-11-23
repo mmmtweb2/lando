@@ -28,6 +28,7 @@ import { processPhoto, processUploadedPhotos, type ImageWarning } from '../servi
 import { defaultHiddenSections, detectCategory, isCategoryId, isMissingCategoryColumn, normalizeCategory, templateFor, withCategoryColumns } from '../services/pageCategory';
 import { carryOverOwnerData } from '../services/healthCopy';
 import { googleBlockForPage, onPagePhotosAdded } from '../services/pageGoogle.service';
+import { cardForPage, refreshablePageIds } from '../services/pageRefresh.service';
 
 export async function getAllLandingPages(_req: Request, res: Response): Promise<void> {
   const { data, error } = await supabase
@@ -70,7 +71,10 @@ export async function getMyPages(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  res.json(data ?? []);
+  // README part 146: the page that has a business card behind it gets "עדכון הדף לפי פרטי העסק" in its card.
+  const rows = (data ?? []) as unknown as Array<{ id: string }>;
+  const refreshable = new Set(await refreshablePageIds(email, rows.map((r) => r.id)));
+  res.json(rows.map((r) => (refreshable.has(r.id) ? { ...r, card_refresh: true } : r)));
 }
 
 // Leads for all pages owned by the authenticated user. Routed through the backend
@@ -399,7 +403,9 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
   // The business's Google listing (README part 143): the card's practical details and the Google reviews, for the
   // business's own page when its listing is connected. Never fails the page.
   const google = parentId ? null : await googleBlockForPage(data as { id: string; owner_email?: string | null; parent_id?: string | null; ai_content?: unknown }, isOwner);
-  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner, translations, ...(isOwner ? { translations_ready } : {}), ...(google ? { google } : {}) });
+  // README part 146: the owner's editor offers "עדכון הדף לפי פרטי העסק" when a business card stands behind the page.
+  const card_refresh = isOwner && !parentId ? !!(await cardForPage(data as { id: string; owner_email?: string | null; parent_id?: string | null })) : false;
+  res.json({ ...publicData, status: pageStatus, canonical_url, whiteLabel, isOwner, translations, ...(isOwner ? { translations_ready } : {}), ...(google ? { google } : {}), ...(card_refresh ? { card_refresh } : {}) });
 }
 
 /**

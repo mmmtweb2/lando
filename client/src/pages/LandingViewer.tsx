@@ -32,6 +32,8 @@ import { readImgMeta, promoteLegacyHero, altFor, buildSrcSet, focalPosition, int
 import { REVIEWS_SECTION_ID, practicalDetails, readPageGoogle } from '../lib/pageGoogle';
 import { GoogleReviews } from './landingV3/GoogleReviews';
 import { GooglePhotosPicker, serverGooglePhotos } from './landingV3/GooglePhotosPicker';
+import { PageRefreshButton } from '../components/PageRefreshDialog';
+import { REFRESH, type RefreshApplied } from '../lib/pageRefresh';
 
 // Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
 const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
@@ -184,6 +186,8 @@ interface LandingPage {
   translations_ready?: boolean;
   /** README part 143: the business card's practical details and the Google reviews (the business's own page, listing connected). */
   google?: unknown;
+  /** README part 146, owner only: a business card stands behind the page ("עדכון הדף לפי פרטי העסק"). */
+  card_refresh?: boolean;
 }
 
 // Snapshot of the caller's page-publish balance + usage, fetched fresh from
@@ -1102,6 +1106,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // A quiet, never blocking hint after a photo upload (small / blurry / looks like a logo).
   const [imageNote, setImageNote] = useState<string | null>(null);
+  // README part 146: the line shown after "עדכון הדף לפי פרטי העסק" replaced texts.
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!refreshNote) return;
+    const t = setTimeout(() => setRefreshNote(null), 12000);
+    return () => clearTimeout(t);
+  }, [refreshNote]);
   // README part 143: the editor's picker of the Google listing's photos
   const [googlePickOpen, setGooglePickOpen] = useState(false);
   const googlePhotosApi = useMemo(() => serverGooglePhotos(page?.id ?? ''), [page?.id]);
@@ -1705,6 +1716,25 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     } finally {
       setCatBusy(false);
     }
+  }
+
+  // README part 146: the ticked sections were saved on the server. The page shows them now; the other languages
+  // turn "not updated" by themselves (source hashes), so their list is read again for the language panel.
+  async function afterRefresh(r: RefreshApplied) {
+    const hadLangs = !!page?.translations?.length;
+    setPage((prev) => (prev ? {
+      ...prev,
+      ai_content: r.ai_content as AiContent,
+      ...(r.category ? { category: r.category, category_source: r.category_source ?? 'auto' } : {}),
+    } : prev));
+    setEdits({});
+    setRefreshNote(REFRESH.done(r.applied.length) + (hadLangs ? `\n${REFRESH.doneLangs}` : ''));
+    if (!hadLangs || !page) return;
+    try {
+      const t = await authFetch(`/api/landing/${page.id}/translations`);
+      const b = await t.json().catch(() => ({})) as { translations?: PageTranslation[] };
+      if (t.ok && b.translations) setPage((prev) => (prev ? { ...prev, translations: b.translations } : prev));
+    } catch { /* the panel shows the old counts until the next load */ }
   }
 
   async function toggleSectionVisibility(blockId: string) {
@@ -5017,6 +5047,16 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   {rewriteStatus === 'rewriting' ? 'כותב...' : `כתיבה מחדש הכל (${CREDIT_COSTS.TEXT_FULL_PAGE} ✦)`}
                 </button>
               </div>
+              {/* README part 146: new texts from the business card, after a section-by-section review. Hebrew view only. */}
+              {page.card_refresh && canEdit && !activeTr && (
+                <PageRefreshButton
+                  pageId={page.id}
+                  short
+                  blockedReason={Object.keys(edits).length ? REFRESH.saveFirst : null}
+                  className="hidden sm:flex flex-shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  onApplied={(r) => void afterRefresh(r)}
+                />
+              )}
               {saveStatus === 'saved' && (
                 <span className="text-sm font-semibold text-emerald-600 flex-shrink-0">✓ נשמר!</span>
               )}
@@ -5118,6 +5158,16 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <p className="text-[11px] text-slate-400 leading-tight">נשמר מיד, בלי צורך ב"שמור שינויים". מומלץ PNG שקוף.</p>
             </div>
           )}
+          {/* README part 146 on a phone: the bottom bar has no room, so the button sits with the other round tools. */}
+          {page.card_refresh && canEdit && !activeTr && (
+            <PageRefreshButton
+              pageId={page.id}
+              iconOnly
+              blockedReason={Object.keys(edits).length ? REFRESH.saveFirst : null}
+              className={`sm:hidden fixed top-20 ${multilingual ? 'right-[14rem]' : 'right-[10.75rem]'} z-50 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg flex items-center justify-center text-slate-600 disabled:opacity-50 transition`}
+              onApplied={(r) => void afterRefresh(r)}
+            />
+          )}
           {/* Quiet category selector: shows what the page was detected as, with "שינוי". Never part of page creation. */}
           <button
             onClick={() => { setCatOpen((v) => !v); setPaletteOpen(false); setLogoOpen(false); }}
@@ -5180,6 +5230,15 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           onChange={(t) => setPage((prev) => prev ? { ...prev, translations: t } : prev)}
           onGo={(l) => { navigate(langPath(langBase, l) + window.location.search); window.scrollTo(0, 0); }}
         />
+      )}
+
+      {refreshNote && (
+        <div role="status" aria-live="polite"
+          className="fixed inset-x-3 bottom-24 z-[60] mx-auto flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-snug text-emerald-900 shadow-lg" dir="rtl">
+          <span className="flex-1 whitespace-pre-line">{refreshNote}</span>
+          <button type="button" aria-label="סגירה" onClick={() => setRefreshNote(null)}
+            className="flex-shrink-0 rounded-full p-1 text-emerald-700 hover:bg-emerald-100"><X size={16} /></button>
+        </div>
       )}
 
       {imageNote && (
