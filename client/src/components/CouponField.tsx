@@ -17,10 +17,14 @@ export interface CouponQuote {
   baseAmount: number;
   discountAmount: number;
   finalAmount: number;
+  /** Google-promotion subscription only: 'first' = only the first payment is discounted, 'forever' = every payment. */
+  seoDuration?: 'first' | 'forever';
+  /** Google-promotion subscription only: what each later charge will be. */
+  recurringAmount?: number;
 }
 
 interface Props {
-  purpose: 'publish' | 'renew' | 'credits' | 'bundle';
+  purpose: 'publish' | 'renew' | 'credits' | 'bundle' | 'seo_monthly' | 'seo_annual';
   /**
    * The purchase variants to price. One entry for a single-price purpose
    * (`[pageId]`, or `[undefined]` when the purpose has no reference), or one per
@@ -32,12 +36,15 @@ interface Props {
   /** Fired with the applied code + a quote per reference, or null when cleared. */
   onChange: (applied: { code: string; quotes: Record<string, CouponQuote> } | null) => void;
   className?: string;
+  /** Starts as a quiet "יש לכם קוד הנחה?" link that opens the box (the subscription checkout). */
+  collapsible?: boolean;
 }
 
 /** Key used in the quotes map for a reference-less purpose. */
 export const NO_REFERENCE = '';
 
-export default function CouponField({ purpose, references, onChange, className = '' }: Props) {
+export default function CouponField({ purpose, references, onChange, className = '', collapsible = false }: Props) {
+  const [open, setOpen] = useState(!collapsible);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,12 +74,15 @@ export default function CouponField({ purpose, references, onChange, className =
         const data = await r.json().catch(() => ({})) as {
           valid?: boolean; code?: string; error?: string;
           baseAmount?: number; discountAmount?: number; finalAmount?: number;
+          seoDuration?: 'first' | 'forever'; recurringAmount?: number;
         };
         if (!r.ok || !data.valid) throw new Error(data.error ?? 'הקופון אינו תקף.');
         return [reference ?? NO_REFERENCE, {
           baseAmount: data.baseAmount ?? 0,
           discountAmount: data.discountAmount ?? 0,
           finalAmount: data.finalAmount ?? 0,
+          ...(data.seoDuration ? { seoDuration: data.seoDuration } : {}),
+          ...(typeof data.recurringAmount === 'number' ? { recurringAmount: data.recurringAmount } : {}),
         }, data.code ?? trimmed.toUpperCase()] as const;
       }));
 
@@ -112,6 +122,17 @@ export default function CouponField({ purpose, references, onChange, className =
     );
   }
 
+  if (!open) {
+    return (
+      <div className={className} dir="rtl">
+        <button type="button" onClick={() => setOpen(true)} aria-expanded={false}
+          className="text-sm text-slate-500 underline underline-offset-2 hover:text-slate-700 min-h-[44px]">
+          יש לכם קוד הנחה?
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col gap-1.5 ${className}`} dir="rtl">
       <div className="flex items-center gap-2">
@@ -119,7 +140,9 @@ export default function CouponField({ purpose, references, onChange, className =
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void apply(); } }}
-          placeholder="קוד קופון (אופציונלי)"
+          placeholder={collapsible ? 'קוד הנחה' : 'קוד קופון (אופציונלי)'}
+          aria-label="קוד הנחה"
+          autoFocus={collapsible}
           dir="ltr"
           className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none focus:border-[#2E63F6] focus:ring-2 focus:ring-[#2E63F6]/15 transition text-center placeholder:font-sans placeholder:text-slate-400"
         />

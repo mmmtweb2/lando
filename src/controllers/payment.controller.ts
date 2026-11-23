@@ -9,8 +9,11 @@ import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey, rene
 import { canPublishFromBalance, getAccountStatus, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
 import { checkRenewEligibility, grantRenewal } from '../services/renewal.service';
 import {
-  CouponRow, checkCoupon, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption,
+  CouponRow, checkCoupon, isSeoCouponPurpose, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
 } from '../services/coupon.service';
+import { getSeoPlan, isSellable } from '../config/seoCatalog';
+import { seoSubscriptionEnabled, seoTestPrice } from '../config/seoPlan';
+import { couponPurposeFor } from '../services/seoSubscription.service';
 import { serverError } from '../utils/httpErrors';
 
 // Where SUMIT sends the browser back (the backend return handler).
@@ -290,6 +293,12 @@ async function basePriceForPurpose(purpose: string, reference: string | undefine
   }
   if (purpose === 'credits') return reference ? (CREDIT_PACKS[reference]?.price ?? null) : null;
   if (purpose === 'bundle') return isBundleKey(reference) ? BUNDLES[reference as BundleKey].price : null;
+  // The Google-promotion subscription (README part 148): `reference` is the plan id, and it must be a plan
+  // of the purpose's cycle (a monthly code is not priced against the annual plan).
+  if (isSeoCouponPurpose(purpose)) {
+    const plan = isSellable(reference) ? getSeoPlan(reference) : null;
+    return plan && couponPurposeFor(plan) === purpose ? plan.price : null;
+  }
   return null;
 }
 
@@ -311,6 +320,14 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
   if (!code || !code.trim()) { res.status(400).json({ error: 'יש להזין קוד קופון.' }); return; }
   if (!purpose) { res.status(400).json({ error: "purpose must be 'publish', 'renew', 'credits' or 'bundle'" }); return; }
 
+  const seo = isSeoCouponPurpose(purpose);
+  if (seo && !seoSubscriptionEnabled()) { res.status(400).json({ valid: false, error: 'הקוד לא תקף.' }); return; }
+  // Payment test mode: the test price wins and a code is never applied (startSubscription ignores it too).
+  if (seo && seoTestPrice(email) !== null) {
+    res.status(400).json({ valid: false, error: 'החשבון במצב בדיקת תשלום, ולכן קוד הנחה לא חל.' });
+    return;
+  }
+
   const baseAmount = await basePriceForPurpose(purpose, reference, email);
   if (baseAmount === null) {
     res.status(400).json({ error: 'לא ניתן לחשב את מחיר הרכישה עבור הקופון.' });
@@ -321,7 +338,12 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
   if (!check.ok) { res.status(400).json({ valid: false, error: check.error }); return; }
 
   const { finalAmount, discountAmount } = priceWithCoupon(check.coupon, baseAmount);
+  // Subscription: also what the later charges will be ('first' = list price, 'forever' = discounted).
+  const seoExtra = seo
+    ? (() => { const p = seoCouponPricing(check.coupon, baseAmount); return { seoDuration: p.duration, recurringAmount: p.recurringAmount }; })()
+    : {};
   res.json({
+    ...seoExtra,
     valid: true,
     // The normalized code, so the client sends back exactly what we matched.
     code: check.coupon.code,

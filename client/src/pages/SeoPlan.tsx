@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { LandoMark } from '../components/Lando';
+import CouponField, { type CouponQuote } from '../components/CouponField';
 import { fmt } from '../config/pricing';
 import { cycleUnit, pageLine, pickPlan, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
 import '../ui/ui-v3.css';
@@ -25,7 +26,7 @@ interface Sub {
   renews?: boolean;
   page?: { included: boolean; pageId: string | null; status: string | null };
 }
-interface Status { enabled: boolean; planName: string; price: number | null; subscription: Sub | null }
+interface Status { enabled: boolean; testMode?: boolean; planName: string; price: number | null; subscription: Sub | null }
 interface Plans extends Catalog { enabled: boolean; planName: string }
 
 function dateHe(iso: string | null | undefined): string {
@@ -47,6 +48,9 @@ export default function SeoPlan() {
   const [ack, setAck] = useState(false);
   const [payLink, setPayLink] = useState('');
   const [copied, setCopied] = useState(false);
+  // A discount code the server priced for the chosen plan (a PREVIEW: the server re-checks and prices it again
+  // at checkout). Keyed by plan id, so a quote for the monthly plan is never shown against the annual one.
+  const [coupon, setCoupon] = useState<{ code: string; quotes: Record<string, CouponQuote> } | null>(null);
 
   useEffect(() => { document.title = 'קידום העסק בגוגל | Pagey'; }, []);
 
@@ -70,6 +74,8 @@ export default function SeoPlan() {
 
   const plan = pickPlan(plans, cycle, withPage);
   const annual = cycle === 'year';
+  const quote = plan && coupon ? coupon.quotes[plan.id] ?? null : null;
+  const chooseCycle = (c: SeoCycle) => { setCycle(c); setCoupon(null); if (c === 'month') setAck(false); };
 
   /** Opens a payment page for the chosen plan. `mode` 'go' redirects the browser; 'copy' only returns the link. */
   async function start(mode: 'go' | 'copy') {
@@ -77,7 +83,8 @@ export default function SeoPlan() {
     setBusy(true); setErr(''); setCopied(false);
     try {
       const r = await authFetch('/api/seo/subscription/start', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan: plan.id }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: plan.id, ...(quote && coupon ? { couponCode: coupon.code } : {}) }),
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(body.error ?? 'משהו השתבש. נסו שוב.'); return; }
@@ -121,11 +128,11 @@ export default function SeoPlan() {
           <legend>תקופת תשלום</legend>
           <div className="uv3-opts">
             <label className="uv3-opt">
-              <input type="radio" name="cycle" checked={!annual} onChange={() => { setCycle('month'); setAck(false); }} />
+              <input type="radio" name="cycle" checked={!annual} onChange={() => chooseCycle('month')} />
               <span className="uv3-opt-body"><span className="uv3-opt-title">חודשי</span><span className="uv3-opt-sub">מתחדש בכל חודש, מבטלים בכל רגע.</span></span>
             </label>
             <label className="uv3-opt">
-              <input type="radio" name="cycle" checked={annual} onChange={() => setCycle('year')} />
+              <input type="radio" name="cycle" checked={annual} onChange={() => chooseCycle('year')} />
               <span className="uv3-opt-body">
                 <span className="uv3-opt-title">שנתי</span>
                 <span className="uv3-opt-sub">תשלום אחד לשנה, לא מתחדש אוטומטית.</span>
@@ -137,8 +144,25 @@ export default function SeoPlan() {
 
         {plan && (
           <div className="uv3-sum" aria-live="polite">
-            <p className="uv3-sum-price">₪{fmt(price)} <small>{cycleUnit(cycle)}, כולל מע״מ</small></p>
-            {annual && <p className="uv3-opt-sub" style={{ marginTop: 4 }}>זה בערך <bdi>₪{fmt(Math.round(plan.pricePerMonth))}</bdi> לחודש. משלמים על 10 חודשים במקום 12.</p>}
+            {quote ? (
+              <>
+                <p className="uv3-sum-price">
+                  ₪{fmt(quote.finalAmount)}{' '}
+                  <s style={{ color: 'var(--u-muted)', fontSize: '0.6em', fontWeight: 500 }} aria-label={`במקום ₪${fmt(price)}`}>₪{fmt(price)}</s>
+                  <small style={{ display: 'block', marginTop: 4 }}>{annual ? 'לשנה הראשונה' : quote.seoDuration === 'forever' ? cycleUnit(cycle) : 'לחודש הראשון'}, כולל מע״מ</small>
+                </p>
+                <p className="uv3-opt-sub" style={{ marginTop: 6, color: 'var(--u-ink)' }}>
+                  {annual
+                    ? <>עם קוד ההנחה משלמים <bdi>₪{fmt(quote.finalAmount)}</bdi> על השנה במקום <bdi>₪{fmt(price)}</bdi>.</>
+                    : quote.seoDuration === 'forever'
+                      ? <>ההנחה חלה על כל החיובים החודשיים, כל עוד המנוי פעיל.</>
+                      : <>ההנחה חלה על החודש הראשון. מהחיוב הבא: <bdi>₪{fmt(quote.recurringAmount ?? price)}</bdi> לחודש.</>}
+                </p>
+              </>
+            ) : (
+              <p className="uv3-sum-price">₪{fmt(price)} <small>{cycleUnit(cycle)}, כולל מע״מ</small></p>
+            )}
+            {annual && !quote && <p className="uv3-opt-sub" style={{ marginTop: 4 }}>זה בערך <bdi>₪{fmt(Math.round(plan.pricePerMonth))}</bdi> לחודש. משלמים על 10 חודשים במקום 12.</p>}
             <ul className="uv3-checks">
               <li>כל שבוע אנחנו כותבים ומפרסמים פוסט בכרטיס העסק שלכם.</li>
               <li>עונים בשבילכם לביקורות טובות; לביקורת שלילית מכינים טיוטה לאישורכם.</li>
@@ -147,6 +171,17 @@ export default function SeoPlan() {
               <li>ערכה לבקשת ביקורות (קישור, QR והודעת וואטסאפ), ובדיקה של הכרטיס מול עסקים דומים באזור.</li>
             </ul>
           </div>
+        )}
+
+        {/* A quiet "have a code?" link. Not for test accounts: their test price wins over any code. */}
+        {user && plan && !st?.testMode && (
+          <CouponField
+            purpose={annual ? 'seo_annual' : 'seo_monthly'}
+            references={[plan.id]}
+            onChange={setCoupon}
+            collapsible
+            className="uv3-coupon"
+          />
         )}
 
         <div className="uv3-terms">
@@ -159,6 +194,9 @@ export default function SeoPlan() {
           )}
           {withPage && (
             <p style={{ marginTop: 6 }}>דף הנחיתה של העסק כלול. כשהמנוי מסתיים הדף יורד מהאוויר, והתוכן והפניות נשמרים עד שתחדשו. דפי נחיתה נוספים, למבצע או לשירות אחר, נקנים בנפרד.</p>
+          )}
+          {quote && (
+            <p style={{ marginTop: 6 }}>קוד ההנחה חל כפי שמתואר כאן. החזר בתוך 14 הימים הוא על הסכום ששילמתם בפועל.</p>
           )}
           <p style={{ marginTop: 6 }}>התשלום מתבצע בעמוד מאובטח של SUMIT. פרטים מלאים ב<Link to="/terms" style={{ textDecoration: 'underline' }}>תנאי השימוש</Link>.</p>
         </div>
@@ -174,7 +212,7 @@ export default function SeoPlan() {
         {user ? (
           <>
             <button type="button" className="uv3-btn uv3-btn-block" disabled={busy || !plan || (annual && !ack)} onClick={() => start('go')}>
-              {busy ? 'פותחים תשלום…' : sub ? 'חידוש המנוי' : `מעבר לתשלום${plan ? ` · ₪${fmt(plan.price)}` : ''}`}
+              {busy ? 'פותחים תשלום…' : sub ? 'חידוש המנוי' : `מעבר לתשלום${plan ? ` · ₪${fmt(quote ? quote.finalAmount : plan.price)}` : ''}`}
             </button>
             {/* Paying from another device: a quiet text link, not a second big button next to the payment. */}
             <button type="button" disabled={busy || !plan || (annual && !ack)} onClick={() => start('copy')}

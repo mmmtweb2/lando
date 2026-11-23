@@ -18,7 +18,7 @@
 
 import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
-import { COUPON_PURPOSES, isCouponPurpose, normalizeCode } from '../services/coupon.service';
+import { COUPON_PURPOSES, isCouponPurpose, isSeoCouponPurpose, isSeoDuration, normalizeCode } from '../services/coupon.service';
 import { serverError } from '../utils/httpErrors';
 
 /** Conservative on purpose: a coupon code is typed by hand, read off a poster,
@@ -36,7 +36,15 @@ interface CouponInput {
   expires_at?: string | null;
   notes?: string | null;
   active?: boolean;
+  /** Subscription coupons only (migration 056): 'first' (default) | 'forever'. */
+  seo_duration?: string;
 }
+
+/** The coupon table has no seo_duration column yet (migration 056 not run). PostgREST says PGRST204, Postgres 42703. */
+function missingSeoColumn(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST204' || error.code === '42703' || /seo_duration/.test(error.message ?? '');
+}
+const NEEDS_056 = 'קופון לקידום בגוגל דורש את מיגרציה 056 (migrations/056_seo_coupons.sql). הריצו אותה ונסו שוב.';
 
 /** Parses an optional positive-integer field. Returns `undefined` when the
  *  value is not usable, which callers turn into a 400. */
@@ -115,6 +123,15 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
     maxPerUser = parsed;
   }
 
+  // Subscription coupons carry how long the discount lasts. Sent only when a subscription purpose is ticked,
+  // so landing-page coupons keep working on a database without migration 056.
+  const seoTicked = (purposes ?? []).some(isSeoCouponPurpose);
+  if (body.seo_duration !== undefined && !isSeoDuration(body.seo_duration)) {
+    res.status(400).json({ error: "seo_duration חייב להיות 'first' או 'forever'." });
+    return;
+  }
+  const seoFields = seoTicked ? { seo_duration: isSeoDuration(body.seo_duration) ? body.seo_duration : 'first' } : {};
+
   let expiresAt: string | null = null;
   if (body.expires_at) {
     const d = new Date(body.expires_at);
@@ -135,6 +152,7 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
       notes: body.notes ?? null,
       active: body.active === false ? false : true,
       created_by: req.authEmail ?? null,
+      ...seoFields,
     })
     .select('*')
     .single();
@@ -143,6 +161,7 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
     // 23505 = unique violation on `code`. A duplicate is an ordinary admin
     // mistake, not a server error, so it gets a 409 and a readable message.
     if (error.code === '23505') { res.status(409).json({ error: 'קוד קופון זה כבר קיים.' }); return; }
+    if (seoTicked && missingSeoColumn(error)) { res.status(400).json({ error: NEEDS_056 }); return; }
     serverError(res, error, '[COUPON]');
     return;
   }
@@ -196,6 +215,12 @@ export async function updateCoupon(req: Request, res: Response): Promise<void> {
 
   if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes ?? null;
 
+  if (Object.prototype.hasOwnProperty.call(body, 'seo_duration')) {
+    if (!isSeoDuration(body.seo_duration)) { res.status(400).json({ error: "seo_duration חייב להיות 'first' או 'forever'." }); return; }
+    // Affects only checkouts opened from now on: a subscription already opened keeps the recurring amount it was given.
+    patch.seo_duration = body.seo_duration;
+  }
+
   // Discount shape can be corrected after creation (a promo mistyped as 10₪
   // instead of 10%). It only ever affects FUTURE redemptions — payments already
   // opened carry their own discount_amount.
@@ -222,7 +247,11 @@ export async function updateCoupon(req: Request, res: Response): Promise<void> {
     .eq('id', id)
     .select('*')
     .maybeSingle();
-  if (error) { serverError(res, error, '[COUPON]'); return; }
+  if (error) {
+    if ('seo_duration' in patch && missingSeoColumn(error)) { res.status(400).json({ error: NEEDS_056 }); return; }
+    serverError(res, error, '[COUPON]');
+    return;
+  }
   if (!data) { res.status(404).json({ error: 'הקופון לא נמצא.' }); return; }
   res.json(data);
 }
