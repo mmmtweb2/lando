@@ -397,7 +397,7 @@ export async function getLandingPage(req: Request, res: Response): Promise<void>
     const t = await loadTranslations((data as { id: string }).id);
     translations_ready = t.ready;
     translations = isOwner
-      ? ownerTranslations(t.rows, (data as { ai_content: AiContent }).ai_content, (data as { user_images?: unknown }).user_images)
+      ? ownerTranslations(t.rows, { ...(data as { ai_content: AiContent }).ai_content, business_name: (data as { business_name?: string }).business_name ?? '' } as AiContent, (data as { user_images?: unknown }).user_images)
       : publicTranslations(t.rows);
   }
   // The business's Google listing (README part 143): the card's practical details and the Google reviews, for the

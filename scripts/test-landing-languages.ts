@@ -49,7 +49,8 @@ for (const k of ['hero.title', 'hero.subtitle', 'hero.primary_cta_text', 'about.
   'contact.whatsapp_message', 'team.0.role', 'team.0.credentials', 'team.0.experience', 'spoken_languages.2', 'trust_badges.0.label',
   'seo_title', 'seo_description', 'img_alt:https://img.test/a.webp']) assert.ok(k in flat, `flattened: ${k}`);
 // never translated: names, licence, phone, address, prompts, ids, empty texts, colours, placeholder testimonial
-for (const k of ['team.0.name', 'team.0.license_number', 'contact.phone', 'contact.address', 'hero.hero_image_prompt', 'services_or_benefits.0.id',
+assert.ok(flat['team.0.name'], 'team names are transliterated (decision 23.11)');
+for (const k of ['team.0.license_number', 'contact.phone', 'contact.address', 'hero.hero_image_prompt', 'services_or_benefits.0.id',
   'services_or_benefits.1.description', 'testimonials.1.author', 'testimonials.0.quote', 'testimonials.0.role', 'design_system.primary_color',
   'services_or_benefits.0.service_image_prompt', 'img_alt:https://img.test/b.webp']) assert.ok(!(k in flat), `not flattened: ${k}`);
 assert.deepEqual(flattenTranslatable(null), {});
@@ -64,7 +65,7 @@ const out = applyTranslation(content, fr);
 assert.equal(out.hero?.title, `FR(${content.hero!.title})`);
 assert.equal(out.services_or_benefits?.[0].title, 'FR(בדיקה וניקוי)');
 assert.equal(out.services_or_benefits?.[0].id, 's1');
-assert.equal(out.team?.[0].name, 'ד״ר משה כהן');
+assert.equal(out.team?.[0].name, 'FR(ד״ר משה כהן)');
 assert.equal(out.team?.[0].license_number, '12345');
 assert.equal(out.spoken_languages?.[1], 'FR(צרפתית)');
 assert.equal(out.contact?.phone, '0501234567');

@@ -95,12 +95,14 @@ const SCALAR_PATHS = [
   'services_heading', 'services_kicker', 'benefits_heading', 'benefits_kicker', 'faq_heading', 'faq_kicker',
   'process_heading', 'process_kicker', 'testimonials_heading', 'testimonials_kicker', 'team_heading',
   'cta_banner_subline', 'seo_title', 'seo_description',
+  // Not part of ai_content: the controller passes the page's business_name in the same object (decision 23.11).
+  'business_name',
   'contact.business_hours', 'contact.whatsapp_message', 'contact.cta_text',
   'practical_info.parking', 'practical_info.accessibility',
   'gallery.heading', 'before_after.heading',
 ] as const;
 
-/** List fields: which item fields are translated. People's names (author, team name), licence numbers, ids are not. */
+/** List fields: which item fields are translated. Reviewers' names, licence numbers and ids are not; team names are transliterated. */
 const LIST_FIELDS: Record<string, string[]> = {
   services_or_benefits: ['title', 'description'],
   services: ['title', 'description'],
@@ -109,7 +111,7 @@ const LIST_FIELDS: Record<string, string[]> = {
   process_steps: ['title', 'description'],
   testimonials: ['quote', 'role'],
   trust_badges: ['label'],
-  team: ['role', 'credentials', 'experience'],
+  team: ['name', 'role', 'credentials', 'experience'],
 };
 
 /** Plain string lists. */
@@ -411,8 +413,9 @@ export function buildTranslationSystem(lang: LangCode, opts: { health: boolean; 
     `You translate the text of a small Israeli business's landing page from Hebrew into ${L.english}.`,
     'You receive a JSON object of key -> Hebrew text. Return ONLY a JSON object with EXACTLY the same keys, each value the translated text. No other keys, no comments, no markdown.',
     `Write natural, plain ${L.english} that a local customer would read on a business website; keep the meaning and length close to the Hebrew. Do not add claims, details or words that are not in the Hebrew.`,
-    'Never change: phone numbers, URLs, email addresses, prices and other numbers, people\'s names, and the business name.',
-    `The business name is "${opts.businessName}": keep it exactly as written wherever it appears.`,
+    'Never change: phone numbers, URLs, email addresses, prices and other numbers, and street addresses (they stay in Hebrew, as on the street signs).',
+    `The business name is "${opts.businessName}". Key "business_name" and wherever the name appears: if it is already written in Latin letters, keep it exactly. If it is in Hebrew, render it the way a professional business would present itself abroad: translate the descriptive words and transliterate the proper names with the standard spelling (e.g. "מרפאת שיניים ד״ר כהן" -> ${lang === 'fr' ? '"Cabinet dentaire Dr Cohen"' : '"Dr. Cohen Dental Clinic"'}; "סטודיו נועה" -> "Studio Noa"). Use the same rendering everywhere on the page.`,
+    'People\'s names (key "team.N.name" and names inside texts): transliterate with the common standard spelling of the target language and translate titles (ד״ר -> ' + (lang === 'fr' ? '"Dr"' : '"Dr."') + '). Names of reviewers are never sent to you.',
     'Keys starting with "spoken_languages." are names of languages: write the name as used in the middle of a sentence (French: lowercase, e.g. "hébreu").',
     'Keys starting with "img_alt:" are short image descriptions for screen readers.',
     'Opening hours: translate day names and keep the hours exactly.',
