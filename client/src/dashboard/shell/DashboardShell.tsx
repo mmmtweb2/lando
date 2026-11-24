@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { LandoMark } from '../../components/Lando';
 import { AREA_LABEL, type AreaId, type NavModel } from './areas';
+import type { MenuSwitch } from './bridge';
+import { MENU_COPY } from './setupMode';
 import './shell.css';
 
 // The dashboard's frame: ONE navigation (a sidebar; a drawer on small screens) grouped by product,
@@ -13,13 +15,12 @@ import './shell.css';
 
 const ICON: Partial<Record<AreaId, LucideIcon>> = {
   home: House, reviews: Star, site: FileText, business: ClipboardCheck, automation: Megaphone, progress: TrendingUp, more: Ellipsis,
-  pages: Globe, leads: Users, credits: Coins, settings: Settings,
+  pages: Globe, leads: Users, credits: Coins, settings: Settings, promote: Search,
 };
 
-const OFFER = {
-  promo: { to: '/seo', title: 'קידום העסק בגוגל', sub: 'מוצר נפרד, במנוי חודשי' },
-  pages: { to: '/create', title: 'רוצים דפי נחיתה נוספים?', sub: 'דפים נוספים נרכשים בנפרד' },
-} as const;
+// The pages-only account's way to the promotion product is a screen INSIDE the dashboard (area `promote`),
+// which explains it and links to the public page; it is a regular entry, without an "external" arrow.
+const OFFER_PAGES = { to: '/create', title: 'רוצים דפי נחיתה נוספים?', sub: 'דפים נוספים נרכשים בנפרד' } as const;
 
 export interface ShellProps {
   /** null while the account is still loading */
@@ -39,9 +40,23 @@ export interface ShellProps {
   counts?: Partial<Record<AreaId, number>>;
   children: ReactNode;
   footer?: ReactNode;
+  /** "מצב הגדרה" / "התפריט המלא", only while a setup is open */
+  menuSwitch?: MenuSwitch | null;
+  /** changes whenever another screen shows: focus then moves to that screen's heading */
+  screenKey?: string;
 }
 
-function NavList({ nav, active, onGo, counts, onNavigate }: Pick<ShellProps, 'nav' | 'active' | 'onGo' | 'counts'> & { onNavigate?: () => void }) {
+function MenuSwitchBox({ sw, onNavigate }: { sw: MenuSwitch; onNavigate?: () => void }) {
+  const c = MENU_COPY[sw.menu];
+  return (
+    <div className="dsh-menuswitch" data-menu={sw.menu}>
+      <p>{c.line}</p>
+      <button type="button" onClick={() => { sw.onSwitch(); onNavigate?.(); }}>{c.action}</button>
+    </div>
+  );
+}
+
+function NavList({ nav, active, onGo, counts, onNavigate, menuSwitch }: Pick<ShellProps, 'nav' | 'active' | 'onGo' | 'counts' | 'menuSwitch'> & { onNavigate?: () => void }) {
   const item = (a: AreaId) => {
     const Icon = ICON[a] ?? ChevronLeft;
     const n = counts?.[a] ?? 0;
@@ -67,11 +82,18 @@ function NavList({ nav, active, onGo, counts, onNavigate }: Pick<ShellProps, 'na
             {g.label}
           </h2>
           <ul>{g.items.map(item)}</ul>
+          {g.product === 'promo' && menuSwitch && <MenuSwitchBox sw={menuSwitch} onNavigate={onNavigate} />}
         </section>
       ))}
-      {nav.offer && (
-        <Link to={OFFER[nav.offer].to} className="dsh-offer" onClick={onNavigate}>
-          <span><strong>{OFFER[nav.offer].title}</strong><small>{OFFER[nav.offer].sub}</small></span>
+      {nav.offer === 'promo' && (
+        <button type="button" className="dsh-offer" aria-current={active === 'promote' ? 'page' : undefined} onClick={() => { onGo('promote'); onNavigate?.(); }}>
+          <span><strong>{AREA_LABEL.promote}</strong><small>מוצר נפרד, במנוי חודשי</small></span>
+          <Search size={16} aria-hidden />
+        </button>
+      )}
+      {nav.offer === 'pages' && (
+        <Link to={OFFER_PAGES.to} className="dsh-offer" onClick={onNavigate}>
+          <span><strong>{OFFER_PAGES.title}</strong><small>{OFFER_PAGES.sub}</small></span>
           <ChevronLeft size={16} aria-hidden />
         </Link>
       )}
@@ -89,8 +111,19 @@ function Brand({ onClick }: { onClick?: () => void }) {
   );
 }
 
-export default function DashboardShell({ nav, active, onGo, email, onLogout, title, sub, srTitle, tools, counts, children, footer }: ShellProps) {
+export default function DashboardShell({ nav, active, onGo, email, onLogout, title, sub, srTitle, tools, counts, children, footer, menuSwitch, screenKey }: ShellProps) {
   const [open, setOpen] = useState(false);
+  const headRef = useRef<HTMLHeadingElement>(null);
+  const shownKey = useRef<string | undefined>(screenKey);
+
+  // Another screen is showing (a click, the back button): focus moves to its heading, so a screen reader
+  // announces it and the next Tab starts inside it. Not on the first load: the page starts at the top.
+  useEffect(() => {
+    if (screenKey === undefined || shownKey.current === screenKey) return;
+    const first = shownKey.current === undefined;   // the account just finished loading: that is the first screen
+    shownKey.current = screenKey;
+    if (!first) headRef.current?.focus({ preventScroll: true });
+  }, [screenKey]);
   const drawerId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
@@ -131,7 +164,7 @@ export default function DashboardShell({ nav, active, onGo, email, onLogout, tit
 
       <aside className="dsh-side">
         <div className="dsh-side-top"><Brand /></div>
-        <nav className="dsh-nav" aria-label="ניווט ראשי"><NavList nav={nav} active={active} onGo={onGo} counts={counts} /></nav>
+        <nav className="dsh-nav" aria-label="ניווט ראשי"><NavList nav={nav} active={active} onGo={onGo} counts={counts} menuSwitch={menuSwitch} /></nav>
         {account()}
       </aside>
 
@@ -143,7 +176,7 @@ export default function DashboardShell({ nav, active, onGo, email, onLogout, tit
               <Brand onClick={() => setOpen(false)} />
               <button type="button" ref={closeRef} className="dsh-iconbtn" aria-label="סגירת התפריט" onClick={() => setOpen(false)}><X size={22} aria-hidden /></button>
             </div>
-            <nav className="dsh-nav" aria-label="ניווט ראשי"><NavList nav={nav} active={active} onGo={onGo} counts={counts} onNavigate={() => setOpen(false)} /></nav>
+            <nav className="dsh-nav" aria-label="ניווט ראשי"><NavList nav={nav} active={active} onGo={onGo} counts={counts} menuSwitch={menuSwitch} onNavigate={() => setOpen(false)} /></nav>
             {account(() => setOpen(false))}
           </div>
         </div>
@@ -162,12 +195,12 @@ export default function DashboardShell({ nav, active, onGo, email, onLogout, tit
           {title ? (
             <div className="dsh-head">
               <div>
-                <h1>{title}</h1>
+                <h1 ref={headRef} tabIndex={-1}>{title}</h1>
                 {sub && <p>{sub}</p>}
               </div>
               {tools && <div className="dsh-tools">{tools}</div>}
             </div>
-          ) : <h1 className="sr-only">{srTitle}</h1>}
+          ) : <h1 ref={headRef} tabIndex={-1} className="sr-only">{srTitle}</h1>}
           {children}
         </main>
         {footer}

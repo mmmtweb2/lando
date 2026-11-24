@@ -4960,7 +4960,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
                   {linkCopied ? 'הקישור הועתק! ✓' : 'שיתוף הדף'}
                 </button>
                 <Link
-                  to="/dashboard?leads=1"
+                  to="/dashboard?area=inquiries" reloadDocument
                   className="w-full py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition active:scale-95 text-center">
                   צפייה בלידים
                 </Link>

@@ -322,3 +322,21 @@
 .dv4-page-action .dv4-page-second { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--accent-strong); font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
 .dv4-included[data-kind="no"] { color: var(--ink); font-weight: 500; }
 .dv4-included[data-kind="wait"] { color: var(--muted); font-weight: 500; }
+
+/* ---------- README part 149: the setup banner above an area, and "הדפים שלכם" ---------- */
+.dv4-setupbanner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; padding: 16px 20px; border-radius: 16px; background: #FFF8E6; border: 1px solid #F3DFA6; color: var(--ink); }
+.dv4-setupbanner > svg { flex: none; color: #8A5F00; }
+.dv4-setupbanner > div { flex: 1 1 240px; min-width: 0; }
+.dv4-setupbanner p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+.dv4-setupbanner .dv4-setupbanner-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.dv4-setupbanner .dv4-setupbanner-title span { font-weight: 500; color: var(--muted); }
+.dv4-mypages { margin-bottom: 16px; }
+.dv4-mypages ul { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.dv4-mypages li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.dv4-mypages li:first-child { border-top: 0; padding-top: 0; }
+.dv4-mypages li > svg { flex: none; color: var(--accent-strong); }
+.dv4-mypages li > div { flex: 1 1 180px; min-width: 0; }
+.dv4-mypages strong { display: block; font-size: 15px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.dv4-mypages small { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.dv4-mypages-actions { display: inline-flex; gap: 16px; }
+.dv4-mypages-link { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--accent-strong); font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, Check, Loader2, Trash2, X } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { RoleTag } from './RoleTag';
+import { defaultPageId } from '../dashboard/v3/pageOrder';
 
 // Stage 8 — service areas, long-tail phrases and copy-ready content for an external website.
 // The generator only writes from what the customer types here ("facts"): it is told never to
@@ -13,7 +14,8 @@ interface Kit {
   id: string; phrase: string; created_at: string; html: string; text: string;
   kit: { title: string; metaDescription: string; dropped: number };
 }
-interface MyPage { id: string; business_name: string; status: string | null }
+interface MyPage { id: string; business_name: string; status: string | null; created_at?: string | null; card_refresh?: boolean }
+const PAGE_STATUS: Record<string, string> = { draft: 'טיוטה', frozen: 'לא פעיל' };
 interface ChildPage { id: string; phrase: string | null; title: string | null; url: string }
 interface Settings { businessType: string; serviceAreas: string[]; phrases: string[]; facts: string }
 
@@ -35,7 +37,7 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   );
 }
 
-function BusinessPlan({ b }: { b: Saved }) {
+function BusinessPlan({ b, ownPageId }: { b: Saved; ownPageId: string | null }) {
   const [loaded, setLoaded] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [type, setType] = useState('');
@@ -71,10 +73,13 @@ function BusinessPlan({ b }: { b: Saved }) {
         const r = await authFetch('/api/landing/my-pages');
         if (!r.ok) return;
         const rows = await r.json().catch(() => []);
-        setMyPages(Array.isArray(rows) ? rows : []);
+        // newest first, and the selector starts on the business's own page (README part 149)
+        const list = (Array.isArray(rows) ? rows as MyPage[] : []).sort((x, y) => (y.created_at ?? '').localeCompare(x.created_at ?? ''));
+        setMyPages(list);
+        setPickPage((cur) => cur || defaultPageId(list, ownPageId));
       } catch { /* no pages list: the external-site kit still works */ }
     })();
-  }, [loadChildren]);
+  }, [loadChildren]); // eslint-disable-line react-hooks/exhaustive-deps -- ownPageId only sets the first choice
 
   async function linkPage(pageId: string | null) {
     setBusy('link'); setPageMsg(null);
@@ -279,7 +284,7 @@ function BusinessPlan({ b }: { b: Saved }) {
                 value={pickPage} onChange={e => setPickPage(e.target.value)}
               >
                 <option value="">בחרו את הדף של העסק</option>
-                {myPages.map(p => <option key={p.id} value={p.id}>{p.business_name}</option>)}
+                {myPages.map(p => <option key={p.id} value={p.id}>{p.business_name}{p.id === ownPageId ? ' (הדף של העסק)' : ''}{p.status && PAGE_STATUS[p.status] ? ` (${PAGE_STATUS[p.status]})` : ''}</option>)}
               </select>
               <button
                 type="button" disabled={!pickPage || busy !== null} onClick={() => linkPage(pickPage)}
@@ -386,7 +391,8 @@ function BusinessPlan({ b }: { b: Saved }) {
   );
 }
 
-export default function ContentPlanCard() {
+/** `ownPageId`: the business's own page (the dashboard knows it), the selector's first choice. */
+export default function ContentPlanCard({ ownPageId = null }: { ownPageId?: string | null } = {}) {
   const [list, setList] = useState<Saved[] | null>(null);
   const load = useCallback(async () => {
     try {
@@ -411,9 +417,9 @@ export default function ContentPlanCard() {
         </p>
       </div>
       {list === null ? null : list.length === 0 ? (
-        <p className="text-sm text-slate-500">חברו קודם את העסק שלכם בבדיקה למעלה.</p>
+        <p className="text-sm text-slate-500">כדי לקבל כאן ביטויי חיפוש ותוכן, חברו קודם את העסק שלכם במסך ״הכרטיס שלכם בגוגל״.</p>
       ) : (
-        list.map(b => <BusinessPlan key={b.id} b={b} />)
+        list.map(b => <BusinessPlan key={b.id} b={b} ownPageId={ownPageId} />)
       )}
     </div>
   );
