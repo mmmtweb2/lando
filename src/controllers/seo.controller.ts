@@ -4,6 +4,17 @@ import {
 } from '../services/places.service';
 import { linkJourneyBusiness } from '../services/journeyBusiness.service';
 import { MAX_BUSINESSES_PER_ACCOUNT, addBusiness, listBusinesses, removeBusiness } from '../services/seoBusinesses.service';
+import { SELECTION_LIMIT_MESSAGE, takeSelection } from '../services/selectionGuard';
+
+/** Longest search text accepted (the field stops at 100; anything longer did not come from it). */
+export const MAX_SEARCH_INPUT = 200;
+
+/** 429 when this account has picked too many DIFFERENT businesses today. Returns true when blocked. */
+export function selectionBlocked(res: Response, email: string, placeId: string): boolean {
+  if (takeSelection(email, placeId) === 'ok') return false;
+  res.status(429).json({ error: SELECTION_LIMIT_MESSAGE, code: 'selection_limit' });
+  return true;
+}
 
 // Per-account daily ceiling on Places calls — protects the Google bill from one
 // account (or a stolen token). In-memory like middleware/rateLimit.ts: fine for a
@@ -52,6 +63,10 @@ export async function placesAutocomplete(req: Request, res: Response): Promise<v
     res.status(400).json({ error: 'חסר טקסט לחיפוש.' });
     return;
   }
+  if (input.length > MAX_SEARCH_INPUT) {
+    res.status(400).json({ error: 'הטקסט ארוך מדי. כתבו רק את שם העסק והעיר.', code: 'input_too_long' });
+    return;
+  }
   if (!placesConfigured()) { fail(res, new PlacesError('not_configured', '')); return; }
   if (!underDailyLimit(email)) {
     res.status(429).json({ error: 'הגעתם למגבלת החיפושים היומית.' });
@@ -78,6 +93,8 @@ export async function placeAudit(req: Request, res: Response): Promise<void> {
     res.status(429).json({ error: 'הגעתם למגבלת הבדיקות היומית.' });
     return;
   }
+  // The audit is what a pick shows (score, rating, reviews: public Google Maps data only).
+  if (selectionBlocked(res, email, placeId)) return;
   try {
     res.json({ audit: await auditPlace(placeId) });
   } catch (e) {
@@ -120,6 +137,7 @@ export async function saveBusiness(req: Request, res: Response): Promise<void> {
     res.status(429).json({ error: 'הגעתם למגבלת הבדיקות היומית.' });
     return;
   }
+  if (selectionBlocked(res, email, placeId)) return;
   try {
     const place = await fetchPlace(placeId);
     const r = await addBusiness(email, {

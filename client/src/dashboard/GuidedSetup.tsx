@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ArrowLeft, Check as CheckIcon, Copy, ExternalLink, Loader2, Search } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Check as CheckIcon, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { authFetch } from '../lib/api';
 import { takePlace, trackAccount } from '../lib/journeyClient';
 import ReviewRequestsCard from '../components/ReviewRequestsCard';
 import NoProfileGuide from '../components/NoProfileGuide';
+import BusinessSearch from '../components/BusinessSearch';
 import { Segments, Who } from './ui';
 import WhatPromotes from './WhatPromotes';
 import type { OverviewInput } from './journey';
@@ -49,18 +50,13 @@ async function copyText(text: string): Promise<boolean> {
 
 /* ---------- step bodies ---------- */
 
-interface Suggestion { placeId: string; name: string; details: string }
-
+// QA 24.11: picking a result used to save it at once (steps 1-2 done, score shown). The shared
+// BusinessSearch now asks "זה העסק שלי?" first, says that managing the listing needs the Google
+// account that manages it, and shows clear empty / error / no-match states.
 function ConnectBody({ onSaved }: { onSaved: () => void }) {
-  const inputId = useId();
-  const [q, setQ] = useState('');
-  const [list, setList] = useState<Suggestion[]>([]);
-  const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [noProfile, setNoProfile] = useState(false);
-  const seq = useRef(0);
-  const [token] = useState<string>(() => { try { return crypto.randomUUID(); } catch { return 'session-token'; } });
 
   const save = useCallback(async (placeId: string) => {
     setSaving(true); setErr(null);
@@ -75,62 +71,23 @@ function ConnectBody({ onSaved }: { onSaved: () => void }) {
     } catch { setErr('השמירה נכשלה. בדקו את החיבור ונסו שוב.'); } finally { setSaving(false); }
   }, [onSaved]);
 
-  // The business picked on the free check is filled in without asking again.
+  // The business picked on the free check is filled in without asking again: there the customer
+  // already pressed "זה העסק שלי: פתחו חשבון וחברו אותו" on that business's own result.
   useEffect(() => { const p = takePlace(); if (p) void Promise.resolve().then(() => save(p)); }, [save]);
 
-  useEffect(() => {
-    const text = q.trim();
-    if (text.length < 2) return;
-    const mine = ++seq.current;
-    const t = setTimeout(async () => {
-      setBusy(true); setErr(null);
-      try {
-        const r = await authFetch('/api/seo/places/autocomplete', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: text, sessionToken: token }),
-        });
-        const body = await r.json().catch(() => ({})) as { suggestions?: Suggestion[]; error?: string; code?: string };
-        if (mine !== seq.current) return;
-        if (!r.ok) { setList([]); setErr(body.code === 'places_not_configured' ? 'חיפוש העסקים יופעל בקרוב.' : (body.error ?? 'החיפוש נכשל. נסו שוב.')); return; }
-        setList(body.suggestions ?? []);
-      } catch { if (mine === seq.current) setErr('החיפוש נכשל. בדקו את החיבור ונסו שוב.'); } finally { if (mine === seq.current) setBusy(false); }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [q, token]);
-
-  const shown = q.trim().length >= 2 ? list : [];
   if (noProfile) return <NoProfileGuide onBack={() => setNoProfile(false)} />;
 
   return (
     <div className="flex flex-col gap-3">
-      <label htmlFor={inputId} className="text-sm font-semibold text-[var(--ink)]">שם העסק</label>
-      <div className="relative">
-        <Search size={18} aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-        <input
-          id={inputId} value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" placeholder="לדוגמה: שרברב דני, חיפה"
-          className="min-h-[48px] w-full rounded-[10px] border border-[var(--line)] bg-white pr-10 pl-3 text-[16px] text-[var(--ink)]"
-        />
-      </div>
-      <p className="sr-only" role="status" aria-live="polite">{saving ? 'שומרים את העסק' : busy ? 'מחפשים' : shown.length ? `נמצאו ${shown.length} עסקים` : ''}</p>
-      {busy && <p className="flex items-center gap-2 text-sm text-[var(--muted)]"><Loader2 size={16} className="animate-spin" aria-hidden /> מחפשים…</p>}
-      {shown.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {shown.map((s) => (
-            <li key={s.placeId}>
-              <button
-                type="button" disabled={saving} onClick={() => void save(s.placeId)}
-                className="dv2-card-flat flex min-h-[56px] w-full flex-col items-start justify-center px-4 py-2 text-right hover:bg-[var(--tint)] disabled:opacity-60"
-              >
-                <span className="text-[15px] font-bold text-[var(--ink)]">{s.name}</span>
-                <span className="text-sm text-[var(--muted)]">{s.details}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <BusinessSearch
+        label="שם העסק" placeholder="לדוגמה: שרברב דני, חיפה"
+        confirm busy={saving}
+        onConfirm={(s) => void save(s.placeId)}
+        onQueryChange={() => setErr(null)}
+        onNoProfile={() => setNoProfile(true)}
+      />
+      {saving && <p role="status" className="flex items-center gap-2 text-sm text-[var(--muted)]"><Loader2 size={16} className="animate-spin" aria-hidden /> שומרים את העסק…</p>}
       {err && <p role="alert" className="text-sm font-semibold text-[var(--warn-ink)]">{err}</p>}
-      <button type="button" onClick={() => setNoProfile(true)} className="min-h-[44px] self-start px-1 text-sm font-semibold text-[var(--accent-strong)] underline underline-offset-4">
-        אין לעסק כרטיס בגוגל עדיין?
-      </button>
     </div>
   );
 }

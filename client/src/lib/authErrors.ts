@@ -15,3 +15,16 @@ export function translateAuthError(err: unknown, fallback = 'שגיאת התחב
   if (/signups? not allowed|signup.*disabled/i.test(msg)) return 'ההרשמה אינה זמינה כרגע. נסו שוב מאוחר יותר';
   return fallback;
 }
+
+/** Supabase's minimum password length (Authentication → Providers → Email). */
+export const MIN_PASSWORD_LEN = 6;
+
+/**
+ * Client-side password check before calling Supabase. QA 24.11: an empty password got the same
+ * "at least 6 characters" message as a short one; an empty field now says so. null = fine.
+ */
+export function passwordError(pw: string): string | null {
+  if (pw.trim().length === 0) return 'נא להזין סיסמה';
+  if (pw.length < MIN_PASSWORD_LEN) return `הסיסמה חייבת להכיל לפחות ${MIN_PASSWORD_LEN} תווים`;
+  return null;
+}

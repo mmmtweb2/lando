@@ -149,7 +149,9 @@ export async function fetchCompetitors(place: PlaceSnapshot): Promise<Competitor
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey(),
-      'X-Goog-FieldMask': 'places.id,places.rating,places.userRatingCount',
+      // displayName names the leading competitors on the card. userRatingCount already bills this
+      // call at the Enterprise tier, so the name adds no cost. Shown live, never stored.
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.rating,places.userRatingCount',
     },
     body: JSON.stringify({
       includedPrimaryTypes: [place.primaryType],

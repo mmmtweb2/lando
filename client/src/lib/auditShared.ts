@@ -10,6 +10,8 @@ export interface Benchmark {
   topReviews: number; ratingTarget: number; reviewsTarget: number;
   /** #22: the highest review count in the area (always shown), and whether `reviewsTarget` is the median or that maximum. */
   maxReviews?: number; reviewsTargetKind?: 'median' | 'max';
+  /** QA 24.11: the most-reviewed nearby businesses by name (public Google Maps data, never stored). */
+  leaders?: { name: string; rating: number; reviews: number }[];
 }
 export interface Audit {
   placeId: string; name: string; address: string | null; category: string | null;
@@ -40,6 +42,43 @@ export function scoreStyle(score: number, hasGaps: boolean): { ring: string; lab
 
 /** Numeric values like "10+" must keep their order inside an RTL page ("+10" otherwise). */
 export const isNumericValue = (v: string): boolean => /^[\d.+★\s]+$/.test(v);
+
+/** Points each item is worth in the score (they sum to 100; mirrors src/services/placesAudit.ts). */
+export const WEIGHT: Record<string, number> = { reviews: 25, rating: 25, photos: 15, website: 10, phone: 8, hours: 7, category: 5, status: 5 };
+
+/** Fixed targets used when no local benchmark exists (mirrors FALLBACK_TARGETS on the server). */
+export const FALLBACK_TARGETS = { rating: 4.5, reviews: 50 } as const;
+
+const BASIC = ['phone', 'website', 'hours', 'category', 'photos'] as const;
+
+export interface SparseExplainer { title: string; text: string; gains: { key: string; label: string; points: number }[] }
+
+/**
+ * QA 24.11: a near-empty listing scored 5/100 with no explanation. The score is right (there is
+ * almost nothing on the listing to score), but it must say WHY and what each missing detail is worth,
+ * so a low number reads as a to-do list and not as a verdict on the business. null = not sparse.
+ */
+export function sparseExplainer(a: Pick<Audit, 'score' | 'items' | 'reviewCount'>): SparseExplainer | null {
+  const missing = a.items.filter((i) => (BASIC as readonly string[]).includes(i.key) && i.level === 'weak');
+  if (a.score >= 40 || missing.length < 3) return null;
+  const gains = missing.map((i) => ({ key: i.key, label: i.label, points: WEIGHT[i.key] ?? 0 }));
+  if (a.reviewCount === 0) gains.unshift({ key: 'reviews', label: 'ביקורות ודירוג', points: WEIGHT.reviews + WEIGHT.rating });
+  gains.sort((x, y) => y.points - x.points);
+  return {
+    title: 'למה הציון נמוך כל כך?',
+    text: 'בכרטיס העסק בגוגל חסרים כמעט כל הפרטים הבסיסיים, ולכן אין לנו הרבה מה למדוד. הציון לא אומר שהעסק לא טוב. כל פרט שתוסיפו בגוגל מעלה אותו, עד:',
+    gains,
+  };
+}
+
+/** The comparison line when no local benchmark could be built: says why (QA 24.11). */
+export function benchmarkNote(a: Pick<Audit, 'items'>): string {
+  const t = `דירוג ${FALLBACK_TARGETS.rating} ו-${FALLBACK_TARGETS.reviews} ביקורות`;
+  const noCategory = a.items.some((i) => i.key === 'category' && i.level === 'weak');
+  return noCategory
+    ? `בכרטיס אין קטגוריה ראשית, ולכן לא יכולנו למצוא עסקים דומים באזור להשוואה. עד שתוגדר קטגוריה, הציון נמדד מול יעדים כלליים (${t}).`
+    : `לא מצאנו מספיק עסקים דומים באזור להשוואה, ולכן הציון נמדד מול יעדים כלליים (${t}).`;
+}
 
 export interface ScoreExplainer {
   /** Short heading, as a question the customer is likely asking. */

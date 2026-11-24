@@ -6,8 +6,14 @@ import { authFetch } from '../lib/api';
 // server says the feature is on. The numbers are read live from Google and are not stored here.
 
 interface Totals { calls: number; directions: number; website: number; impressions: number }
+/** Server: does the listing this Google account manages match the business picked in the search? */
+interface PlaceMatch {
+  status: 'match' | 'mismatch' | 'unknown';
+  selected: { id: string; name: string; placeId: string | null } | null;
+  connected: { title: string; placeId: string | null };
+}
 type Stats =
-  | { kind: 'ok'; title: string; totals: Totals }
+  | { kind: 'ok'; title: string; totals: Totals; match?: PlaceMatch; locations?: { name: string; title: string }[] }
   | { kind: 'choose'; locations: { name: string; title: string }[] }
   | { kind: 'reconnect' }
   | { kind: 'error' }
@@ -47,7 +53,7 @@ export default function GbpCard() {
       else if (b.code === 'quota_pending') setStats({ kind: 'quota' });
       else if (!r.ok) setStats({ kind: 'error' }); // the technical detail the server may send is never shown
       else if (b.needsChoice) setStats({ kind: 'choose', locations: b.locations ?? [] });
-      else setStats({ kind: 'ok', title: b.location?.title ?? '', totals: b.totals });
+      else setStats({ kind: 'ok', title: b.location?.title ?? '', totals: b.totals, match: b.match, locations: b.locations });
     } catch { setStats({ kind: 'error' }); }
   }, []);
 
@@ -76,6 +82,17 @@ export default function GbpCard() {
       const r = await authFetch('/api/seo/gbp/disconnect', { method: 'POST' });
       if (!r.ok) { setErr('משהו השתבש. נסו שוב.'); return; }
       setConfirming(false); setStats(null); await loadStatus();
+    } catch { setErr('משהו השתבש. נסו שוב.'); } finally { setBusy(false); }
+  }
+  const [showOthers, setShowOthers] = useState(false);
+  async function adoptConnected(replaceId: string | undefined) {
+    setBusy(true); setErr('');
+    try {
+      const r = await authFetch('/api/seo/gbp/use-connected', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(replaceId ? { replaceId } : {}) });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) { setErr(typeof b.error === 'string' ? b.error : 'משהו השתבש. נסו שוב.'); return; }
+      window.dispatchEvent(new Event('seo-businesses-changed'));
+      await loadStats();
     } catch { setErr('משהו השתבש. נסו שוב.'); } finally { setBusy(false); }
   }
   async function choose(name: string) {
@@ -142,6 +159,36 @@ export default function GbpCard() {
           </ul>
           {stats.locations.length === 0 && <p className="mt-2 text-sm text-[var(--muted)]">לא נמצאו עסקים בחשבון גוגל שחובר. אפשר לנתק ולחבר חשבון אחר.</p>}
         </>
+      )}
+      {stats?.kind === 'ok' && stats.match?.status === 'mismatch' && (
+        <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 p-4" role="alert" aria-labelledby="gbp-mismatch">
+          <p id="gbp-mismatch" className="text-[15px] font-bold text-[var(--ink)]">הכרטיס שחובר בגוגל הוא לא העסק שבחרתם</p>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--ink)]">
+            בחרתם בחיפוש את <b>{stats.match.selected?.name || 'העסק'}</b>, אבל חשבון הגוגל שחיברתם מנהל את <b>{stats.match.connected.title || 'כרטיס אחר'}</b>.
+            הנתונים למטה הם של הכרטיס המחובר. מה נכון?
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <button type="button" disabled={busy} className="dv2-btn disabled:opacity-50" onClick={() => void adoptConnected(stats.match?.selected?.id)}>
+              {stats.match.connected.title ? `העסק שלי הוא ${stats.match.connected.title}` : 'הכרטיס המחובר הוא העסק שלי'}
+            </button>
+            {(stats.locations?.length ?? 0) > 1 && (
+              <button type="button" disabled={busy} className="dv2-btn-ghost" onClick={() => setShowOthers((v) => !v)} aria-expanded={showOthers}>
+                בחירת כרטיס אחר מאותו חשבון
+              </button>
+            )}
+            <button type="button" disabled={busy} className="dv2-btn-ghost" onClick={() => setConfirming(true)}>
+              חיבור עם חשבון גוגל אחר
+            </button>
+          </div>
+          {showOthers && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {stats.locations!.map((l) => (
+                <li key={l.name}><button type="button" disabled={busy} className="dv2-btn-ghost" onClick={() => { setShowOthers(false); void choose(l.name); }}>{l.title || l.name}</button></li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-[var(--muted)]">כדי לנהל כרטיס בגוגל צריך להתחבר עם חשבון הגוגל שמנהל אותו (בעלים או מנהל). חיבור עם חשבון אחר: מנתקים כאן ומתחברים מחדש.</p>
+        </div>
       )}
       {stats?.kind === 'ok' && (
         <>

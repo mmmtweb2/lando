@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Non-blocking font CSS (QA 24.11, blank first paint): the page paints in the system font and swaps to Heebo. -->
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800;900&display=swap" rel="stylesheet" /></noscript>
     <title>Pagey — דף נחיתה מקצועי בדקה בערך</title>
     <meta name="description" content="Pagey בונה לעסק שלכם דף נחיתה מקצועי ומותאם למובייל בדקה בערך, בעזרת AI — בעברית, בלי מעצב ובלי מתכנת. בונים בחינם, משלמים רק כשמפרסמים." />
     <meta property="og:title" content="Pagey — דף נחיתה מקצועי בדקה בערך" />
@@ -20,7 +22,9 @@
     <meta name="twitter:description" content="דף נחיתה מקצועי בעברית בדקה בערך, מבוסס AI." />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static first paint (QA 24.11: pages stayed blank until the JavaScript arrived). React replaces
+         this on mount. Inline styles only: it must paint before any stylesheet or script loads. -->
+    <div id="root"><!--boot--><div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#EEF1FB;font-family:Heebo,system-ui,-apple-system,'Segoe UI',Arial,sans-serif" role="status" aria-live="polite"><style>@keyframes pgyBar{0%{transform:translateX(100%)}100%{transform:translateX(-250%)}}@media (prefers-reduced-motion:reduce){#pgy-bar{animation:none!important;width:100%!important;opacity:.5}}</style><span style="font-size:24px;font-weight:800;color:#2E63F6;letter-spacing:-.01em">Pagey</span><span style="display:block;width:120px;height:4px;border-radius:999px;background:#DCE4F7;overflow:hidden"><span id="pgy-bar" style="display:block;width:40%;height:100%;border-radius:999px;background:#2E63F6;animation:pgyBar 1.1s ease-in-out infinite"></span></span><span style="font-size:14px;color:#64748b">טוענים את העמוד…</span><noscript><span style="font-size:14px;color:#0E2148">כדי להשתמש ב-Pagey צריך להפעיל JavaScript בדפדפן.</span></noscript></div><!--/boot--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

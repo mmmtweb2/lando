@@ -125,6 +125,7 @@ router.get('/gbp/oauth/callback', gbpLimiter, gbp.callback);
 router.post('/gbp/disconnect', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.disconnect);
 router.get('/gbp/stats', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.stats);
 router.put('/gbp/location', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.chooseLocation);
+router.post('/gbp/use-connected', gbpLimiter, requireAuth, requireProduct('seo_autopilot'), gbp.useConnected);
 
 // The automatic product (docs/mvp-plan.md, part A; migration 048): the business card everything is
 // written from, the customer's automation choices, the weekly posts and the activity log.

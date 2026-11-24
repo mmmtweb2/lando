@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Loader2, CheckCircle, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { trackEvent } from '../lib/analytics';
-import { translateAuthError } from '../lib/authErrors';
+import { passwordError, translateAuthError } from '../lib/authErrors';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 type InfoScreen = null | 'magic' | 'confirm' | 'reset';
@@ -50,7 +50,8 @@ export default function Login() {
     e.preventDefault();
     const trimmed = email.trim().toLowerCase();
     if (!validEmail(trimmed)) { setError('נא להזין כתובת אימייל תקינה'); return; }
-    if (password.length < 6) { setError('הסיסמה חייבת להכיל לפחות 6 תווים'); return; }
+    const badPassword = passwordError(password);
+    if (badPassword) { setError(badPassword); return; }
 
     setLoading(true);
     setError(null);

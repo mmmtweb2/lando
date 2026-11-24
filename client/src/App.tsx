@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
+import { lazy, Suspense, type ReactNode, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
@@ -11,37 +11,59 @@ import type { UserProfile } from './context/UserContext';
 import MarketingLanding from './pages/MarketingLanding';
 import NotFound        from './pages/NotFound';
 import { TRANSLATION_LANGS } from './i18n/landingLanguages';
+// QA 24.11: /terms, /privacy and /accessibility stayed blank for seconds. They are static text that
+// needs no sign-in, so they are in the main bundle and paint as soon as the app starts (about 18 kB
+// gzipped), instead of waiting for the main bundle AND then a second round trip for their chunk.
+import Privacy       from './pages/legal/Privacy';
+import Terms         from './pages/legal/Terms';
+import Accessibility from './pages/legal/Accessibility';
+import { isLoginLink, loadLogin, preloadLogin, whenIdle } from './lib/preload';
 
-// Route-level code splitting: only the home page and the 404 are in the main bundle. Every other
-// route loads its own chunk on first visit, so /seo and /audit (the pages visitors land on from
-// ads and shared links) no longer download the dashboard, the editor and the admin console.
+// Route-level code splitting: the home page, the legal pages and the 404 are in the main bundle.
+// Every other route loads its own chunk on first visit, so /seo and /audit (the pages visitors land
+// on from ads and shared links) do not download the dashboard, the editor and the admin console.
 const Wizard         = lazy(() => import('./components/Wizard'));
 const PublicAudit    = lazy(() => import('./pages/PublicAudit'));
 const StartJourney   = lazy(() => import('./pages/StartJourney'));
 const SeoPlan        = lazy(() => import('./pages/SeoPlan'));
 const LandingViewer  = lazy(() => import('./pages/LandingViewer'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const Login          = lazy(() => import('./pages/Login'));
+const Login          = lazy(loadLogin);
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
 const Dashboard      = lazy(() => import('./pages/Dashboard'));
-const Privacy        = lazy(() => import('./pages/legal/Privacy'));
 const SeoLanding     = lazy(() => import('./pages/SeoLanding'));
-const Terms          = lazy(() => import('./pages/legal/Terms'));
-const Accessibility  = lazy(() => import('./pages/legal/Accessibility'));
 
-/** Shown while a route chunk loads. Blank for the first 250ms (a cached or fast chunk never
-    flashes a spinner), then a small spinner. */
-function RouteFallback() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setShow(true), 250);
-    return () => clearTimeout(t);
-  }, []);
+/** Shown while a route chunk loads: a light branded screen (QA 24.11: a blank white page read as
+    broken). It fades in after 150ms, so a cached chunk never flashes it, and says what is happening. */
+export function RouteFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white" aria-busy="true">
-      {show && <Loader2 size={28} className="animate-spin text-indigo-500" aria-label="טוען" />}
+    <div className="pagey-route-fallback min-h-screen flex flex-col items-center justify-center gap-4 bg-[#EEF1FB]" role="status" aria-live="polite" aria-busy="true" dir="rtl">
+      <span className="text-2xl font-extrabold tracking-tight text-[#2E63F6]">Pagey</span>
+      <span className="pagey-route-bar" aria-hidden="true"><span /></span>
+      <span className="text-sm text-slate-500">טוענים את העמוד…</span>
     </div>
   );
+}
+
+/** Login chunk: fetched when the browser is idle on a public page, and at once when the pointer or
+    focus reaches any link to /login (the homepage CTAs and header links), before the click. */
+function PreloadLogin() {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (user) return;
+    const onIntent = (e: Event) => { if (isLoginLink(e.target)) preloadLogin(); };
+    document.addEventListener('pointerover', onIntent, { passive: true });
+    document.addEventListener('focusin', onIntent);
+    document.addEventListener('touchstart', onIntent, { passive: true });
+    const cancel = whenIdle(preloadLogin);
+    return () => {
+      cancel();
+      document.removeEventListener('pointerover', onIntent);
+      document.removeEventListener('focusin', onIntent);
+      document.removeEventListener('touchstart', onIntent);
+    };
+  }, [user]);
+  return null;
 }
 
 /** For a signed-in user the two heaviest app screens are fetched in the background once the
@@ -229,6 +251,7 @@ export default function App() {
           <SiteTracker />
           <MarketingTags />
           <PrefetchAppScreens />
+          <PreloadLogin />
           <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/"          element={subSlug ? <LandingViewer slugOverride={subSlug} /> : <MarketingLanding />} />

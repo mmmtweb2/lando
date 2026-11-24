@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import {
   JourneyError, activate, completeSetup, isAccountEvent, isPublicEvent, logEvent, peek, recordDashboardView, setBusiness, setPendingProfile, start, validAnonId,
 } from '../services/journey.service';
+import { SELECTION_LIMIT_MESSAGE, takeSelection } from '../services/selectionGuard';
 
 function fail(res: Response, e: unknown): void {
   if (e instanceof JourneyError) {
@@ -43,7 +44,12 @@ export async function startJourney(req: Request, res: Response): Promise<void> {
 /** PUT /api/seo/journey/business {placeId} */
 export async function putBusiness(req: Request, res: Response): Promise<void> {
   const email = who(req, res); if (!email) return;
-  try { res.json(await setBusiness(email, (req.body ?? {}).placeId)); } catch (e) { fail(res, e); }
+  const placeId = (req.body ?? {}).placeId;
+  if (typeof placeId === 'string' && takeSelection(email, placeId) === 'limit') {
+    res.status(429).json({ error: SELECTION_LIMIT_MESSAGE, code: 'selection_limit' });
+    return;
+  }
+  try { res.json(await setBusiness(email, placeId)); } catch (e) { fail(res, e); }
 }
 
 /** PUT /api/seo/journey/profile-pending { name } — the business has no verified Google profile yet. */

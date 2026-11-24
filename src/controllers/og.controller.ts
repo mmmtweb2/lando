@@ -4,7 +4,7 @@ import path from 'path';
 import { supabase } from '../config/supabase';
 import { getAccountStatus } from '../services/billing.service';
 import { canonicalUrl, resolveBPage } from '../services/subdomain.service';
-import { buildJsonLdScripts, injectSeoBody, renderSeoBody, SeoPage } from '../services/seoRender';
+import { buildJsonLdScripts, injectSeoBody, renderSeoBody, SeoPage, stripBootShell } from '../services/seoRender';
 import { LANGUAGES, SOURCE_LANG, buildHreflang, isTranslationLang, langDir, langUrl, type LangCode } from '../services/landingLanguages';
 import { loadTranslations, publicTranslations, translatedPage } from '../services/landingTranslations.service';
 import { googleBlockForPage } from '../services/pageGoogle.service';
@@ -23,7 +23,8 @@ const SITE_URL = 'https://pagey.co.il';
 async function loadHtmlShell(): Promise<string> {
   const distPath = path.join(process.cwd(), 'client', 'dist', 'index.html');
   try {
-    return await readFile(distPath, 'utf-8');
+    // Customer pages: no Pagey loading screen in #root (see stripBootShell).
+    return stripBootShell(await readFile(distPath, 'utf-8'));
   } catch {
     // Dev mode fallback — crawlers only need the <head>; the JS bundle handles the rest
     return `<!doctype html>

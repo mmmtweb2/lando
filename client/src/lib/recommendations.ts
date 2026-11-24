@@ -2,7 +2,7 @@
 // Pure: built from the audit the server already returned. Honest about who does what: only items
 // the product really handles carry the "we take care of it" label.
 
-import type { Audit, AuditItem } from './auditShared';
+import { WEIGHT, type Audit, type AuditItem } from './auditShared';
 
 export type Impact = 'high' | 'medium' | 'low';
 export interface Recommendation {
@@ -13,8 +13,8 @@ export interface Recommendation {
   level: 'ok' | 'weak';
 }
 
-/** Points each item is worth in the score (they sum to 100). */
-export const WEIGHT: Record<string, number> = { reviews: 25, rating: 25, photos: 15, website: 10, phone: 8, hours: 7, category: 5, status: 5 };
+/** Points each item is worth in the score (they sum to 100). Defined in auditShared. */
+export { WEIGHT };
 
 const ORDER = Object.keys(WEIGHT); // stable tie-break: the order above
 
@@ -37,14 +37,15 @@ export function buildRecommendations(audit: Pick<Audit, 'items'>): Recommendatio
     .map((i) => {
       // Half the points are still open on an "ok" item.
       const open = (WEIGHT[i.key] ?? 5) * (i.level === 'weak' ? 1 : 0.5);
-      const weDo = i.weDo && i.weDoAvailability ? i.weDoAvailability : null;
+      // Only what the product does TODAY is promised: a 'soon' item shows no "we do" label (QA 24.11).
+      const weDo = i.weDo && i.weDoAvailability === 'now' ? 'now' as const : null;
       return {
         rec: {
           key: i.key, title: i.label, level: i.level, impact: impactOf(open),
           why: WHY[i.key] ?? '',
-          how: i.youDo || i.tip || i.weDo,
+          how: i.youDo || i.tip || (weDo ? i.weDo : ''),
           weDo,
-          weDoLabel: weDo === 'now' ? 'נטפל בזה בשבילכם אחרי ההרשמה' : weDo === 'soon' ? 'בקרוב: נטפל בזה בשבילכם' : null,
+          weDoLabel: weDo === 'now' ? 'נטפל בזה בשבילכם אחרי ההרשמה' : null,
         } as Recommendation,
         open,
       };

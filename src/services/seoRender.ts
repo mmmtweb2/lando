@@ -129,9 +129,19 @@ export function renderSeoBody(page: SeoPage, opts: SeoLangOptions = {}): string 
   return `<main dir="${opts.dir ?? 'rtl'}" lang="${esc(lang)}" data-ssr="1">${out.join('')}</main>`;
 }
 
-/** Put the SEO body inside <div id="root">. No-op if the shell has no empty root. */
+/**
+ * client/index.html paints a small static "Pagey, loading" screen inside #root, between <!--boot-->
+ * markers (QA 24.11: pages were blank until the JavaScript arrived). A customer's own page must not
+ * show Pagey's loading screen, so its shell gets the empty root back.
+ */
+const BOOT_ROOT = /<div id="root">\s*(?:<!--boot-->[\s\S]*?<!--\/boot-->)?\s*<\/div>/;
+export function stripBootShell(shell: string): string {
+  return shell.replace(BOOT_ROOT, '<div id="root"></div>');
+}
+
+/** Put the SEO body inside <div id="root">. No-op if the shell has no (empty or boot-screen) root. */
 export function injectSeoBody(shell: string, body: string): string {
-  return shell.replace(/<div id="root">\s*<\/div>/, () => `<div id="root">${body}</div>`);
+  return shell.replace(BOOT_ROOT, () => `<div id="root">${body}</div>`);
 }
 
 function scriptTag(data: Record<string, unknown>): string {

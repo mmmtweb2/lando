@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Lock, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { translateAuthError } from '../lib/authErrors';
+import { passwordError, translateAuthError } from '../lib/authErrors';
 
 // Lets a logged-in user set/update a password. Solves the "signed up via magic
 // link → no password → must request a new link every time" problem: after
@@ -13,8 +13,9 @@ export default function SetPasswordCard() {
   const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
 
   async function submit() {
-    if (password.length < 6) {
-      setStatus({ text: 'הסיסמה חייבת להכיל לפחות 6 תווים', ok: false });
+    const invalid = passwordError(password);
+    if (invalid) {
+      setStatus({ text: invalid, ok: false });
       return;
     }
     setBusy(true);

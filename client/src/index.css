@@ -25,6 +25,17 @@ body {
   color: var(--navy);
 }
 
+/* ─── Route loading screen (App.tsx RouteFallback; same look as the static shell in index.html) ─── */
+@keyframes pageyFadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pageyBar { 0% { transform: translateX(100%) } 100% { transform: translateX(-250%) } }
+.pagey-route-fallback { opacity: 0; animation: pageyFadeIn .25s ease-out .15s forwards; }
+.pagey-route-bar { display: block; width: 120px; height: 4px; border-radius: 999px; background: #DCE4F7; overflow: hidden; }
+.pagey-route-bar > span { display: block; width: 40%; height: 100%; border-radius: 999px; background: #2E63F6; animation: pageyBar 1.1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .pagey-route-fallback { animation: none; opacity: 1; }
+  .pagey-route-bar > span { animation: none; width: 100%; opacity: .5; }
+}
+
 /* ─── Lando character animations (used app-wide) ─── */
 @keyframes landoPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
 .lando-pulse { animation: landoPulse 3.6s ease-in-out infinite; }

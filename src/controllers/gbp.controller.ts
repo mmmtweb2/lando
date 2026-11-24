@@ -7,7 +7,9 @@ import {
 import {
   GbpStoreError, deleteConnection, getConnection, markNeedsReconnect, saveConnection, setLocation,
 } from '../services/gbpStore';
-import { listBusinesses } from '../services/seoBusinesses.service';
+import { addBusiness, listBusinesses, removeBusiness } from '../services/seoBusinesses.service';
+import { placeMatch } from '../services/gbpPlaceMatch';
+import { PlacesError, fetchPlace } from '../services/places.service';
 
 // Stage 6.3: the customer connects their own Google account so the dashboard can show the numbers
 // of their Business Profile. Off unless GBP_CONNECT_ENABLED=true and the settings are valid.
@@ -131,15 +133,22 @@ export async function stats(req: Request, res: Response): Promise<void> {
       throw e;
     }
     const locs = await listLocations(access);
-    const placeIds = (await listBusinesses(email)).map((b) => b.google_place_id).filter((x): x is string => !!x);
+    const businesses = await listBusinesses(email);
+    const placeIds = businesses.map((b) => b.google_place_id).filter((x): x is string => !!x);
     const loc = pickLocation(locs, c.location_name, placeIds);
     if (!loc) {
       res.json({ needsChoice: true, locations: locs.map((l) => ({ name: l.name, title: l.title })) });
       return;
     }
     if (loc.name !== c.location_name) await setLocation(email, loc.name);
+    // QA 24.11: the listing this Google account manages must be the business picked in the search.
+    // A mismatch is reported with a choice (the numbers are still the connected listing's own).
+    const match = placeMatch(loc, businesses);
     const { totals, days } = await fetchTotals(access, loc.name, new Date());
-    res.json({ location: { name: loc.name, title: loc.title }, days, totals });
+    res.json({
+      location: { name: loc.name, title: loc.title }, days, totals, match,
+      ...(match.status === 'mismatch' ? { locations: locs.map((l) => ({ name: l.name, title: l.title })) } : {}),
+    });
   } catch (e) {
     if (e instanceof GbpError && e.code === 'revoked') { await markNeedsReconnect(email, 'revoked').catch(() => undefined); res.status(409).json({ error: 'צריך להתחבר מחדש.', code: 'needs_reconnect' }); return; }
     if (e instanceof GbpError && /:http_429:/.test(e.message)) {
@@ -171,6 +180,43 @@ export async function chooseLocation(req: Request, res: Response): Promise<void>
     res.json({ ok: true });
   } catch (e) {
     if (e instanceof GbpError) { res.status(502).json({ error: 'לא הצלחנו לקרוא את הנתונים מגוגל.', code: 'google_error' }); return; }
+    fail(res, e);
+  }
+}
+
+/**
+ * POST /api/seo/gbp/use-connected { replaceId? } — the customer says the listing their Google account
+ * manages IS their business (the one picked in the search was not). The connected listing's place id
+ * comes from Google under the customer's own sign-in, never from the request body, so this can only
+ * ever save a business the account really manages. `replaceId` (one of the account's own saved
+ * businesses, owner-scoped) is removed first, so the account is not left with the wrong one.
+ */
+export async function useConnected(req: Request, res: Response): Promise<void> {
+  const email = req.authEmail;
+  if (!email) { needAuth(res); return; }
+  const cfg = gbpOAuthConfig();
+  if (!cfg || !gbpAllowedFor(email)) { disabled(res); return; }
+  const replaceId = (req.body as { replaceId?: unknown } | undefined)?.replaceId;
+  if (replaceId !== undefined && (typeof replaceId !== 'string' || !/^[0-9a-f-]{36}$/i.test(replaceId))) {
+    res.status(400).json({ error: 'בקשה לא תקינה.' }); return;
+  }
+  try {
+    const c = await getConnection(email);
+    const refresh = c ? decryptToken(c.refresh_token_enc, cfg.key) : null;
+    if (!c || !refresh) { res.status(409).json({ error: 'צריך להתחבר מחדש.', code: 'needs_reconnect' }); return; }
+    const locs = await listLocations(await accessTokenFrom(refresh, cfg));
+    const businesses = await listBusinesses(email);
+    const loc = pickLocation(locs, c.location_name, businesses.map((b) => b.google_place_id).filter((x): x is string => !!x));
+    if (!loc?.placeId) { res.status(409).json({ error: 'גוגל לא מסרה מזהה לכרטיס המחובר, ולכן אי אפשר לחבר אותו אוטומטית. כתבו לנו ונסדר את זה.', code: 'no_place_id' }); return; }
+    if (replaceId && businesses.some((b) => b.id === replaceId && b.google_place_id !== loc.placeId)) await removeBusiness(email, replaceId);
+    const place = await fetchPlace(loc.placeId);
+    const r = await addBusiness(email, { placeId: place.id, name: place.displayName?.text ?? loc.title ?? '', websiteUrl: null });
+    if (!r.ok) { res.status(409).json({ error: 'בחשבון כבר יש את מספר העסקים המרבי. הסירו עסק אחד ונסו שוב.', code: 'business_limit' }); return; }
+    await setLocation(email, loc.name);
+    res.json({ ok: true, business: r.business });
+  } catch (e) {
+    if (e instanceof GbpError) { res.status(502).json({ error: 'לא הצלחנו לקרוא את הנתונים מגוגל.', code: 'google_error' }); return; }
+    if (e instanceof PlacesError) { res.status(502).json({ error: 'לא הצלחנו לקרוא את פרטי העסק מגוגל. נסו שוב.', code: 'places_error' }); return; }
     fail(res, e);
   }
 }

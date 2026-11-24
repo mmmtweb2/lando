@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { translateAuthError } from '../lib/authErrors';
+import { passwordError, translateAuthError } from '../lib/authErrors';
 
 // Page the Supabase password-reset email links to (redirectTo set in
 // Login.tsx's handleForgotPassword). Supabase's recovery link, once opened,
@@ -32,7 +32,8 @@ export default function ResetPassword() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (password.length < 6) { setError('הסיסמה חייבת להכיל לפחות 6 תווים'); return; }
+    const badPassword = passwordError(password);
+    if (badPassword) { setError(badPassword); return; }
     if (password !== confirm) { setError('הסיסמאות אינן תואמות'); return; }
 
     setBusy(true);

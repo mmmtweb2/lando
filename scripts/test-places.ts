@@ -108,7 +108,7 @@ const weak = { id: 'ChIJ_weakplace12', displayName: { text: 'עסק חלש' }, r
     const body = JSON.parse(String(nb.init.body));
     assert.deepEqual(body.includedPrimaryTypes, ['caterer']);
     assert.equal(body.locationRestriction.circle.radius, 5000);
-    assert.equal((nb.init.headers as Record<string, string>)['X-Goog-FieldMask'], 'places.id,places.rating,places.userRatingCount');
+    assert.equal((nb.init.headers as Record<string, string>)['X-Goog-FieldMask'], 'places.id,places.displayName,places.rating,places.userRatingCount');
     assert.equal(a.benchmark!.count, 5);
     assert.equal(a.benchmark!.medianReviews, 100);
     assert.equal(a.benchmark!.topReviews, 100); // leaders: 120/110/100

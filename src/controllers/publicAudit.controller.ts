@@ -69,6 +69,7 @@ function placesFail(res: Response, e: unknown): void {
 export async function publicSearch(req: Request, res: Response): Promise<void> {
   const { input, sessionToken } = req.body ?? {};
   if (typeof input !== 'string') { res.status(400).json({ error: 'חסר טקסט לחיפוש.' }); return; }
+  if (input.length > 200) { res.status(400).json({ error: 'הטקסט ארוך מדי. כתבו רק את שם העסק והעיר.', code: 'input_too_long' }); return; }
   if (!placesConfigured()) { placesFail(res, new PlacesError('not_configured', '')); return; }
   if (input.trim().length < 2) { res.json({ suggestions: [] }); return; }   // costs nothing, spends nothing
   if (blocked(takeSearch(), res)) return;

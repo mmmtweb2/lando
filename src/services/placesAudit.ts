@@ -42,7 +42,16 @@ export interface PlaceSnapshot {
   photos?: unknown[];
 }
 
-export interface CompetitorSnapshot { id: string; rating?: number; userRatingCount?: number }
+export interface CompetitorSnapshot { id: string; rating?: number; userRatingCount?: number; displayName?: { text?: string } }
+
+/**
+ * One of the leading nearby businesses, by name (QA 24.11: the comparison showed only medians, so the
+ * customer could not tell who "the leaders" are). Public Google Maps data, shown live with the Maps
+ * attribution the card already carries, never stored (Places terms allow only place_id to be kept).
+ */
+export interface Leader { name: string; rating: number; reviews: number }
+/** How many leaders are named on the card. */
+export const LEADERS_SHOWN = 3;
 
 /** A nearby business found for the category check. Only what the comparison needs; never stored. */
 export interface CategoryPeer { id: string; userRatingCount?: number; primaryType?: string; primaryTypeDisplayName?: { text?: string } }
@@ -73,6 +82,8 @@ export interface Benchmark {
   reviewsTarget: number;
   /** Which of the two `reviewsTarget` is. */
   reviewsTargetKind: 'median' | 'max';
+  /** The most-reviewed competitors, by name (only those Google returned a name for). */
+  leaders: Leader[];
 }
 
 export type AuditLevel = 'good' | 'ok' | 'weak';
@@ -143,6 +154,11 @@ export function buildBenchmark(selfId: string, competitors: CompetitorSnapshot[]
     // First target = the regional median, as displayed (rounded), never below 1.
     reviewsTarget: Math.max(1, Math.round(medianReviews)),
     reviewsTargetKind: 'median',
+    leaders: [...usable]
+      .sort((x, y) => (y.userRatingCount as number) - (x.userRatingCount as number))
+      .filter(c => !!c.displayName?.text?.trim())
+      .slice(0, LEADERS_SHOWN)
+      .map(c => ({ name: (c.displayName!.text as string).trim().slice(0, 80), rating: Math.round((c.rating as number) * 10) / 10, reviews: c.userRatingCount as number })),
   };
 }
 
@@ -199,8 +215,11 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
           : rating >= ratingTarget
             ? ''
             : `הדירוג שלכם נמוך מ-${ratingTarget.toFixed(1)}, היעד לפי ${ratingVs}.`,
-      weDo: 'נכין לכם בקשות ביקורת מוכנות לשליחה ללקוחות.',
-      weDoAvailability: 'soon',
+      // QA 24.11: items marked "בקרוב" read as an unfinished product. The review-request kit (link,
+      // QR, WhatsApp message) is live, so rating and reviews are 'now'. Items still 'soon' are not
+      // shown to the customer as a "we do" line at all (client: BusinessAuditCard, recommendations).
+      weDo: 'נכין לכם ערכה לבקשת ביקורות: קישור, קוד QR והודעת וואטסאפ מוכנה לשליחה ללקוחות.',
+      weDoAvailability: 'now',
       youDo: rating !== null && rating >= ratingTarget ? '' : 'לתת שירות טוב ולענות לביקורות שליליות בנימוס.',
     },
     {
@@ -209,9 +228,9 @@ export function buildAudit(place: PlaceSnapshot, benchmark: Benchmark | null = n
       level: reviewsLevel,
       value: String(reviewCount),
       tip: reviewsTip,
-      weDo: 'נשלח בקשת ביקורת בוואטסאפ ללקוח, מיד אחרי שהוא מקבל חשבונית.',
-      weDoAvailability: 'soon',
-      youDo: reviewsMissing > 0 ? 'לחבר את מערכת החשבוניות שלכם (iCount או SUMIT) כשנבקש.' : '',
+      weDo: 'נכין לכם הודעת בקשת ביקורת מוכנה, עם קישור ישיר לכתיבת ביקורת על העסק בגוגל.',
+      weDoAvailability: 'now',
+      youDo: reviewsMissing > 0 ? 'לשלוח את הבקשה בוואטסאפ לכל לקוח שהיה אצלכם.' : '',
     },
     {
       key: 'photos',
