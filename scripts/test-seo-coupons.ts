@@ -6,7 +6,7 @@ import './_env-seo-subscription';
 import assert from 'node:assert/strict';
 import { supabase } from '../src/config/supabase';
 import {
-  MIN_CHARGE, SEO_COUPON_INVALID, checkCoupon, priceWithCoupon, seoCouponPricing, type CouponRow,
+  MIN_CHARGE, checkCoupon, couponReasonMessage, priceWithCoupon, seoCouponPricing, type CouponRow,
 } from '../src/services/coupon.service';
 import {
   applyVerifiedPayment, couponPurposeFor, getSubscription, pricingView, refundOfferFor, startSubscription,
@@ -145,10 +145,10 @@ const DAY = 86400000;
   const pagesOnly = coupon('PAGES10', { applicable_purposes: ['publish'] });
   assert.equal((await checkCoupon('first30', 'seo_monthly', 'a@x.co')).ok, true, 'case-insensitive, monthly');
   assert.equal((await checkCoupon('FIRST30', 'seo_annual', 'a@x.co')).ok, true, 'annual');
-  assert.deepEqual(await checkCoupon('MONTHONLY', 'seo_annual', 'a@x.co'), { ok: false, error: SEO_COUPON_INVALID }, 'monthly-only code is not valid on the annual plan');
-  assert.deepEqual(await checkCoupon('ANYTHING', 'seo_monthly', 'a@x.co'), { ok: false, error: SEO_COUPON_INVALID }, '"any purpose" never reaches the subscription');
+  assert.deepEqual(await checkCoupon('MONTHONLY', 'seo_annual', 'a@x.co'), { ok: false, reason: 'wrong_plan', fits: ['seo_monthly'], error: 'הקוד הזה חל רק על המסלול החודשי.' }, 'monthly-only code is not valid on the annual plan');
+  assert.deepEqual(await checkCoupon('ANYTHING', 'seo_monthly', 'a@x.co'), { ok: false, reason: 'not_for_this_product', error: couponReasonMessage('not_for_this_product', { purpose: 'seo_monthly' }) }, '"any purpose" never reaches the subscription');
   assert.equal((await checkCoupon('ANYTHING', 'publish', 'a@x.co')).ok, true, '...but still works on landing pages as before');
-  assert.deepEqual(await checkCoupon('PAGES10', 'seo_monthly', 'a@x.co'), { ok: false, error: SEO_COUPON_INVALID });
+  assert.deepEqual(await checkCoupon('PAGES10', 'seo_monthly', 'a@x.co'), { ok: false, reason: 'not_for_this_product', error: couponReasonMessage('not_for_this_product', { purpose: 'seo_monthly' }) });
   assert.equal((await checkCoupon('FIRST30', 'publish', 'a@x.co')).ok, false, 'a subscription code does not discount a landing page');
   void monthlyOnly; void anyPurpose; void pagesOnly;
 
@@ -243,7 +243,7 @@ const DAY = 86400000;
   const begins = () => sumitCalls.filter(c => c.path === '/billing/payments/beginredirect/').length;
   let b0 = begins();
   r = res(); await start({ authEmail: 'z@x.co', body: { plan: 'annual', couponCode: 'MONTHONLY' } } as any, r);
-  assert.deepEqual([r.code, r.body.code, r.body.error], [400, 'coupon', SEO_COUPON_INVALID]);
+  assert.deepEqual([r.code, r.body.code, r.body.reason, r.body.fits, r.body.error], [400, 'coupon', 'wrong_plan', ['seo_monthly'], 'הקוד הזה חל רק על המסלול החודשי.']);
   r = res(); await start({ authEmail: 'z@x.co', body: { plan: 'monthly', couponCode: 'NOPE' } } as any, r);
   assert.equal(r.code, 400);
   const once = coupon('ONEUSE', { max_redemptions: 1, applicable_purposes: ['seo_monthly'] });
@@ -309,9 +309,9 @@ const DAY = 86400000;
   pre056 = true;
   const legacy = { ...coupon('OLDSEO', { applicable_purposes: ['seo_monthly'] }) } as Row;
   delete legacy.seo_duration; db.coupons[db.coupons.length - 1] = legacy;   // a row with no seo_duration column
-  assert.deepEqual(await checkCoupon('OLDSEO', 'seo_monthly', 'p@x.co'), { ok: false, error: SEO_COUPON_INVALID });
+  assert.deepEqual(await checkCoupon('OLDSEO', 'seo_monthly', 'p@x.co'), { ok: false, reason: 'unavailable', error: couponReasonMessage('unavailable') });
   r = res(); await start({ authEmail: 'p@x.co', body: { plan: 'monthly', couponCode: 'OLDSEO' } } as any, r);
-  assert.deepEqual([r.code, r.body.error], [400, SEO_COUPON_INVALID]);
+  assert.deepEqual([r.code, r.body.reason, r.body.error], [400, 'unavailable', couponReasonMessage('unavailable')]);
   r = res(); await start({ authEmail: 'p@x.co', body: { plan: 'monthly' } } as any, r);
   assert.equal(r.code, 200, 'a plain checkout still works (no coupon column is written)');
   assert.ok(!('coupon_id' in subOf('p@x.co')) && !('recurring_amount' in subOf('p@x.co')));

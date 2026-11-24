@@ -38,6 +38,19 @@ interface CouponInput {
   active?: boolean;
   /** Subscription coupons only (migration 056): 'first' (default) | 'forever'. */
   seo_duration?: string;
+  /** Migration 057 (README part 151): the code works only from this date. Empty/absent = from now. */
+  starts_at?: string | null;
+}
+
+/** The coupon table has no starts_at column yet (migration 057 not run): PostgREST names the column. */
+const missingStartsColumn = (error: { message?: string }) => /starts_at/.test(error.message ?? '');
+const NEEDS_057 = 'תאריך התחלה לקופון דורש את מיגרציה 057 (migrations/057_coupon_starts_at.sql). הריצו אותה, או צרו את הקופון בלי תאריך התחלה.';
+
+/** Parses an optional date. undefined = invalid (caller answers 400), null = none. */
+function optionalDate(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === '') return null;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
 /** The coupon table has no seo_duration column yet (migration 056 not run). PostgREST says PGRST204, Postgres 42703. */
@@ -139,9 +152,18 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
     expiresAt = d.toISOString();
   }
 
+  // Sent only when set, so a database without migration 057 keeps creating coupons as before.
+  const startsAt = optionalDate(body.starts_at);
+  if (startsAt === undefined) { res.status(400).json({ error: 'תאריך התחלה לא תקין.' }); return; }
+  if (startsAt && expiresAt && new Date(startsAt).getTime() >= new Date(expiresAt).getTime()) {
+    res.status(400).json({ error: 'תאריך ההתחלה חייב להיות לפני תאריך התפוגה.' });
+    return;
+  }
+
   const { data, error } = await supabase
     .from('coupons')
     .insert({
+      ...(startsAt ? { starts_at: startsAt } : {}),
       code,
       discount_type: discountType,
       discount_value: discountValue,
@@ -161,6 +183,7 @@ export async function createCoupon(req: Request, res: Response): Promise<void> {
     // 23505 = unique violation on `code`. A duplicate is an ordinary admin
     // mistake, not a server error, so it gets a 409 and a readable message.
     if (error.code === '23505') { res.status(409).json({ error: 'קוד קופון זה כבר קיים.' }); return; }
+    if (startsAt && missingStartsColumn(error)) { res.status(400).json({ error: NEEDS_057 }); return; }
     if (seoTicked && missingSeoColumn(error)) { res.status(400).json({ error: NEEDS_056 }); return; }
     serverError(res, error, '[COUPON]');
     return;
@@ -215,6 +238,12 @@ export async function updateCoupon(req: Request, res: Response): Promise<void> {
 
   if (Object.prototype.hasOwnProperty.call(body, 'notes')) patch.notes = body.notes ?? null;
 
+  if (Object.prototype.hasOwnProperty.call(body, 'starts_at')) {
+    const parsed = optionalDate(body.starts_at);
+    if (parsed === undefined) { res.status(400).json({ error: 'תאריך התחלה לא תקין.' }); return; }
+    patch.starts_at = parsed;
+  }
+
   if (Object.prototype.hasOwnProperty.call(body, 'seo_duration')) {
     if (!isSeoDuration(body.seo_duration)) { res.status(400).json({ error: "seo_duration חייב להיות 'first' או 'forever'." }); return; }
     // Affects only checkouts opened from now on: a subscription already opened keeps the recurring amount it was given.
@@ -248,6 +277,7 @@ export async function updateCoupon(req: Request, res: Response): Promise<void> {
     .select('*')
     .maybeSingle();
   if (error) {
+    if ('starts_at' in patch && missingStartsColumn(error)) { res.status(400).json({ error: NEEDS_057 }); return; }
     if ('seo_duration' in patch && missingSeoColumn(error)) { res.status(400).json({ error: NEEDS_056 }); return; }
     serverError(res, error, '[COUPON]');
     return;

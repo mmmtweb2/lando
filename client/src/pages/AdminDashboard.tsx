@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { PRICING } from '../config/pricing';
+import { minChargeAdminWarning } from '../lib/billingState';
 import BetaAccessPanel from '../components/admin/BetaAccessPanel';
 import SeoOverviewTab from '../components/admin/SeoOverviewTab';
 import SeoFunnelTab from '../components/admin/SeoFunnelTab';
@@ -96,6 +98,8 @@ interface CouponRow {
   notes: string | null;
   /** Migration 056: how long a Google-promotion discount lasts. Absent before 056. */
   seo_duration?: 'first' | 'forever';
+  /** Migration 057: the code works only from this date. Absent before 057. */
+  starts_at?: string | null;
 }
 
 interface UserRow {
@@ -161,6 +165,15 @@ const COUPON_PURPOSE_LABELS: Record<string, string> = {
   seo_annual:  'קידום בגוגל — שנתי',
 };
 const isSeoPurpose = (p: string) => p === 'seo_monthly' || p === 'seo_annual';
+
+/** The ₪1-floor warning for the ticked subscription plans (README part 151, lib/billingState.ts). */
+function seoMinChargeWarning(form: { discountType: 'percent' | 'fixed'; discountValue: string; purposes: string[] }): string | null {
+  const prices = [
+    ...(form.purposes.includes('seo_monthly') ? [PRICING.seoSubscription.monthly] : []),
+    ...(form.purposes.includes('seo_annual') ? [PRICING.seoSubscription.annual] : []),
+  ];
+  return minChargeAdminWarning(form.discountType, Number(form.discountValue), prices);
+}
 
 const IMAGE_SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   upload:  { label: 'העלאה',  color: '#2E63F6' },
@@ -613,6 +626,7 @@ export default function AdminDashboard() {
     discountType: 'percent' as 'percent' | 'fixed',
     discountValue: '',
     expiresAt: '',
+    startsAt: '',
     maxRedemptions: '',
     maxPerUser: '1',
     purposes: [] as string[],
@@ -655,6 +669,8 @@ export default function AdminDashboard() {
           max_redemptions: form.maxRedemptions === '' ? null : Number(form.maxRedemptions),
           max_per_user: form.maxPerUser === '' ? null : Number(form.maxPerUser),
           expires_at: form.expiresAt || null,
+          // Sent only when set: a database without migration 057 keeps working for codes without a start date.
+          ...(form.startsAt ? { starts_at: form.startsAt } : {}),
           notes: form.notes || null,
           // Only for a Google-promotion coupon (and only then does it need migration 056).
           ...(form.purposes.some(isSeoPurpose) ? { seo_duration: form.seoDuration } : {}),
@@ -664,7 +680,7 @@ export default function AdminDashboard() {
       if (!r.ok) throw new Error(data.error ?? 'יצירת הקופון נכשלה');
       setCoupons((prev) => [data, ...prev]);
       setCouponMsg({ text: `הקופון ${data.code} נוצר.`, ok: true });
-      setForm({ code: '', discountType: 'percent', discountValue: '', expiresAt: '', maxRedemptions: '', maxPerUser: '1', purposes: [], seoDuration: 'first', notes: '' });
+      setForm({ code: '', discountType: 'percent', discountValue: '', expiresAt: '', startsAt: '', maxRedemptions: '', maxPerUser: '1', purposes: [], seoDuration: 'first', notes: '' });
     } catch (err) {
       setCouponMsg({ text: err instanceof Error ? err.message : 'יצירת הקופון נכשלה', ok: false });
     } finally {
@@ -1331,6 +1347,12 @@ export default function AdminDashboard() {
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
                 </label>
                 <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">פעיל מ- (אופציונלי)</span>
+                  <input type="date" value={form.startsAt}
+                    onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-[#E4EAFB] focus:border-[#9DB0E8] transition" />
+                </label>
+                <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-slate-500">מקס׳ שימושים (ריק = ללא הגבלה)</span>
                   <input type="number" min="1" step="1" value={form.maxRedemptions}
                     onChange={(e) => setForm((f) => ({ ...f, maxRedemptions: e.target.value }))}
@@ -1387,6 +1409,12 @@ export default function AdminDashboard() {
                     {form.purposes.includes('seo_annual') && ' במנוי השנתי יש תשלום אחד בלי חידוש אוטומטי, ולכן ההנחה חלה רק עליו בשתי האפשרויות.'}
                   </p>
                 </fieldset>
+              )}
+
+              {seoMinChargeWarning(form) && (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                  {seoMinChargeWarning(form)}
+                </p>
               )}
 
               {/* After the SEO choice, so the duration is picked before the coupon is created. */}

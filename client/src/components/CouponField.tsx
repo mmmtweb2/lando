@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Tag } from 'lucide-react';
 import { authFetch } from '../lib/api';
+import { afterCheck, appliedFor, couponKey, needsRecheck, type CouponBoxState } from '../lib/couponRecheck';
 
 /**
  * The customer-facing coupon box: type a code, press "החל", see what the price
@@ -21,6 +22,8 @@ export interface CouponQuote {
   seoDuration?: 'first' | 'forever';
   /** Google-promotion subscription only: what each later charge will be. */
   recurringAmount?: number;
+  /** The price stopped at the ₪1 floor (a 100% code): the page says what the ₪1 is for (README part 151). */
+  minCharge?: boolean;
 }
 
 interface Props {
@@ -47,23 +50,24 @@ export default function CouponField({ purpose, references, onChange, className =
   const [open, setOpen] = useState(!collapsible);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [applied, setApplied] = useState<{ code: string; key: string } | null>(null);
+  // The last code applied or tried, and the purchase it was checked for (lib/couponRecheck.ts).
+  const [box, setBox] = useState<CouponBoxState | null>(null);
 
-  // If the thing being bought changes under us, a previously applied quote is
-  // stale, so the applied state is remembered together with the key it was
-  // fetched for and simply stops counting when that key changes (no effect, no
-  // cascading render). The parent is safe either way: its quotes map is keyed
-  // by reference, so a stale quote can never be shown against a new product,
-  // and the code itself is re-validated server-side at checkout regardless.
-  const refKey = `${purpose}|${references.join('|')}`;
-  const appliedCode = applied && applied.key === refKey ? applied.code : null;
+  // When the thing being bought changes (monthly <-> annual), a code in play is checked AGAIN for the new
+  // purchase: it stays applied if it is valid there, else the box says why and marks it "לא הוחל"
+  // (README part 151). The parent's quotes are keyed by reference, so a stale quote is never shown meanwhile,
+  // and the server re-checks the code at checkout regardless.
+  const refKey = couponKey(purpose, references);
+  const appliedCode = appliedFor(box, refKey);
+  const rechecking = needsRecheck(box, refKey);
+  const seq = useRef(0);
 
-  async function apply() {
-    const trimmed = code.trim();
-    if (!trimmed || busy) return;
+  async function check(raw: string, prev: CouponBoxState | null) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const mine = ++seq.current;
+    const key = refKey;
     setBusy(true);
-    setError(null);
     try {
       const results = await Promise.all(references.map(async (reference) => {
         const r = await authFetch('/api/payments/validate-coupon', {
@@ -74,84 +78,105 @@ export default function CouponField({ purpose, references, onChange, className =
         const data = await r.json().catch(() => ({})) as {
           valid?: boolean; code?: string; error?: string;
           baseAmount?: number; discountAmount?: number; finalAmount?: number;
-          seoDuration?: 'first' | 'forever'; recurringAmount?: number;
+          seoDuration?: 'first' | 'forever'; recurringAmount?: number; minCharge?: boolean;
         };
-        if (!r.ok || !data.valid) throw new Error(data.error ?? 'הקופון אינו תקף.');
+        if (!r.ok || !data.valid) throw new Error(data.error ?? 'לא הצלחנו להחיל את הקוד. נסו שוב.');
         return [reference ?? NO_REFERENCE, {
           baseAmount: data.baseAmount ?? 0,
           discountAmount: data.discountAmount ?? 0,
           finalAmount: data.finalAmount ?? 0,
           ...(data.seoDuration ? { seoDuration: data.seoDuration } : {}),
           ...(typeof data.recurringAmount === 'number' ? { recurringAmount: data.recurringAmount } : {}),
+          ...(data.minCharge ? { minCharge: true } : {}),
         }, data.code ?? trimmed.toUpperCase()] as const;
       }));
-
+      if (mine !== seq.current) return;   // a newer check (another plan, another code) won
       const quotes: Record<string, CouponQuote> = {};
-      for (const [key, quote] of results) quotes[key] = quote;
+      for (const [k, quote] of results) quotes[k] = quote;
       const normalized = results[0]?.[2] ?? trimmed.toUpperCase();
-      setApplied({ code: normalized, key: refKey });
+      setBox(afterCheck(prev, key, normalized, { ok: true }));
+      setCode(normalized);
       onChange({ code: normalized, quotes });
     } catch (e) {
-      setApplied(null);
+      if (mine !== seq.current) return;
+      setBox(afterCheck(prev, key, trimmed.toUpperCase(), { ok: false, error: e instanceof Error ? e.message : 'לא הצלחנו להחיל את הקוד. נסו שוב.' }));
       onChange(null);
-      setError(e instanceof Error ? e.message : 'הקופון אינו תקף.');
     } finally {
-      setBusy(false);
+      if (mine === seq.current) setBusy(false);
     }
   }
 
+  useEffect(() => {
+    if (needsRecheck(box, refKey)) void check(box!.code, box);
+    // Only the purchase changing triggers this; `check` reads the current props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refKey]);
+
   function clear() {
+    seq.current++;
     setCode('');
-    setApplied(null);
-    setError(null);
+    setBox(null);
+    setBusy(false);
     onChange(null);
   }
 
-  if (appliedCode) {
+  if (appliedCode && !rechecking) {
     return (
-      <div className={`flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 ${className}`} dir="rtl">
+      <div className={`flex min-h-[44px] items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 ${className}`} dir="rtl">
         <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-800">
           <Check size={14} className="text-emerald-600 flex-shrink-0" />
-          הקופון <span className="font-mono" dir="ltr">{appliedCode}</span> הופעל
+          הקוד <span className="font-mono" dir="ltr">{appliedCode}</span> הוחל
         </span>
         <button type="button" onClick={clear}
-          className="text-xs font-medium text-emerald-700 hover:underline flex-shrink-0">
+          className="min-h-[44px] px-2 text-xs font-medium text-emerald-700 hover:underline flex-shrink-0">
           הסרה
         </button>
       </div>
     );
   }
 
-  if (!open) {
+  if (!open && !box) {
+    // A clear control, still secondary to the payment button: outlined, full 44px target (QA 23.11).
     return (
       <div className={className} dir="rtl">
         <button type="button" onClick={() => setOpen(true)} aria-expanded={false}
-          className="text-sm text-slate-500 underline underline-offset-2 hover:text-slate-700 min-h-[44px]">
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
+          <Tag size={15} aria-hidden className="text-slate-500" />
           יש לכם קוד הנחה?
         </button>
       </div>
     );
   }
 
+  const refused = box && box.status === 'refused' && box.key === refKey ? box : null;
   return (
     <div className={`flex flex-col gap-1.5 ${className}`} dir="rtl">
       <div className="flex items-center gap-2">
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void apply(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void check(code, null); } }}
           placeholder={collapsible ? 'קוד הנחה' : 'קוד קופון (אופציונלי)'}
           aria-label="קוד הנחה"
-          autoFocus={collapsible}
+          aria-invalid={refused ? true : undefined}
+          aria-describedby={refused ? 'coupon-error' : undefined}
+          autoFocus={collapsible && !box}
           dir="ltr"
-          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none focus:border-[#2E63F6] focus:ring-2 focus:ring-[#2E63F6]/15 transition text-center placeholder:font-sans placeholder:text-slate-400"
+          className={`min-h-[44px] flex-1 rounded-lg border bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none focus:border-[#2E63F6] focus:ring-2 focus:ring-[#2E63F6]/15 transition text-center placeholder:font-sans placeholder:text-slate-400 ${refused ? 'border-red-300' : 'border-slate-200'}`}
         />
-        <button type="button" onClick={() => void apply()} disabled={busy || !code.trim()}
-          className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-200 bg-white hover:bg-slate-50 transition disabled:opacity-40">
-          {busy ? '…' : 'החל קופון'}
+        <button type="button" onClick={() => void check(code, null)} disabled={busy || !code.trim()}
+          aria-busy={busy || undefined}
+          className={`min-h-[44px] flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition ${busy ? 'border-[#2E63F6]/30 bg-[#2E63F6]/5 text-[#2E63F6] cursor-wait' : 'text-slate-700 border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40'}`}>
+          {busy ? 'בודקים…' : 'החל קופון'}
         </button>
       </div>
-      {error && <p role="alert" className="text-xs font-medium text-red-600">{error}</p>}
+      {busy && rechecking && <p role="status" className="text-xs text-slate-500">בודקים אם הקוד חל גם על הבחירה החדשה…</p>}
+      {refused && (
+        <p id="coupon-error" role="alert" className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-red-700">
+          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-bold text-red-800">הקוד לא הוחל</span>
+          <span>{refused.error}</span>
+        </p>
+      )}
     </div>
   );
 }

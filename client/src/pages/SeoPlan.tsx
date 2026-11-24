@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { authFetch } from '../lib/api';
@@ -6,7 +6,10 @@ import { useAuth } from '../context/AuthContext';
 import { LandoMark } from '../components/Lando';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 import { fmt } from '../config/pricing';
-import { cycleUnit, pageLine, pickPlan, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
+import {
+  CHECKOUT_TIMEOUT_MS, CHECKOUT_TIMEOUT_TEXT, billingCopy, checkoutPhaseText, minChargeNote, type BillingAccess,
+} from '../lib/billingState';
+import { cycleUnit, pageLine, pickPlan, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
 import '../ui/ui-v3.css';
 
 // /seo-plan — where a customer picks and starts a plan of the Google-promotion product:
@@ -26,13 +29,8 @@ interface Sub {
   renews?: boolean;
   page?: { included: boolean; pageId: string | null; status: string | null };
 }
-interface Status { enabled: boolean; testMode?: boolean; planName: string; price: number | null; subscription: Sub | null }
+interface Status { enabled: boolean; testMode?: boolean; planName: string; price: number | null; subscription: Sub | null; access?: BillingAccess }
 interface Plans extends Catalog { enabled: boolean; planName: string }
-
-function dateHe(iso: string | null | undefined): string {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('he-IL'); } catch { return ''; }
-}
 
 export default function SeoPlan() {
   const { user, loading: authLoading } = useAuth();
@@ -41,6 +39,10 @@ export default function SeoPlan() {
   const [hasProduct, setHasProduct] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  // While the server opens SUMIT's page: the progressive text (README part 151, it can take seconds).
+  const [phase, setPhase] = useState('');
+  const phaseTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (phaseTimer.current) window.clearInterval(phaseTimer.current); }, []);
   const [err, setErr] = useState('');
   const [cycle, setCycle] = useState<SeoCycle>('month');
   // Every plan includes a landing page (12.11.2026); there is no add-on to choose.
@@ -81,24 +83,37 @@ export default function SeoPlan() {
   async function start(mode: 'go' | 'copy') {
     if (!plan) return;
     setBusy(true); setErr(''); setCopied(false);
+    const t0 = Date.now();
+    let leaving = false;   // the browser is on its way to SUMIT: keep the button busy
+    setPhase(checkoutPhaseText(0));
+    phaseTimer.current = window.setInterval(() => setPhase(checkoutPhaseText(Date.now() - t0)), 500);
+    // The server gives up on SUMIT at 20 s; the browser waits a little longer, then offers a retry.
+    const ctrl = new AbortController();
+    const giveUp = window.setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS);
+    const stop = () => { window.clearTimeout(giveUp); if (phaseTimer.current) { window.clearInterval(phaseTimer.current); phaseTimer.current = null; } };
     try {
       const r = await authFetch('/api/seo/subscription/start', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
         body: JSON.stringify({ plan: plan.id, ...(quote && coupon ? { couponCode: coupon.code } : {}) }),
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setErr(body.error ?? 'משהו השתבש. נסו שוב.'); return; }
       if (typeof body.redirectUrl !== 'string' || !body.redirectUrl) { setErr('משהו השתבש. נסו שוב.'); return; }
-      if (mode === 'go') { window.location.assign(body.redirectUrl); return; }
+      if (mode === 'go') { leaving = true; stop(); setPhase('עוברים לעמוד התשלום המאובטח…'); window.location.assign(body.redirectUrl); return; }
       setPayLink(body.redirectUrl);
       try { await navigator.clipboard.writeText(body.redirectUrl); setCopied(true); } catch { /* the field below can be copied by hand */ }
-    } catch { setErr('משהו השתבש. נסו שוב.'); } finally { setBusy(false); }
+    } catch (e) {
+      setErr(ctrl.signal.aborted || (e instanceof DOMException && e.name === 'AbortError') ? CHECKOUT_TIMEOUT_TEXT : 'משהו השתבש. נסו שוב.');
+    } finally { stop(); if (!leaving) { setBusy(false); setPhase(''); } }
   }
 
   const sub = st?.subscription ?? null;
-  const active = sub?.status === 'active' && !sub.cancelAtPeriodEnd;
   const enabled = plans?.enabled ?? st?.enabled ?? false;
-  const dash = <Link to="/dashboard" className="uv3-btn" style={{ marginTop: 16 }}>לדשבורד</Link>;
+  // The ONE billing state (README part 151). Older servers send no `access`: derive the two cases they knew.
+  const access: BillingAccess | null = st?.access
+    ?? (sub?.status === 'active' && !sub.cancelAtPeriodEnd ? { state: sub.cycle === 'year' ? 'annual' : 'monthly', until: sub.currentPeriodEnd, cycle: sub.cycle ?? 'month' }
+      : hasProduct && !sub ? { state: 'grant', until: null, cycle: null } : null);
+  const note = quote ? minChargeNote(quote, cycle) : null;
 
   let body: React.ReactNode;
   if (authLoading || !loaded) {
@@ -107,19 +122,22 @@ export default function SeoPlan() {
     body = <p>לא הצלחנו לטעון את פרטי התוכניות. נסו לרענן את הדף.</p>;
   } else if (!enabled) {
     body = <p>המנוי עדיין לא נפתח. נעדכן כשיהיה אפשר להצטרף.</p>;
-  } else if (user && active && sub) {
-    const end = dateHe(sub.currentPeriodEnd);
-    const label = sub.cycle ? planLabel(sub.cycle, !!sub.withPage) : 'המנוי';
-    const pl = pageLine(sub.page);
+  } else if (user && access && (access.state === 'monthly' || access.state === 'annual' || access.state === 'grant')) {
+    // Paying, or access given by hand: the same words as the settings card (lib/billingState.ts).
+    const planPrice = sub?.planId ? plans.plans.find(p => p.id === sub.planId)?.price ?? null : null;
+    const c = billingCopy(access, { price: planPrice, renews: sub?.renews });
+    const pl = access.state !== 'grant' ? pageLine(sub?.page) : '';
     body = (
       <>
-        <p><strong>{label} פעיל.</strong>{end ? (sub.renews === false ? ` תקף עד ${end}, ולא מתחדש אוטומטית.` : ` החיוב הבא ב-${end}.`) : ''}</p>
+        <p><strong>{c.title}.</strong> {c.line}</p>
         {pl && <p style={{ marginTop: 8 }}>{pl}</p>}
-        {dash}
+        <p className="uv3-opt-sub" style={{ marginTop: 8 }}>{c.after}</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+          <Link to="/dashboard" className="uv3-btn">לדשבורד</Link>
+          {c.action === 'cancel' && <Link to="/dashboard?area=settings" className="uv3-btn uv3-btn-ghost">ניהול המנוי וביטול</Link>}
+        </div>
       </>
     );
-  } else if (user && hasProduct && !sub) {
-    body = (<><p>המוצר כבר פעיל בחשבון שלכם, ואין צורך במנוי.</p>{dash}</>);
   } else {
     const price = plan?.price ?? 0;
     body = (
@@ -127,13 +145,16 @@ export default function SeoPlan() {
         <fieldset className="uv3-fieldset" style={{ marginTop: 0 }}>
           <legend>תקופת תשלום</legend>
           <div className="uv3-opts">
+            {/* The whole card is the label: the radio is visually hidden inside it, so a click (or tap) anywhere
+                on the card, the word "שנתי" included, selects it (QA 23.11). */}
             <label className="uv3-opt">
-              <input type="radio" name="cycle" checked={!annual} onChange={() => chooseCycle('month')} />
-              <span className="uv3-opt-body"><span className="uv3-opt-title">חודשי</span><span className="uv3-opt-sub">מתחדש בכל חודש, מבטלים בכל רגע.</span></span>
+              <input type="radio" name="cycle" value="month" checked={!annual} onChange={() => chooseCycle('month')} />
+              <span className="uv3-opt-body"><span className="uv3-opt-dot" aria-hidden /><span className="uv3-opt-title">חודשי</span><span className="uv3-opt-sub">מתחדש בכל חודש, מבטלים בכל רגע.</span></span>
             </label>
             <label className="uv3-opt">
-              <input type="radio" name="cycle" checked={annual} onChange={() => chooseCycle('year')} />
+              <input type="radio" name="cycle" value="year" checked={annual} onChange={() => chooseCycle('year')} />
               <span className="uv3-opt-body">
+                <span className="uv3-opt-dot" aria-hidden />
                 <span className="uv3-opt-title">שנתי</span>
                 <span className="uv3-opt-sub">תשלום אחד לשנה, לא מתחדש אוטומטית.</span>
                 {pickPlan(plans, 'year', withPage)?.savingVsMonthly ? <span className="uv3-badge">חוסכים <bdi>₪{fmt(pickPlan(plans, 'year', withPage)!.savingVsMonthly)}</bdi> בשנה</span> : null}
@@ -149,10 +170,13 @@ export default function SeoPlan() {
                 <p className="uv3-sum-price">
                   ₪{fmt(quote.finalAmount)}{' '}
                   <s style={{ color: 'var(--u-muted)', fontSize: '0.6em', fontWeight: 500 }} aria-label={`במקום ₪${fmt(price)}`}>₪{fmt(price)}</s>
-                  <small style={{ display: 'block', marginTop: 4 }}>{annual ? 'לשנה הראשונה' : quote.seoDuration === 'forever' ? cycleUnit(cycle) : 'לחודש הראשון'}, כולל מע״מ</small>
+                  <small style={{ display: 'block', marginTop: 4 }}>
+                    {note ? note.priceLabel : <>{annual ? 'לשנה הראשונה' : quote.seoDuration === 'forever' ? cycleUnit(cycle) : 'לחודש הראשון'}, כולל מע״מ</>}
+                  </small>
                 </p>
                 <p className="uv3-opt-sub" style={{ marginTop: 6, color: 'var(--u-ink)' }}>
-                  {annual
+                  {note && <>{note.explain} </>}
+                  {note && annual ? null : annual
                     ? <>עם קוד ההנחה משלמים <bdi>₪{fmt(quote.finalAmount)}</bdi> על השנה במקום <bdi>₪{fmt(price)}</bdi>.</>
                     : quote.seoDuration === 'forever'
                       ? <>ההנחה חלה על כל החיובים החודשיים, כל עוד המנוי פעיל.</>
@@ -173,7 +197,7 @@ export default function SeoPlan() {
           </div>
         )}
 
-        {/* A quiet "have a code?" link. Not for test accounts: their test price wins over any code. */}
+        {/* "יש לכם קוד הנחה?": a clear secondary control. Not for test accounts: their test price wins over any code. */}
         {user && plan && !st?.testMode && (
           <CouponField
             purpose={annual ? 'seo_annual' : 'seo_monthly'}
@@ -212,8 +236,9 @@ export default function SeoPlan() {
         {user ? (
           <>
             <button type="button" className="uv3-btn uv3-btn-block" disabled={busy || !plan || (annual && !ack)} onClick={() => start('go')}>
-              {busy ? 'פותחים תשלום…' : sub ? 'חידוש המנוי' : `מעבר לתשלום${plan ? ` · ₪${fmt(quote ? quote.finalAmount : plan.price)}` : ''}`}
+              {busy ? (phase || checkoutPhaseText(0)) : sub ? 'חידוש המנוי' : note ? note.button : `מעבר לתשלום${plan ? ` · ₪${fmt(quote ? quote.finalAmount : plan.price)}` : ''}`}
             </button>
+            {busy && phase && <p className="uv3-opt-sub" role="status" aria-live="polite" style={{ marginTop: 6, textAlign: 'center' }}>{phase === checkoutPhaseText(0) ? 'זה לוקח בדרך כלל כמה שניות.' : 'אפשר להמתין, לא בוצע שום חיוב עד שתאשרו בעמוד התשלום.'}</p>}
             {/* Paying from another device: a quiet text link, not a second big button next to the payment. */}
             <button type="button" disabled={busy || !plan || (annual && !ack)} onClick={() => start('copy')}
               style={{ marginTop: 10, minHeight: 44, width: '100%', background: 'none', border: 0, color: 'var(--u-muted)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>

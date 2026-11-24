@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authFetch } from '../lib/api';
 import { fmt } from '../config/pricing';
-import { pageLine, planLabel, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
+import { pageLine, type Catalog, type SeoCycle, type SeoPlanId } from '../lib/seoPlans';
+import { billingCopy, dateHe, type BillingAccess } from '../lib/billingState';
 
-// The monthly plan of the Google-promotion product. Shows nothing while the feature is off
-// (server flag) or while the account has no subscription of its own (a manually granted
-// account is not asked to pay). Cancelling keeps access to the end of the paid period.
+// The billing card of the Google-promotion product, in settings (README part 151). It renders the ONE
+// billing state the server derives (no access / access given by hand with its end date / paying monthly /
+// paying annual / canceled until a date / last charge failed) in the same words as the plan page and the
+// publish dialog (lib/billingState.ts). A paying subscriber always has a visible "ביטול המנוי" here, with
+// the 14-day refund rules of part 136. Cancelling after 14 days keeps access to the end of the paid period.
 
 interface Status {
   enabled: boolean;
@@ -22,11 +25,8 @@ interface Status {
     /** Prices of this subscription (README part 148): list price, the first payment with a coupon, the next charge. */
     pricing?: { list: number; first: number | null; next: number | null; couponDuration: 'first' | 'forever' | null };
   } | null;
-}
-
-function dateHe(iso: string | null): string {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('he-IL'); } catch { return ''; }
+  /** The one billing state (README part 151). */
+  access?: BillingAccess;
 }
 
 export default function SeoSubscriptionCard() {
@@ -59,39 +59,39 @@ export default function SeoSubscriptionCard() {
     } catch { setErr('משהו השתבש. נסו שוב.'); } finally { setBusy(false); }
   }
 
-  const sub = st?.subscription;
-  if (!st || !sub) return null;
+  if (!st) return null;
+  const sub = st.subscription;
+  // The ONE state (README part 151). An older server sends no `access`: derive it from the subscription.
+  const access: BillingAccess = st.access ?? (sub
+    ? {
+      state: sub.status === 'past_due' ? 'past_due' : sub.status === 'canceled' ? 'none' : sub.cancelAtPeriodEnd ? 'canceled_until' : sub.cycle === 'year' ? 'annual' : 'monthly',
+      until: sub.currentPeriodEnd, cycle: sub.cycle ?? 'month', renewalPending: sub.renewalPending, endedAt: sub.status === 'canceled' ? sub.currentPeriodEnd : null,
+    }
+    : { state: 'none', until: null, cycle: null });
+  // Nothing to say while selling is closed and the account has nothing (no join button to offer).
+  if (access.state === 'none' && !st.enabled && !sub) return null;
 
-  const end = dateHe(sub.currentPeriodEnd);
-  let line: string;
-  if (sub.status === 'canceled') line = `המנוי הסתיים${end ? ` ב-${end}` : ''}.`;
-  else if (sub.cancelAtPeriodEnd) line = `המנוי בוטל ולא יחודש. הגישה נשארת עד ${end}.`;
-  else if (sub.renewalPending) line = 'החיוב החודשי מתבצע בימים אלה. אין צורך לעשות דבר.';
-  else if (sub.status === 'past_due') line = 'החיוב האחרון לא עבר. כדי להמשיך ללא הפסקה, הזינו כרטיס מחדש.';
-  else if (sub.renews === false && sub.cycle !== 'year') line = `המנוי פעיל${end ? ` עד ${end}` : ''}.`;
-  else if (sub.renews === false) line = `המנוי השנתי פעיל${end ? ` ותקף עד ${end}` : ''}, ולא מתחדש אוטומטית. נשלח תזכורת לפני שהוא מסתיים.`;
-  else {
-    // The plan's own price (the catalog carries all four), not the base monthly price.
-    // With a coupon the next charge can differ from the catalog price: the server says what it will be.
-    const planPrice = sub.pricing?.next ?? st.catalog?.plans.find(p => p.id === sub.planId)?.price ?? st.price;
-    line = `המנוי פעיל${end ? ` ועד ${end}` : ''}, ומתחדש כל חודש${planPrice ? ` ב-₪${fmt(planPrice)}` : ''}.`;
-  }
+  // The plan's own price (the catalog carries all four), or what the coupon made the next charge.
+  const planPrice = sub?.pricing?.next ?? st.catalog?.plans.find(p => p.id === sub?.planId)?.price ?? st.price;
+  const copy = billingCopy(access, { price: planPrice, renews: sub?.renews });
+
   // The coupon, in one plain line: what was paid, and (for a first-payment coupon) the price from the next charge.
-  const pr = sub.pricing;
+  const pr = sub?.pricing;
   let couponLine = '';
-  if (pr && pr.first !== null && sub.status !== 'canceled') {
+  if (sub && pr && pr.first !== null && sub.status !== 'canceled') {
     if (sub.cycle === 'year') couponLine = `שילמתם ₪${fmt(pr.first)} במקום ₪${fmt(pr.list)}, עם קוד הנחה.`;
     else if (pr.couponDuration === 'forever') couponLine = `עם קוד ההנחה אתם משלמים ₪${fmt(pr.first)} לחודש במקום ₪${fmt(pr.list)}, בכל חודש.`;
     else couponLine = `החודש הראשון עלה ₪${fmt(pr.first)} עם קוד הנחה. מהחיוב הבא: ₪${fmt(pr.next ?? pr.list)}.`;
   }
-  const kind = sub.cycle ? planLabel(sub.cycle, !!sub.withPage) : '';
-  const pl = pageLine(sub.page);
-  const annualPlan = sub.cycle === 'year';
+  const pl = sub && access.state !== 'grant' && access.state !== 'none' ? pageLine(sub.page) : '';
+  const annualPlan = sub?.cycle === 'year';
 
-  const canRenew = (sub.status === 'past_due' && !sub.renewalPending) || sub.status === 'canceled' || sub.cancelAtPeriodEnd;
-  const refund = sub.refund?.eligible && sub.refund.amount ? sub.refund : null;
-  // Inside the refund window the customer can still take the refund even after a plain "stop renewal".
-  const canCancel = (sub.status === 'active' || sub.status === 'past_due') && (!sub.cancelAtPeriodEnd || !!refund);
+  const paying = !!sub && (sub.status === 'active' || sub.status === 'past_due');
+  const canRenew = !!sub && ((sub.status === 'past_due' && !sub.renewalPending) || sub.cancelAtPeriodEnd);
+  const refund = sub?.refund?.eligible && sub.refund.amount ? sub.refund : null;
+  // A paying subscriber always sees "ביטול המנוי". Inside the refund window the customer can still take the
+  // refund even after a plain "stop renewal".
+  const canCancel = paying && (!sub!.cancelAtPeriodEnd || !!refund);
   const refundUntil = refund ? dateHe(refund.until) : '';
   const confirmText = refund
     ? `לבטל? אתם בתוך 14 הימים מהתשלום הראשון, ולכן תקבלו החזר מלא של ₪${fmt(refund.amount as number)} לאמצעי התשלום. המנוי יסתיים מיד, הפוסטים והתשובות ייעצרו, ולא יהיו חיובים נוספים.`
@@ -99,13 +99,17 @@ export default function SeoSubscriptionCard() {
       ? 'לבטל? הביטול מבטל חידוש בלבד, ואין החזר על חודשים שנותרו, בכפוף לזכויות הביטול שלכם לפי דין. הגישה תימשך עד סוף התקופה ששולמה.'
       : 'לבטל? לא יהיו חיובים נוספים והגישה תימשך עד סוף התקופה ששולמה. אין החזר על החודש שכבר שולם, בכפוף לזכויות הביטול שלכם לפי דין.';
 
+  const btnPrimary = 'inline-flex min-h-[44px] items-center rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50';
+  const btnSecondary = 'inline-flex min-h-[44px] items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50';
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-3">
-      <h3 className="text-base font-semibold text-slate-900">{st.planName}, המנוי שלכם</h3>
-      {kind && <p className="text-xs font-medium text-slate-500">{kind}</p>}
-      <p className="text-sm text-slate-700">{line}</p>
+    <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-3" data-billing-state={access.state}>
+      <p className="text-xs font-medium text-slate-500">{st.planName}</p>
+      <h3 className="text-base font-semibold text-slate-900">{copy.title}</h3>
+      <p className="text-sm text-slate-700">{copy.line}</p>
       {couponLine && <p className="text-sm text-slate-600">{couponLine}</p>}
       {pl && <p className="text-sm text-slate-700">{pl}</p>}
+      <p className="text-sm text-slate-500">{copy.after}</p>
       {refund && !confirming && (
         <p className="text-xs text-slate-500">ביטול עד {refundUntil}: החזר מלא של ₪{fmt(refund.amount as number)}.</p>
       )}
@@ -113,17 +117,21 @@ export default function SeoSubscriptionCard() {
       {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {canRenew && st.enabled && (
-          <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/start')}
-            className="rounded-lg bg-[#2E63F6] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
-            {sub.status === 'past_due' ? 'עדכון כרטיס וחידוש' : 'חידוש המנוי'}
+          <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/start')} className={btnPrimary}>
+            {sub!.status === 'past_due' ? 'עדכון כרטיס וחידוש' : 'חידוש המנוי'}
           </button>
         )}
-        {sub.status === 'active' && sub.renews === false && (
-          <Link to="/seo-plan" className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">חידוש או שינוי תוכנית</Link>
+        {access.state === 'none' && st.enabled && (
+          <Link to="/seo-plan" className={btnPrimary}>{sub ? 'חידוש המנוי' : 'הצטרפות למנוי'}</Link>
+        )}
+        {access.state === 'grant' && (
+          <Link to="/seo-plan" className={btnSecondary}>המסלולים והמחירים</Link>
+        )}
+        {access.state === 'annual' && (
+          <Link to="/seo-plan" className={btnSecondary}>חידוש או שינוי תוכנית</Link>
         )}
         {canCancel && !confirming && (
-          <button type="button" onClick={() => setConfirming(true)}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => setConfirming(true)} className={btnSecondary}>
             ביטול המנוי
           </button>
         )}
@@ -131,11 +139,10 @@ export default function SeoSubscriptionCard() {
           <>
             <span className="text-sm text-slate-700">{confirmText}</span>
             <button type="button" disabled={busy} onClick={() => call('/api/seo/subscription/cancel')}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              className="inline-flex min-h-[44px] items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
               {refund ? 'כן, לבטל ולקבל החזר' : 'כן, לבטל'}
             </button>
-            <button type="button" onClick={() => setConfirming(false)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700">לא, להשאיר</button>
+            <button type="button" onClick={() => setConfirming(false)} className={btnSecondary}>לא, להשאיר</button>
           </>
         )}
       </div>

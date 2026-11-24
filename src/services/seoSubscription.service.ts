@@ -18,15 +18,34 @@ import {
 } from './subscriptionState';
 import { ChargeEvent, RefundOffer, refundOffer } from './seoRefund';
 import {
-  CouponRow, checkCoupon, checkCouponRetry, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
+  CouponReason, CouponRow, checkCoupon, checkCouponRetry, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
 } from './coupon.service';
 import { sendRefundMails } from './refundMail';
 
 const API_URL = (process.env.PUBLIC_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type SubErrorCode = 'coupon' | 'bad_plan' | 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit';
+export type SubErrorCode = 'coupon' | 'bad_plan' | 'not_migrated' | 'db' | 'disabled' | 'already_has_access' | 'already_subscribed' | 'no_subscription' | 'sumit' | 'sumit_timeout';
 export class SubError extends Error {
-  constructor(public code: SubErrorCode, message?: string) { super(message ?? code); }
+  /** coupon: the reason code (README part 151) and, for wrong_plan, the plans the code fits. */
+  constructor(public code: SubErrorCode, message?: string, public detail?: { reason?: CouponReason; fits?: string[] }) { super(message ?? code); }
+}
+
+/**
+ * How long we wait for SUMIT to open its payment page before telling the customer to try again (README
+ * part 151). Only the beginredirect call is bounded: it creates nothing that can charge anyone (a page
+ * the customer never opens expires on its own), so giving up on it is safe. SUMIT_REDIRECT_TIMEOUT_MS
+ * overrides it (5–60 s).
+ */
+export function redirectTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.SUMIT_REDIRECT_TIMEOUT_MS);
+  return Number.isFinite(n) && n >= 5000 && n <= 60000 ? n : 20000;
+}
+
+/** Resolves like `p`, or rejects with SubError('sumit_timeout') after `ms`. The late answer is ignored. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  const timer = new Promise<never>((_, reject) => { t = setTimeout(() => reject(new SubError('sumit_timeout')), ms); });
+  return Promise.race([p, timer]).finally(() => clearTimeout(t));
 }
 
 export interface SubRow {
@@ -213,12 +232,20 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   // Already has the product some other way (e.g. a manual grant)? Do not bill them for it.
   // Exception: an account in payment test mode (the owner's admin account) may pay the test price so the
   // whole path can be exercised without resetting its grants. mirrorEntitlement never overwrites a manual grant.
-  const { data: prod } = await supabase
-    .from('user_products').select('status, current_period_end, source').eq('email', email).eq('product', 'seo_autopilot').maybeSingle();
+  // Timings of each step before the redirect (README part 151: "פותחים תשלום…" took 5–15 s). Logged on
+  // every start so production shows where the time goes; no personal data in the line.
+  const t0 = Date.now();
+  const marks: Record<string, number> = {};
+  const mark = (k: string) => { marks[k] = Date.now() - t0; };
+  // The two reads are independent: run them together (they used to run one after the other).
+  const [{ data: prod }, existing] = await Promise.all([
+    supabase.from('user_products').select('status, current_period_end, source').eq('email', email).eq('product', 'seo_autopilot').maybeSingle(),
+    getSubscription(email),
+  ]);
+  mark('reads');
   const p = prod as { status: string; current_period_end: string | null; source: string } | null;
   if (p && p.source !== 'sumit' && isEntitled(p) && testPrice === null) throw new SubError('already_has_access');
 
-  const existing = await getSubscription(email);
   if (existing && existing.status === 'active' && !existing.cancel_at_period_end
       && isEntitled({ status: existing.status, current_period_end: existing.current_period_end })) {
     throw new SubError('already_subscribed');
@@ -243,9 +270,10 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
     }
     if (!coupon) {
       const check = await checkCoupon(code, purpose, email);
-      if (!check.ok) throw new SubError('coupon', check.error);
+      if (!check.ok) throw new SubError('coupon', check.error, { reason: check.reason, fits: check.fits });
       coupon = check.coupon;
     }
+    mark('coupon');
   }
   // A customer whose last charge failed re-enters their card through a NEW standing order.
   // Stop the old one first, or both could charge them once the card works again.
@@ -255,6 +283,7 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
     const stopped = await cancelRecurring(existing.sumit_customer_id, existing.sumit_recurring_item_id);
     if (!stopped) throw new SubError('sumit', 'לא הצלחנו לעדכן את המנוי הקודם. נסו שוב או פנו אלינו.');
     await supabase.from('seo_subscriptions').update({ sumit_recurring_item_id: null }).eq('id', existing.id);
+    mark('stop_old_order');
   }
 
   // Consume one use (unless this checkout already holds one). A lost CAS = exhausted or switched off since
@@ -262,7 +291,7 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   let claimed: CouponRow | null = null;
   if (coupon && !alreadyCounted) {
     claimed = await redeemCoupon(coupon.id);
-    if (!claimed) throw new SubError('coupon', 'הקופון מוצה או אינו פעיל עוד. נסו שוב ללא קופון.');
+    if (!claimed) throw new SubError('coupon', 'הקוד הזה כבר נוצל עד הסוף או הפסיק להיות פעיל. אפשר להמשיך בלי קוד.', { reason: 'exhausted' });
     coupon = claimed;
   }
   const giveBack = async () => { if (claimed) await releaseRedemption(claimed.id, claimed.redemptions_count); };
@@ -294,6 +323,7 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
     if (error) { await giveBack(); throw dbError(error); }
   }
 
+  mark('write');
   const common = {
     itemName: seoPlanName(),
     amount: price,
@@ -306,10 +336,13 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
   try {
     // Monthly = a standing order. Annual = ONE payment (installments are the customer's choice on
     // SUMIT's page), never auto-renewed.
-    opened = plan.cycle === 'year'
-      ? await beginSinglePaymentRedirect({ ...common, maxInstallments: 12 })
-      : await beginRecurringRedirect(common);
+    opened = await withTimeout(plan.cycle === 'year'
+      ? beginSinglePaymentRedirect({ ...common, maxInstallments: 12 })
+      : beginRecurringRedirect(common), redirectTimeoutMs());
+    mark('sumit');
   } catch (e) {
+    mark('sumit_failed');
+    console.warn('[SUBSCRIPTION] start timings (ms)', marks);
     // SUMIT's page never opened: give the use back and take the coupon off the row, so a later retry
     // counts it again (otherwise the retry path above would reuse a use that was returned).
     if (claimed) {
@@ -318,11 +351,13 @@ export async function startSubscription(email: string, planId: unknown = 'monthl
         .update({ coupon_id: null, recurring_amount: null, discount_amount: null }).eq('id', subId);
       if (clrErr) console.error('[COUPON] ALERT could not clear the coupon of an unopened checkout', { subId, error: clrErr.message });
     }
+    if (e instanceof SubError) throw e;   // sumit_timeout
     throw new SubError('sumit', e instanceof Error ? e.message : undefined);
   }
   // Audit row (who used which code), after the page opened; payment_id stays NULL: the subscription has no
   // payments row. Never blocks: the counter is the source of truth for the cap.
   if (claimed) await recordRedemption(claimed.id, email, null);
+  console.log('[SUBSCRIPTION] start timings (ms)', marks);
   return opened;
 }
 

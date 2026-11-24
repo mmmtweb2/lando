@@ -131,19 +131,7 @@ function Loaded({ data, showPageUpsell }: { data: SeoOverview; showPageUpsell: b
           {view === 'plan' && (
             <div className="flex flex-col gap-4">
               <SeoSubscriptionCard />
-              {data.input.loaded && data.input.subscriptionStatus === null && (
-                <div className="dv2-card p-5">
-                  <p className="font-semibold text-[var(--ink)]">אין כרגע חיוב חודשי לנהל</p>
-                  {data.billingEnabled ? (
-                    <>
-                      <p className="mt-1 text-sm text-[var(--muted)]">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
-                      <Link to="/seo-plan" className="dv2-btn mt-3">להצטרפות למנוי החודשי ולתשלום</Link>
-                    </>
-                  ) : (
-                    <p className="mt-1 text-sm text-[var(--muted)]">המוצר פעיל בחשבון שלכם ואין עליו חיוב כרגע.</p>
-                  )}
-                </div>
-              )}
+              {/* The card renders every billing state itself, including access given by hand (README part 151). */}
               {showPageUpsell && (
                 <div className="dv2-card p-5 text-center">
                   <p className="text-sm text-[var(--muted)]">מחזיקים רק בקידום בגוגל. רוצים גם דף נחיתה לעסק?</p>

@@ -5,6 +5,8 @@ import crypto from 'crypto';
 import { seoPlanName, seoSubscriptionEnabled, seoTestMode } from '../config/seoPlan';
 import { SEO_MONTHLY_PRICE, publicSeoCatalog } from '../config/seoCatalog';
 import { getPayment } from '../services/summit.service';
+import { supabase } from '../config/supabase';
+import { BillingState, ProductRowLike, billingStateOf } from '../services/seoBillingState';
 import { addonPageInfo } from '../services/seoPageAddon.service';
 import { evaluateBinding, noteUnverifiable } from '../services/paymentBinding';
 import { pickField } from '../services/sumitRecurring';
@@ -20,13 +22,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function fail(res: Response, e: unknown): void {
   if (e instanceof SubError) {
     switch (e.code) {
-      case 'coupon': res.status(400).json({ error: e.message, code: 'coupon' }); return;
+      case 'coupon': res.status(400).json({ error: e.message, code: 'coupon', ...(e.detail?.reason ? { reason: e.detail.reason } : {}), ...(e.detail?.fits?.length ? { fits: e.detail.fits } : {}) }); return;
       case 'bad_plan': res.status(400).json({ error: 'תוכנית לא מוכרת.', code: 'bad_plan' }); return;
       case 'disabled': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_disabled' }); return;
       case 'not_migrated': res.status(503).json({ error: 'המנוי החודשי עדיין לא הופעל.', code: 'subscription_not_migrated' }); return;
-      case 'already_has_access': res.status(409).json({ error: 'המוצר כבר פעיל בחשבון שלך, אין צורך במנוי.', code: 'already_has_access' }); return;
+      // Same words as the "grant" state on every screen (README part 151).
+      case 'already_has_access': res.status(409).json({ error: 'יש לכם גישה ניסיונית לקידום בגוגל, בלי חיוב. אפשר להצטרף למנוי בתשלום כשהגישה מסתיימת.', code: 'already_has_access' }); return;
       case 'already_subscribed': res.status(409).json({ error: 'המנוי כבר פעיל.', code: 'already_subscribed' }); return;
       case 'no_subscription': res.status(404).json({ error: 'אין מנוי פעיל לביטול.', code: 'no_subscription' }); return;
+      case 'sumit_timeout': res.status(504).json({ error: 'מערכת התשלומים לא ענתה בזמן. לא בוצע שום חיוב. נסו שוב בעוד רגע.', code: 'sumit_timeout' }); return;
       case 'sumit': res.status(502).json({ error: e.message === 'sumit' ? 'פתיחת התשלום נכשלה. נסו שוב.' : e.message }); return;
       default: break;
     }
@@ -54,9 +58,13 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
   if (!email) { res.status(401).json({ error: 'נדרשת התחברות.' }); return; }
   const enabled = seoSubscriptionEnabled();
   let sub = null;
+  let row: SubRow | null = null;
+  let renewalPending = false;
   try {
-    const row = await getSubscription(email);
+    row = await getSubscription(email);
     if (row && row.status !== 'pending') {
+      renewalPending = row.status === 'past_due' && Boolean(row.sumit_recurring_item_id) && !!row.current_period_end
+        && Date.now() < new Date(row.current_period_end).getTime() + RENEWAL_DAY_MS;
       sub = {
         status: row.status,
         currentPeriodEnd: row.current_period_end,
@@ -69,8 +77,7 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
         renews: autoRenews(row) && Boolean(row.sumit_recurring_item_id) && !row.cancel_at_period_end,
         // The renewal day itself: SUMIT charges some time during the day, so a just-ended period is not
         // yet a failed charge. The card says "being renewed" instead of "re-enter your card".
-        renewalPending: row.status === 'past_due' && Boolean(row.sumit_recurring_item_id) && !!row.current_period_end
-          && Date.now() < new Date(row.current_period_end).getTime() + RENEWAL_DAY_MS,
+        renewalPending,
         page: await pageState(row),
         // Cancelling now returns the first payment in full (14 days from it, once per account). The card
         // says which case applies, with the amount, before the customer confirms.
@@ -80,9 +87,23 @@ export async function getStatus(req: Request, res: Response): Promise<void> {
       };
     }
   } catch { /* not migrated / db hiccup: show "no subscription" */ }
+  // The ONE state every screen words the same way (README part 151): no access / grant / monthly /
+  // annual / canceled-until / past due. Built from the subscription row AND user_products, so an account
+  // set up by hand reads as a grant with its end date instead of "no subscription".
+  const access: BillingState = billingStateOf(await productRowOf(email), row, { renewalPending });
   // `price` stays the base monthly price (older clients); `catalog` carries all four plans.
   // `testMode`: only the accounts listed in SEO_TEST_EMAILS (while SEO_TEST_PRICE is valid) see true; everyone else false.
-  res.json({ enabled, testMode: enabled && seoTestMode(email), planName: seoPlanName(), price: enabled ? SEO_MONTHLY_PRICE : null, catalog: publicSeoCatalog(), subscription: sub });
+  res.json({ enabled, testMode: enabled && seoTestMode(email), planName: seoPlanName(), price: enabled ? SEO_MONTHLY_PRICE : null, catalog: publicSeoCatalog(), subscription: sub, access });
+}
+
+/** The account's user_products row for the product, or null (also on a read error: never fails the page). */
+async function productRowOf(email: string): Promise<ProductRowLike | null> {
+  try {
+    const { data, error } = await supabase.from('user_products').select('status, current_period_end, source')
+      .eq('email', email.trim().toLowerCase()).eq('product', 'seo_autopilot').maybeSingle();
+    if (error) return null;
+    return (data as ProductRowLike | null) ?? null;
+  } catch { return null; }
 }
 
 /** GET /api/seo/plans — the plan catalog, read-only. Public prices, nothing account-specific. */

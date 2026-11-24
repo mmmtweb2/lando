@@ -9,7 +9,7 @@ import { BUNDLES, BundleKey, RENEWAL_PRICE, SINGLE_PAGE_PRICE, isBundleKey, rene
 import { canPublishFromBalance, getAccountStatus, grantBundle, grantLegacyPlan, grantSinglePageCredit } from '../services/billing.service';
 import { checkRenewEligibility, grantRenewal } from '../services/renewal.service';
 import {
-  CouponRow, checkCoupon, isSeoCouponPurpose, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
+  CouponRow, checkCoupon, couponRefusal, hitsMinCharge, isSeoCouponPurpose, priceWithCoupon, recordRedemption, redeemCoupon, releaseRedemption, seoCouponPricing,
 } from '../services/coupon.service';
 import { getSeoPlan, isSellable } from '../config/seoCatalog';
 import { seoSubscriptionEnabled, seoTestPrice } from '../config/seoPlan';
@@ -185,7 +185,7 @@ export async function startPayment(req: Request, res: Response): Promise<void> {
 
   if (couponCode && couponCode.trim()) {
     const check = await checkCoupon(couponCode, purpose, email);
-    if (!check.ok) { res.status(400).json({ error: check.error }); return; }
+    if (!check.ok) { res.status(400).json({ error: check.error, reason: check.reason, ...(check.fits ? { fits: check.fits } : {}) }); return; }
 
     // Consume one use BEFORE opening the SUMIT redirect. If this compare-and-
     // swap matches zero rows the coupon was exhausted or switched off between
@@ -321,10 +321,12 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
   if (!purpose) { res.status(400).json({ error: "purpose must be 'publish', 'renew', 'credits' or 'bundle'" }); return; }
 
   const seo = isSeoCouponPurpose(purpose);
-  if (seo && !seoSubscriptionEnabled()) { res.status(400).json({ valid: false, error: 'הקוד לא תקף.' }); return; }
+  // Every refusal carries a reason code and one plain Hebrew sentence (README part 151).
+  const refuse = (r: ReturnType<typeof couponRefusal>) => { res.status(400).json({ valid: false, error: r.error, reason: r.reason, ...(r.fits ? { fits: r.fits } : {}) }); };
+  if (seo && !seoSubscriptionEnabled()) { refuse(couponRefusal('unavailable')); return; }
   // Payment test mode: the test price wins and a code is never applied (startSubscription ignores it too).
   if (seo && seoTestPrice(email) !== null) {
-    res.status(400).json({ valid: false, error: 'החשבון במצב בדיקת תשלום, ולכן קוד הנחה לא חל.' });
+    refuse(couponRefusal('test_mode'));
     return;
   }
 
@@ -335,7 +337,7 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
   }
 
   const check = await checkCoupon(code, purpose, email);
-  if (!check.ok) { res.status(400).json({ valid: false, error: check.error }); return; }
+  if (!check.ok) { refuse(check); return; }
 
   const { finalAmount, discountAmount } = priceWithCoupon(check.coupon, baseAmount);
   // Subscription: also what the later charges will be ('first' = list price, 'forever' = discounted).
@@ -352,6 +354,8 @@ export async function validateCoupon(req: Request, res: Response): Promise<void>
     baseAmount,
     discountAmount,
     finalAmount,
+    // The price stopped at the MIN_CHARGE floor (a 100% code): the page says what the ₪1 is for.
+    minCharge: hitsMinCharge(check.coupon, baseAmount),
     // `notes` is admin-internal and deliberately NOT returned here.
   });
 }

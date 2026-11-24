@@ -16,13 +16,18 @@ router.post('/start', requireAuth, startLimiter, startPayment);
 
 // Live coupon preview (authenticated, read-only — no redemption is consumed
 // here; startPayment re-validates and is the only thing that counts a use).
-// Rate-limited on the same bucket shape as /start so the endpoint can't be used
-// to brute-force guessable promo codes.
-router.post('/validate-coupon', requireAuth, rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 60,
-  message: 'יותר מדי ניסיונות קופון. נסו שוב מאוחר יותר.',
-}), validateCoupon);
+// Rate-limited so the endpoint can't be used to brute-force guessable promo codes. Since part 151 a
+// refusal says WHY (expired, used up, other plan...), which tells a guesser that a code exists, so three
+// buckets: per IP per hour (as before), per IP per minute (a burst), and per ACCOUNT per hour (one
+// account cannot spread a guessing run over many IPs). A real customer tries a code or two, and the
+// plan page re-checks the code once per plan switch.
+const COUPON_LIMIT_MSG = 'יותר מדי ניסיונות של קוד הנחה. נסו שוב בעוד כמה דקות.';
+router.post('/validate-coupon',
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 60, message: COUPON_LIMIT_MSG }),
+  rateLimit({ windowMs: 60 * 1000, max: 12, message: COUPON_LIMIT_MSG }),
+  requireAuth,
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 30, message: COUPON_LIMIT_MSG, key: (req) => `acct:${req.authEmail ?? req.ip ?? 'unknown'}` }),
+  validateCoupon);
 
 // SUMIT redirects the browser back here (public — identity comes from the
 // stored payment row + server-side verification, not from the request).

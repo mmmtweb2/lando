@@ -1097,20 +1097,8 @@ export default function Dashboard() {
               <RatingAsk variant="settings" />
               {hasSeo && (
                 <section className="dsh-section" aria-label="המנוי לקידום בגוגל">
+                  {/* Every billing state (grant, paying, canceled, past due) in one card, same words as /seo-plan (README part 151). */}
                   <SeoSubscriptionCard />
-                  {seoSub && !seoSub.has && (
-                    <div className={`${surface} p-5`}>
-                      <p className="text-sm font-medium text-slate-900">אין כרגע חיוב חודשי לנהל</p>
-                      {seoSub.enabled ? (
-                        <>
-                          <p className="mt-1 text-sm text-slate-500">אם יופעל מנוי חודשי, הוא יופיע כאן, ואפשר יהיה לבטל אותו בכל רגע.</p>
-                          <Link to="/seo-plan" className={`${btnSecondary} mt-3 min-h-[44px]`}>להצטרפות למנוי החודשי ולתשלום</Link>
-                        </>
-                      ) : (
-                        <p className="mt-1 text-sm text-slate-500">קידום בגוגל פעיל בחשבון שלכם ואין עליו חיוב כרגע.</p>
-                      )}
-                    </div>
-                  )}
                 </section>
               )}
 

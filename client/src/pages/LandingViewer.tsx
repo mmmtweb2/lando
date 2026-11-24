@@ -34,6 +34,7 @@ import { GoogleReviews } from './landingV3/GoogleReviews';
 import { GooglePhotosPicker, serverGooglePhotos } from './landingV3/GooglePhotosPicker';
 import { PageRefreshButton } from '../components/PageRefreshDialog';
 import { REFRESH, type RefreshApplied } from '../lib/pageRefresh';
+import { includedPageCopy, type BillingAccess } from '../lib/billingState';
 
 // Design V3 ("Pinkas") lives in its own chunk, loaded only for pages that use it.
 const LandingV3 = React.lazy(() => import('./landingV3/LandingV3'));
@@ -1141,6 +1142,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     useState<'idle' | 'loadingPlan' | 'confirm' | 'confirmPaying' | 'included' | 'includedPublishing' | 'modal' | 'paying' | 'done'>('idle');
   // True when the page went live as the one included in the Google-promotion product (no charge, no credit).
   const [publishedIncluded, setPublishedIncluded] = useState(false);
+  // How the account holds the product (paying / access given by hand / canceled until…), so the publish
+  // dialog of the included page says the same thing as the plan page and settings (README part 151).
+  const [includedAccess, setIncludedAccess] = useState<BillingAccess | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // Copy-link feedback for the publish-success modal's share nudge.
   const [linkCopied, setLinkCopied] = useState(false);
@@ -1422,7 +1426,13 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
     // there is nothing to pay and no credit to spend: say so, and never show a price.
     try {
       const inc = await authFetch(`/api/landing/${page.id}/included`);
-      if (inc.ok && ((await inc.json()) as { included?: boolean }).included) { setCheckoutStatus('included'); return; }
+      if (inc.ok && ((await inc.json()) as { included?: boolean }).included) {
+        setCheckoutStatus('included');
+        // Not awaited: the dialog opens at once with neutral words, then names the exact state.
+        void authFetch('/api/seo/subscription').then(r => (r.ok ? r.json() : null))
+          .then((b: { access?: BillingAccess } | null) => setIncludedAccess(b?.access ?? null)).catch(() => undefined);
+        return;
+      }
     } catch { /* could not tell: continue to the normal flow, which re-checks on the server before any charge */ }
     try {
       const r = await authFetch('/api/users/plan');
@@ -1493,7 +1503,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         const b = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(b.error ?? 'הפרסום נכשל. נסו שוב.');
       }
-      setCheckoutError('הדף הכלול במנוי כבר נוצל לדף אחר, ולכן הפרסום של הדף הזה אינו כלול.');
+      setCheckoutError('הדף הכלול בקידום בגוגל כבר נוצל לדף אחר, ולכן הפרסום של הדף הזה אינו כלול.');
       setCheckoutStatus('modal');
     } catch (e) {
       setCheckoutError(e instanceof Error ? e.message : 'הפרסום נכשל. נסו שוב.');
@@ -4896,13 +4906,9 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             )}
             <div className="h-1.5 w-full bg-emerald-500 shrink-0" />
             <div className="p-7 flex flex-col gap-4 overflow-y-auto">
-              <h2 id="included-publish-title" className="text-xl font-extrabold text-slate-900 pl-10">הדף כלול במנוי שלכם</h2>
-              <p className="text-sm text-slate-600 leading-relaxed">
-                מנוי הקידום בגוגל כולל דף נחיתה אחד באוויר. הפרסום של הדף הזה בלי תשלום נוסף ובלי לנצל קרדיט.
-              </p>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                הדף נשאר באוויר כל עוד המנוי פעיל. אם המנוי ייפסק הדף יוקפא, והתוכן והפניות יישמרו.
-              </p>
+              <h2 id="included-publish-title" className="text-xl font-extrabold text-slate-900 pl-10">{includedPageCopy(includedAccess).title}</h2>
+              <p className="text-sm text-slate-600 leading-relaxed">{includedPageCopy(includedAccess).line}</p>
+              <p className="text-sm text-slate-500 leading-relaxed">{includedPageCopy(includedAccess).after}</p>
               {checkoutError && <p className="text-sm text-red-600" role="alert">{checkoutError}</p>}
               <button
                 onClick={publishIncluded}
@@ -4930,7 +4936,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <h2 className="text-xl font-extrabold text-slate-900">הדף פורסם בהצלחה!</h2>
               <p className="text-sm text-slate-500">
                 {publishedIncluded
-                  ? 'הדף כלול במנוי הקידום שלכם, ולא חויבתם עליו. הדף כעת גלוי לציבור.'
+                  ? includedPageCopy(includedAccess).success
                   : planStatus && planStatus.pageCredits > 0
                   ? `נוכה דף אחד מיתרת הדפים שלך — נשארו ${planStatus.pageCredits - 1}. הדף כעת גלוי לציבור.`
                   : 'הדף כעת גלוי לציבור.'}

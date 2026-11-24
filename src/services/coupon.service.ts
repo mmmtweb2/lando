@@ -42,8 +42,6 @@ export function isSeoCouponPurpose(value: unknown): value is SeoCouponPurpose {
 export type SeoDuration = 'first' | 'forever';
 export const isSeoDuration = (v: unknown): v is SeoDuration => v === 'first' || v === 'forever';
 
-/** Shown for a subscription coupon that cannot be used (wrong product, or migration 056 not run yet). */
-export const SEO_COUPON_INVALID = 'הקוד לא תקף.';
 
 export interface CouponRow {
   id: string;
@@ -61,14 +59,25 @@ export interface CouponRow {
   notes: string | null;
   /** Migration 056. `undefined` on a database where 056 has not run: subscription coupons are then unavailable. */
   seo_duration?: SeoDuration;
+  /** Migration 057 (README part 151): the code works only from this moment. Absent/NULL = from creation. */
+  starts_at?: string | null;
 }
 
 /**
  * SUMIT will not accept a 0₪ charge, and a 0₪ "payment" would never come back
  * verified — the customer would be stranded with an unpublished page and no way
  * to complete. A 100%-off coupon therefore lands on 1₪, not on free.
+ * On the subscription it is also what puts the card on file: a monthly standing order cannot be created
+ * without one (README part 151, product decision). The customer is TOLD so ("₪1 בלבד לאימות אמצעי
+ * התשלום", `minCharge: true` from validate-coupon), and the admin form warns when a code reaches it.
  */
 export const MIN_CHARGE = 1;
+
+/** Did the coupon push this price down to the MIN_CHARGE floor (a 100% code, or a fixed one at/above the price)? */
+export function hitsMinCharge(coupon: Pick<CouponRow, 'discount_type' | 'discount_value'>, amount: number): boolean {
+  const raw = coupon.discount_type === 'percent' ? (amount * Number(coupon.discount_value)) / 100 : Number(coupon.discount_value);
+  return amount > MIN_CHARGE && amount - raw <= MIN_CHARGE;
+}
 
 /** Codes are stored UPPERCASE; every lookup normalizes the same way. */
 export function normalizeCode(code: string): string {
@@ -125,15 +134,102 @@ export async function findCouponByCode(code: string): Promise<CouponRow | null> 
   return (data as CouponRow | null) ?? null;
 }
 
+/**
+ * Why a code cannot be used (README part 151). The customer sees a plain Hebrew sentence for each one
+ * (couponReasonMessage) instead of a bare "not valid". `not_found` is the only answer that says nothing
+ * about a real code; telling the other cases apart reveals that a code exists, which is acceptable behind
+ * the rate limits of /api/payments/validate-coupon (per IP and per account, payment.routes.ts).
+ */
+export const COUPON_REASONS = [
+  'not_found', 'expired', 'not_started', 'exhausted', 'already_used_by_you', 'wrong_plan', 'not_for_this_product',
+  'unavailable', 'check_failed', 'test_mode',
+] as const;
+export type CouponReason = (typeof COUPON_REASONS)[number];
+
 export type CouponCheck =
   | { ok: true; coupon: CouponRow }
-  | { ok: false; error: string };
+  | { ok: false; error: string; reason: CouponReason; /** wrong_plan: the purposes the code DOES apply to. */ fits?: CouponPurpose[] };
+
+const LANDING_PURPOSE_LABEL: Record<string, string> = {
+  publish: 'פרסום דף', renew: 'חידוש דף', credits: 'קניית קרדיטים', bundle: 'חבילת דפים',
+};
+
+function dateHe(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  // Asia/Jerusalem, so the server and the customer agree on the day.
+  return d.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
+}
+
+/** The one sentence the customer reads for each reason. Plain Hebrew, plural address, no jargon. */
+export function couponReasonMessage(
+  reason: CouponReason,
+  ctx: { purpose?: string; fits?: readonly string[]; date?: string | null; perUser?: number | null } = {},
+): string {
+  switch (reason) {
+    case 'not_found': return 'לא מצאנו קוד הנחה כזה. בדקו שהקוד הוקלד בדיוק כמו שקיבלתם אותו.';
+    case 'expired': return ctx.date ? `תוקף הקוד הזה הסתיים ב-${dateHe(ctx.date)}, ולכן אי אפשר להשתמש בו.` : 'תוקף הקוד הזה הסתיים, ולכן אי אפשר להשתמש בו.';
+    case 'not_started': return ctx.date ? `הקוד הזה עדיין לא פעיל. אפשר להשתמש בו החל מ-${dateHe(ctx.date)}.` : 'הקוד הזה עדיין לא פעיל.';
+    case 'exhausted': return 'הקוד הזה כבר נוצל עד הסוף: כל השימושים שהוקצו לו נגמרו.';
+    case 'already_used_by_you':
+      return ctx.perUser && ctx.perUser > 1
+        ? `כבר השתמשתם בקוד הזה ${ctx.perUser} פעמים, וזה המספר המרבי לכל חשבון.`
+        : 'כבר השתמשתם בקוד הזה בחשבון שלכם, ואפשר להשתמש בו פעם אחת בלבד לכל חשבון.';
+    case 'wrong_plan': {
+      const fits = ctx.fits ?? [];
+      if (fits.includes('seo_monthly') && !fits.includes('seo_annual')) return 'הקוד הזה חל רק על המסלול החודשי.';
+      if (fits.includes('seo_annual') && !fits.includes('seo_monthly')) return 'הקוד הזה חל רק על המסלול השנתי.';
+      const names = fits.map(f => LANDING_PURPOSE_LABEL[f]).filter(Boolean);
+      return names.length ? `הקוד הזה חל רק על: ${names.join(', ')}.` : 'הקוד הזה לא חל על הרכישה הזו.';
+    }
+    case 'not_for_this_product':
+      return isSeoCouponPurpose(ctx.purpose)
+        ? 'הקוד הזה מיועד לרכישת דפי נחיתה ב-Pagey, ולא למנוי קידום העסק בגוגל.'
+        : 'הקוד הזה מיועד למנוי קידום העסק בגוגל, ולא לרכישה הזו.';
+    case 'unavailable': return 'קודי הנחה למנוי עדיין לא זמינים. אפשר להמשיך לתשלום במחיר הרגיל.';
+    case 'check_failed': return 'לא הצלחנו לבדוק את הקוד כרגע. נסו שוב בעוד רגע.';
+    case 'test_mode': return 'החשבון במצב בדיקת תשלום, ולכן קוד הנחה לא חל.';
+  }
+}
+
+/** A refusal: the reason code, its sentence, and (wrong_plan) what the code does fit. */
+export function couponRefusal(reason: CouponReason, ctx: Parameters<typeof couponReasonMessage>[1] = {}): Extract<CouponCheck, { ok: false }> {
+  const fits = (ctx.fits ?? []).filter(isCouponPurpose);
+  return { ok: false, reason, error: couponReasonMessage(reason, ctx), ...(reason === 'wrong_plan' && fits.length ? { fits } : {}) };
+}
 
 /**
- * Every rule EXCEPT actually consuming a use: exists, active, unexpired,
- * applies to this purpose, not exhausted, and this user is under their personal
- * cap. Read-only, so it is safe to call from the preview endpoint and again
- * from startPayment.
+ * The rules that need no redemption history: live, inside its dates, and for this purchase. Shared by
+ * checkCoupon and checkCouponRetry, so both give the same reason for the same code. null = passes.
+ */
+function liveAndApplies(coupon: CouponRow, purpose: string, now = Date.now()): Extract<CouponCheck, { ok: false }> | null {
+  // A code the admin switched off reads, to the customer, as a promotion that ended.
+  if (!coupon.active) return couponRefusal('expired');
+  if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= now) return couponRefusal('expired', { date: coupon.expires_at });
+  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) return couponRefusal('not_started', { date: coupon.starts_at });
+
+  const purposes = coupon.applicable_purposes ?? [];
+  const seoListed = purposes.filter(isSeoCouponPurpose);
+  if (isSeoCouponPurpose(purpose)) {
+    // The subscription is never covered by "any purpose": a landing-page promo must not quietly discount
+    // a recurring charge. Without migration 056 there is no seo_duration, so nothing can say how long the
+    // discount lasts: the code cannot be used there yet.
+    if (seoListed.length === 0) return couponRefusal('not_for_this_product', { purpose });
+    if (!seoListed.includes(purpose)) return couponRefusal('wrong_plan', { purpose, fits: seoListed });
+    if (!isSeoDuration(coupon.seo_duration)) return couponRefusal('unavailable');
+  } else if (purposes.length > 0 && !purposes.includes(purpose)) {
+    const landing = purposes.filter(p => !isSeoCouponPurpose(p));
+    if (landing.length === 0) return couponRefusal('not_for_this_product', { purpose });
+    return couponRefusal('wrong_plan', { purpose, fits: landing });
+  }
+  return null;
+}
+
+/**
+ * Every rule EXCEPT actually consuming a use: exists, active, inside its dates, applies to this purpose,
+ * not exhausted, and this user is under their personal cap. Read-only, so it is safe to call from the
+ * preview endpoint and again from startPayment. A refusal carries a reason code and its Hebrew sentence.
  *
  * The per-user check has a small race against the same user opening two
  * checkouts at once; that is accepted and documented at the call site in
@@ -142,24 +238,12 @@ export type CouponCheck =
  */
 export async function checkCoupon(code: string, purpose: string, email: string): Promise<CouponCheck> {
   const coupon = await findCouponByCode(code);
-  if (!coupon) return { ok: false, error: 'קוד הקופון אינו קיים.' };
-  if (!coupon.active) return { ok: false, error: 'הקופון אינו פעיל.' };
-  if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= Date.now()) {
-    return { ok: false, error: 'תוקף הקופון פג.' };
-  }
-
-  const purposes = coupon.applicable_purposes ?? [];
-  if (isSeoCouponPurpose(purpose)) {
-    // The subscription is never covered by "any purpose": a landing-page promo must not quietly discount
-    // a recurring charge. And without migration 056 there is no seo_duration, so nothing can say how long
-    // the discount lasts: the code is simply not valid there.
-    if (!purposes.includes(purpose) || !isSeoDuration(coupon.seo_duration)) return { ok: false, error: SEO_COUPON_INVALID };
-  } else if (purposes.length > 0 && !purposes.includes(purpose)) {
-    return { ok: false, error: 'הקופון אינו תקף לרכישה זו.' };
-  }
+  if (!coupon) return couponRefusal('not_found');
+  const rule = liveAndApplies(coupon, purpose);
+  if (rule) return rule;
 
   if (coupon.max_redemptions !== null && coupon.redemptions_count >= coupon.max_redemptions) {
-    return { ok: false, error: 'הקופון מוצה — נעשה בו שימוש במלוא מספר הפעמים.' };
+    return couponRefusal('exhausted');
   }
 
   if (coupon.max_per_user !== null) {
@@ -173,10 +257,10 @@ export async function checkCoupon(code: string, purpose: string, email: string):
       // Fail CLOSED: an unreadable redemption history must not become a free
       // pass around a per-user cap the admin deliberately set.
       console.error('[COUPON] per-user cap check failed:', error.message);
-      return { ok: false, error: 'לא ניתן לאמת את הקופון כרגע. נסו שוב.' };
+      return couponRefusal('check_failed');
     }
     if ((count ?? 0) >= coupon.max_per_user) {
-      return { ok: false, error: 'כבר השתמשת בקופון הזה את מספר הפעמים המותר.' };
+      return couponRefusal('already_used_by_you', { perUser: coupon.max_per_user });
     }
   }
 
@@ -191,16 +275,8 @@ export async function checkCoupon(code: string, purpose: string, email: string):
  */
 export async function checkCouponRetry(code: string, purpose: string, couponId: string): Promise<CouponCheck> {
   const coupon = await findCouponByCode(code);
-  if (!coupon || coupon.id !== couponId) return { ok: false, error: 'קוד הקופון אינו קיים.' };
-  if (!coupon.active) return { ok: false, error: 'הקופון אינו פעיל.' };
-  if (coupon.expires_at && new Date(coupon.expires_at).getTime() <= Date.now()) return { ok: false, error: 'תוקף הקופון פג.' };
-  const purposes = coupon.applicable_purposes ?? [];
-  if (isSeoCouponPurpose(purpose)) {
-    if (!purposes.includes(purpose) || !isSeoDuration(coupon.seo_duration)) return { ok: false, error: SEO_COUPON_INVALID };
-  } else if (purposes.length > 0 && !purposes.includes(purpose)) {
-    return { ok: false, error: 'הקופון אינו תקף לרכישה זו.' };
-  }
-  return { ok: true, coupon };
+  if (!coupon || coupon.id !== couponId) return couponRefusal('not_found');
+  return liveAndApplies(coupon, purpose) ?? { ok: true, coupon };
 }
 
 /**
