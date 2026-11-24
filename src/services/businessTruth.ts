@@ -5,6 +5,8 @@
 // is in it. Everything that arrives from Google or from the customer is cleaned here: these strings
 // end up in prompts, in Google posts and in HTML.
 
+import { normalizeIlPhone } from '../shared/pageInput';
+
 export type Day = 'SUNDAY' | 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
 export const DAYS: Day[] = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 export const DAY_HE: Record<Day, string> = { SUNDAY: 'ראשון', MONDAY: 'שני', TUESDAY: 'שלישי', WEDNESDAY: 'רביעי', THURSDAY: 'חמישי', FRIDAY: 'שישי', SATURDAY: 'שבת' };
@@ -364,10 +366,11 @@ export function landingInputFromCard(c: TruthCard): LandingInput {
   const services = c.services.map((s) => (s.description ? `${s.name}: ${s.description}` : s.name));
   return {
     business_name: c.name.slice(0, 120),
-    phone_number: c.phone.replace(/[^\d+]/g, '').slice(0, 20),
+    // Same rules as the wizard (README part 150): an Israeli number in national form when it is one.
+    phone_number: normalizeIlPhone(c.phone) ?? c.phone.replace(/[^\d+]/g, '').slice(0, 20),
     vibe: [c.category, ...c.categories.slice(0, 2)].filter(Boolean).join(', ').slice(0, 200) || c.name,
     image_source: 'stock',
-    address: c.address,
+    address: c.address.slice(0, 200),
     business_hours: DAYS.map((d) => { const h = c.hours.filter((x) => x.day === d).map((x) => `${x.open}–${x.close}`).join(', '); return h ? `יום ${DAY_HE[d]}: ${h}` : ''; }).filter(Boolean).join('\n').slice(0, 500),
     about_business: [c.description, c.notes].filter(Boolean).join('\n\n').slice(0, 1500),
     user_provided_text: [

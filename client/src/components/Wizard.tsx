@@ -8,6 +8,8 @@ import { trackEvent } from '../lib/analytics';
 import { publicPageLabel } from '../lib/pageUrl';
 import { CREDIT_COSTS } from '../config/credits';
 import { isLowRes, LOW_RES_MESSAGE } from '../lib/landingImages';
+import { COUNTED_FIELDS, INPUT_MESSAGES, PAGE_INPUT_LIMITS, fieldError, phoneKind, type FieldErrors, type PageInputField } from '../lib/pageInput';
+import { Bidi } from './Bidi';
 import {
   Building2,
   Phone,
@@ -236,20 +238,74 @@ function Step({ title, subtitle, children }: { title: string; subtitle?: string;
   );
 }
 
-function Field({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function Field({ label, icon, children, htmlFor, error, hint, counter }: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  /** The id of the input, so the label and the error belong to it. */
+  htmlFor?: string;
+  /** Shown under the field in red (README part 150). */
+  error?: string | null;
+  /** A quiet note under the field, shown when there is no error. */
+  hint?: string | null;
+  /** Live "n/max" for fields that allow long text. */
+  counter?: { length: number; max: number } | null;
+}) {
+  const over = !!counter && counter.length > counter.max;
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
         {icon && <span className="text-[#2E63F6]">{icon}</span>}
         {label}
       </label>
       {children}
+      {(error || hint || counter) && (
+        <div className="flex items-start justify-between gap-3">
+          {error ? (
+            <p id={htmlFor ? `${htmlFor}-error` : undefined} role="alert" className="text-xs leading-snug text-red-600">{withLtrRuns(error)}</p>
+          ) : hint ? (
+            <p className="text-xs leading-snug text-slate-500">{hint}</p>
+          ) : <span />}
+          {counter && (
+            <span className={`shrink-0 text-[11px] tabular-nums ${over ? 'font-semibold text-red-600' : 'text-slate-400'}`} dir="ltr" aria-live="polite">
+              {counter.length}/{counter.max}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
+/**
+ * A Hebrew message with examples in it (050-1234567, https://facebook.com/x, info@x.co.il): each example is
+ * isolated left-to-right and kept on one line, so the browser does not split or reorder it.
+ */
+function withLtrRuns(text: string): React.ReactNode {
+  const parts = text.split(/(https?:\/\/\S+|\S+@\S+\.[a-z.]+|\d[\d-]*\d)/i);
+  return parts.map((part, i) => (i % 2 === 1
+    ? <bdi key={i} dir="ltr" className="whitespace-nowrap">{part}</bdi>
+    : part));
+}
+
 const inputCls =
   'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition';
+/** The same input, marked invalid. */
+const inputErrCls = inputCls
+  .replace('border-slate-200', 'border-red-400')
+  .replace('focus:border-indigo-400', 'focus:border-red-500')
+  .replace('focus:ring-indigo-100', 'focus:ring-red-100');
+
+// ─── Field rules (README part 150) ───────────────────────────────────────────
+// The checks themselves live in lib/pageInput.ts, the same file the server uses (src/shared/pageInput.ts).
+
+/** Which fields each step owns; an intake answer is "intake:<question>". */
+const STEP_FIELDS: Record<number, readonly string[]> = {
+  1: ['business_name', 'vibe', 'phone_number', 'design_style', 'user_provided_text'],
+  4: ['external_link', 'email', 'address', 'business_hours', 'facebook_url', 'instagram_url', 'testimonial_quote', 'testimonial_author'],
+};
+
+const intakeKey = (q: string) => `intake:${q}`;
 
 // ─── Toggle switch ────────────────────────────────────────────────────────────
 
@@ -635,7 +691,7 @@ function UserImagesUpload({ files, onChange }: { files: File[]; onChange: (files
       )}
       {smallNow.length > 0 && (
         <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-          {smallNow.length === 1 ? `"${smallNow[0].name}": ` : `${smallNow.length} תמונות: `}{LOW_RES_MESSAGE}
+          {smallNow.length === 1 ? <>"<Bidi text={smallNow[0].name} />": </> : `${smallNow.length} תמונות: `}{LOW_RES_MESSAGE}
         </p>
       )}
       {files.length < MAX_PHOTOS && (
@@ -689,7 +745,7 @@ function IdleSkeletonPreview({ businessName, designStyle }: { businessName: stri
     <div className="w-full h-full overflow-y-auto" dir="rtl">
       {/* Mini header */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-slate-100">
-        <span className="text-xs font-bold text-slate-700 truncate max-w-[55%]">{displayName}</span>
+        <Bidi text={displayName} className="text-xs font-bold text-slate-700 truncate max-w-[55%]" />
         <div
           className="rounded-lg px-3 py-1.5 text-[10px] font-semibold text-white"
           style={{ background: gradient }}
@@ -703,7 +759,7 @@ function IdleSkeletonPreview({ businessName, designStyle }: { businessName: stri
         className="flex flex-col items-center justify-center px-5 py-10 text-center gap-3"
         style={{ background: gradient, minHeight: 200 }}
       >
-        <div className="text-lg font-bold text-white leading-snug">{displayName}</div>
+        <div className="text-lg font-bold text-white leading-snug max-w-full [overflow-wrap:anywhere]"><Bidi text={displayName} /></div>
         <div className="text-xs text-white/75 max-w-[200px]">
           {designStyle ? DESIGN_STYLE_OPTIONS.find(o => o.value === designStyle)?.desc : 'מקצועיות ואיכות ללא פשרות'}
         </div>
@@ -886,6 +942,10 @@ export default function Wizard() {
   const [result, setResult] = useState<LandingPageRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGuidingQuestions, setShowGuidingQuestions] = useState(false);
+  // README part 150: a field's error shows once the field was left (blur) or the step was submitted;
+  // after that it follows the typing live. Errors the server sent back show until the field changes.
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+  const [serverErrors, setServerErrors] = useState<FieldErrors & Record<string, string>>({});
   // ── Optional AI intake interview (step 2) ───────────────────────────────────
   // Purely additive: questions are fetched only when the user actually reaches
   // the step, and every failure path leaves `intakeQuestions` empty, in which
@@ -1068,6 +1128,78 @@ export default function Wizard() {
 
   function update<K extends keyof FormState>(key: K, val: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: val }));
+    if (serverErrors[key as string]) setServerErrors((prev) => { const n = { ...prev }; delete n[key as string]; return n; });
+  }
+
+  // ── Field checks (README part 150) ────────────────────────────────────────
+  const linkFieldShown = (f: FormState) =>
+    !!getGoalLabels(f.page_goal).externalLinkLabel || f.cta_type === 'link' || f.external_link.trim() !== '';
+
+  /** Every current problem, keyed by field (or "intake:<question>"). Same rules as the server. */
+  function errorsFor(f: FormState): Record<string, string> {
+    const e: Record<string, string> = {};
+    const put = (k: PageInputField & keyof FormState, required = false) => {
+      const m = fieldError(k, f[k] as string, { required });
+      if (m) e[k] = m;
+    };
+    put('business_name', true);
+    put('vibe', true);
+    put('phone_number', true);
+    if (!f.design_style) e.design_style = 'בחרו סגנון עיצוב.';
+    put('user_provided_text');
+    intakeQuestions.forEach((q) => {
+      const m = fieldError('intake_answer', intakeAnswers[q] ?? '');
+      if (m) e[intakeKey(q)] = m;
+    });
+    if (linkFieldShown(f)) {
+      put('external_link');
+      if (f.cta_type === 'link' && !f.external_link.trim()) e.external_link = INPUT_MESSAGES.linkRequired;
+    }
+    put('email');
+    put('address');
+    put('business_hours');
+    put('facebook_url');
+    put('instagram_url');
+    if (f.include_testimonials) {
+      put('testimonial_quote');
+      put('testimonial_author');
+    }
+    return e;
+  }
+
+  const stepKeys = (s: number): string[] => (s === INTAKE_STEP ? intakeQuestions.map(intakeKey) : [...(STEP_FIELDS[s] ?? [])]);
+  const fieldId = (k: string) => (k.startsWith('intake:') ? `wf-intake-${intakeQuestions.indexOf(k.slice(7))}` : `wf-${k}`);
+  const reveal = (keys: string[]) => setRevealed((prev) => { const n = new Set(prev); keys.forEach((k) => n.add(k)); return n; });
+  const currentErrors = errorsFor(form);
+  /** The error to show under a field right now, or null. */
+  const errOf = (k: string): string | null =>
+    revealed.has(k) || serverErrors[k] ? (currentErrors[k] ?? serverErrors[k] ?? null) : null;
+  /** Props every checked input gets: id, invalid state, error link, reveal on blur. */
+  const checkedProps = (k: string) => {
+    const err = errOf(k);
+    return {
+      id: fieldId(k),
+      'aria-invalid': err ? true : undefined,
+      'aria-describedby': err ? `${fieldId(k)}-error` : undefined,
+      onBlur: () => reveal([k]),
+      className: err ? inputErrCls : inputCls,
+    };
+  };
+  const counterOf = (k: PageInputField, value: string) =>
+    COUNTED_FIELDS.has(k) ? { length: value.trim().length, max: PAGE_INPUT_LIMITS[k] } : null;
+
+  // The step buttons keep the focus in the field on mousedown: otherwise the field's blur shows its error,
+  // the error line pushes the button down before mouseup, and the click lands on nothing.
+  const keepFocus = (e: React.MouseEvent) => e.preventDefault();
+
+  /** Shows every problem of step `s` and focuses the first one. True when the step is clean. */
+  function checkStep(s: number): boolean {
+    const keys = stepKeys(s);
+    const bad = keys.filter((k) => currentErrors[k]);
+    if (!bad.length) return true;
+    reveal(keys);
+    setTimeout(() => document.getElementById(fieldId(bad[0]))?.focus(), 50);
+    return false;
   }
 
   // A donation/direct_sale page collects an external link (donation/payment
@@ -1091,6 +1223,7 @@ export default function Wizard() {
   }
 
   function go(next: number) {
+    if (next > step && !checkStep(step)) return;
     setError(null);
     setDir(next > step ? 1 : -1);
     setStep(next);
@@ -1106,6 +1239,15 @@ export default function Wizard() {
   }
 
   async function submit() {
+    // The whole form, again, before anything is sent: jump back to the first step with a problem.
+    const badStep = [1, INTAKE_STEP, 4].find((s) => stepKeys(s).some((k) => currentErrors[k]));
+    if (badStep !== undefined) {
+      reveal(stepKeys(badStep));
+      setDir(-1);
+      setStep(badStep);
+      setError(INPUT_MESSAGES.summary);
+      return;
+    }
     setLoading(true);
     setError(null);
     if (!user) { setError('צריך להתחבר כדי ליצור דף'); setLoading(false); return; }
@@ -1166,8 +1308,17 @@ export default function Wizard() {
 
       const res = await authFetch('/api/landing', { method: 'POST', body: fd });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `שגיאה ${res.status}`);
+        const body = (await res.json().catch(() => ({}))) as { error?: string; field_errors?: Record<string, string> };
+        // The server checks the same rules (and never trusts this page): show its errors under the fields.
+        if (res.status === 400 && body.field_errors && Object.keys(body.field_errors).length) {
+          const fe = body.field_errors;
+          setServerErrors(fe);
+          reveal(Object.keys(fe));
+          const back = [1, 4].find((s) => (STEP_FIELDS[s] ?? []).some((k) => fe[k]));
+          if (back !== undefined) { setDir(-1); setStep(back); }
+          throw new Error(INPUT_MESSAGES.summary);
+        }
+        throw new Error(body.error ?? `שגיאה ${res.status}`);
       }
       setResult((await res.json()) as LandingPageRecord);
     } catch (err) {
@@ -1179,17 +1330,13 @@ export default function Wizard() {
 
   const goalLabels = getGoalLabels(form.page_goal);
 
-  const canNext = [
-    form.page_goal !== '',
-    form.business_name.trim() !== '' &&
-      form.vibe.trim() !== '' &&
-      form.phone_number.trim() !== '' &&
-      form.design_style !== '',
-    true, // intake interview — always skippable
-    true,
-    true,
-    true,
-  ][step];
+  // Step 0 needs a choice. The other steps are checked when "הבא" is pressed (checkStep), so the button
+  // stays clickable and pressing it shows what is missing instead of silently doing nothing.
+  const canNext = step === 0 ? form.page_goal !== '' : true;
+  const phoneKindNow = phoneKind(form.phone_number);
+  const phoneHint = form.cta_type === 'whatsapp' && phoneKindNow && phoneKindNow !== 'mobile'
+    ? 'הכפתור הראשי בדף פותח וואטסאפ. אם למספר הזה אין וואטסאפ, בחרו בשלב "קשר ולינקים" כפתור טלפון.'
+    : null;
 
   const steps = [
     // ── Step 0: Page Goal ─────────────────────────────────────────────────────
@@ -1199,23 +1346,24 @@ export default function Wizard() {
 
     // ── Step 1: Core ──────────────────────────────────────────────────────────
     <Step key="step-core" title="ספרו לנו על העסק" subtitle="פרטי הבסיס שישמשו לבניית הדף">
-      <Field label={goalLabels.businessName} icon={<Building2 size={15} />}>
-        <input className={inputCls} placeholder={goalLabels.businessNamePlaceholder}
+      <Field label={goalLabels.businessName} icon={<Building2 size={15} />} htmlFor={fieldId('business_name')} error={errOf('business_name')}>
+        <input {...checkedProps('business_name')} placeholder={goalLabels.businessNamePlaceholder}
           value={form.business_name} onChange={(e) => update('business_name', e.target.value)} autoFocus />
       </Field>
-      <Field label={goalLabels.vibe} icon={<AlignLeft size={15} />}>
-        <input className={inputCls} placeholder={goalLabels.vibePlaceholder}
+      <Field label={goalLabels.vibe} icon={<AlignLeft size={15} />} htmlFor={fieldId('vibe')} error={errOf('vibe')}>
+        <input {...checkedProps('vibe')} placeholder={goalLabels.vibePlaceholder}
           value={form.vibe} onChange={(e) => update('vibe', e.target.value)} />
       </Field>
-      <Field label="מספר וואטסאפ *" icon={<Phone size={15} />}>
-        <input className={inputCls} placeholder="0501234567" type="tel" dir="ltr"
+      <Field label="מספר וואטסאפ *" icon={<Phone size={15} />} htmlFor={fieldId('phone_number')} error={errOf('phone_number')} hint={phoneHint}>
+        <input {...checkedProps('phone_number')} placeholder="050-1234567" type="tel" dir="ltr" inputMode="tel" autoComplete="tel"
           value={form.phone_number} onChange={(e) => update('phone_number', e.target.value)} />
       </Field>
-      <Field label="סגנון עיצוב *" icon={<Sparkles size={15} />}>
+      <Field label="סגנון עיצוב *" icon={<Sparkles size={15} />} error={errOf('design_style')}>
         <DesignStyleCards value={form.design_style} onChange={(v) => update('design_style', v)} />
       </Field>
-      <Field label={goalLabels.userText} icon={<FileText size={15} />}>
-        <textarea className={`${inputCls} resize-none`} rows={3}
+      <Field label={goalLabels.userText} icon={<FileText size={15} />} htmlFor={fieldId('user_provided_text')}
+        error={errOf('user_provided_text')} counter={counterOf('user_provided_text', form.user_provided_text)}>
+        <textarea {...checkedProps('user_provided_text')} className={`${checkedProps('user_provided_text').className} resize-none`} rows={3}
           placeholder={goalLabels.userTextPlaceholder}
           value={form.user_provided_text}
           onChange={(e) => update('user_provided_text', e.target.value)} />
@@ -1225,7 +1373,7 @@ export default function Wizard() {
           className="flex items-center gap-1.5 text-xs text-[#2E63F6] hover:text-indigo-700 transition self-start mt-0.5"
         >
           <Sparkles size={12} />
-          {showGuidingQuestions ? 'סגור שאלות מנחות' : 'אין לך טקסט? לחצו לשאלות מנחות'}
+          {showGuidingQuestions ? 'סגור שאלות מנחות' : 'אין לכם טקסט? לחצו לשאלות מנחות'}
         </button>
         <AnimatePresence>
           {showGuidingQuestions && (
@@ -1275,17 +1423,20 @@ export default function Wizard() {
       ) : (
         <>
           {intakeQuestions.map((q) => (
-            <Field key={q} label={q} icon={<Sparkles size={15} />}>
+            <Field key={q} label={q} icon={<Sparkles size={15} />} htmlFor={fieldId(intakeKey(q))}
+              error={errOf(intakeKey(q))} counter={counterOf('intake_answer', intakeAnswers[q] ?? '')}>
               <input
-                className={inputCls}
+                {...checkedProps(intakeKey(q))}
                 placeholder="תשובה קצרה — אפשר להשאיר ריק"
                 value={intakeAnswers[q] ?? ''}
                 onChange={(e) => setIntakeAnswers((prev) => ({ ...prev, [q]: e.target.value }))}
               />
             </Field>
           ))}
-          <p className="text-xs text-slate-400 leading-snug">
-            עונים רק על מה שבטוחים בו. Pagey לעולם לא ימציא נתונים שלא מסרתם — לכן כל פרט אמיתי כאן שווה משפט מדויק בדף.
+          {/* README part 150: says exactly what the system does, no more. "לעולם לא ימציא נתונים" was a
+              promise the generator could not keep (src/services/pageHonesty.ts). */}
+          <p className="text-xs text-slate-500 leading-snug">
+            עונים רק על מה שבטוחים בו. מספרים, מחירים, שנים, הסמכות ופרטי מוצר מופיעים בדף רק אם כתבתם אותם, ושאלות נפוצות נכתבות רק מתוך מה שמסרתם. את שאר הדף Pagey מנסח בלשון כללית, ולכן כדאי לקרוא אותו לפני הפרסום.
           </p>
         </>
       )}
@@ -1334,33 +1485,35 @@ export default function Wizard() {
           explicitly picked "קישור חיצוני" as the CTA type above. Previously this
           was gated on the goal alone, so picking "קישור חיצוני" for any other goal
           (e.g. lead_gen) left no field to fill it in — a real dead-CTA bug. */}
-      {(goalLabels.externalLinkLabel || form.cta_type === 'link') && (
+      {linkFieldShown(form) && (
         <Field
-          label={goalLabels.externalLinkLabel ?? 'קישור חיצוני *'}
+          label={`${goalLabels.externalLinkLabel ?? 'קישור חיצוני'}${form.cta_type === 'link' ? ' *' : ''}`}
           icon={<ExternalLink size={15} />}
+          htmlFor={fieldId('external_link')} error={errOf('external_link')}
         >
-          <input className={inputCls} placeholder={goalLabels.externalLinkPlaceholder || 'https://...'} type="url" dir="ltr"
+          <input {...checkedProps('external_link')} placeholder={goalLabels.externalLinkPlaceholder || 'https://...'} type="url" dir="ltr" inputMode="url"
             value={form.external_link} onChange={(e) => update('external_link', e.target.value)} />
         </Field>
       )}
-      <Field label="כתובת אימייל" icon={<Mail size={15} />}>
-        <input className={inputCls} placeholder="info@mybusiness.com" type="email" dir="ltr"
+      <Field label="כתובת אימייל" icon={<Mail size={15} />} htmlFor={fieldId('email')} error={errOf('email')}>
+        <input {...checkedProps('email')} placeholder="info@mybusiness.co.il" type="email" dir="ltr" autoComplete="email"
           value={form.email} onChange={(e) => update('email', e.target.value)} />
       </Field>
-      <Field label="כתובת (אופציונלי)" icon={<MapPin size={15} />}>
-        <input className={inputCls} placeholder="רחוב הרצל 12, תל אביב"
+      <Field label="כתובת (אופציונלי)" icon={<MapPin size={15} />} htmlFor={fieldId('address')} error={errOf('address')}>
+        <input {...checkedProps('address')} placeholder="רחוב הרצל 12, תל אביב"
           value={form.address} onChange={(e) => update('address', e.target.value)} />
       </Field>
-      <Field label="שעות פעילות (אופציונלי)" icon={<Clock size={15} />}>
-        <input className={inputCls} placeholder="א'-ה' 9:00-19:00, ו' 9:00-14:00"
+      <Field label="שעות פעילות (אופציונלי)" icon={<Clock size={15} />} htmlFor={fieldId('business_hours')}
+        error={errOf('business_hours')} counter={form.business_hours.length > PAGE_INPUT_LIMITS.business_hours * 0.7 ? counterOf('business_hours', form.business_hours) : null}>
+        <input {...checkedProps('business_hours')} placeholder="א'-ה' 9:00-19:00, ו' 9:00-14:00"
           value={form.business_hours} onChange={(e) => update('business_hours', e.target.value)} />
       </Field>
-      <Field label="קישור לעמוד Facebook" icon={<Link2 size={15} />}>
-        <input className={inputCls} placeholder="https://facebook.com/mybusiness" type="url" dir="ltr"
+      <Field label="קישור לעמוד Facebook" icon={<Link2 size={15} />} htmlFor={fieldId('facebook_url')} error={errOf('facebook_url')}>
+        <input {...checkedProps('facebook_url')} placeholder="https://facebook.com/mybusiness" type="url" dir="ltr" inputMode="url"
           value={form.facebook_url} onChange={(e) => update('facebook_url', e.target.value)} />
       </Field>
-      <Field label="קישור לעמוד Instagram" icon={<Link2 size={15} />}>
-        <input className={inputCls} placeholder="https://instagram.com/mybusiness" type="url" dir="ltr"
+      <Field label="קישור לעמוד Instagram" icon={<Link2 size={15} />} htmlFor={fieldId('instagram_url')} error={errOf('instagram_url')}>
+        <input {...checkedProps('instagram_url')} placeholder="https://instagram.com/mybusiness" type="url" dir="ltr" inputMode="url"
           value={form.instagram_url} onChange={(e) => update('instagram_url', e.target.value)} />
       </Field>
       <ToggleSwitch
@@ -1380,12 +1533,13 @@ export default function Wizard() {
       <AnimatePresence>
         {form.include_testimonials && (
           <motion.div key="testimonial-fields" {...fadeIn} className="flex flex-col gap-3">
-            <Field label="ציטוט אמיתי מלקוח (אופציונלי)" icon={<Quote size={15} />}>
-              <textarea className={inputCls} rows={2} placeholder="למשל: 'קיבלנו שירות מהיר ומקצועי, ממליצים בחום'"
+            <Field label="ציטוט אמיתי מלקוח (אופציונלי)" icon={<Quote size={15} />} htmlFor={fieldId('testimonial_quote')}
+              error={errOf('testimonial_quote')} counter={counterOf('testimonial_quote', form.testimonial_quote)}>
+              <textarea {...checkedProps('testimonial_quote')} rows={2} placeholder="למשל: 'קיבלנו שירות מהיר ומקצועי, ממליצים בחום'"
                 value={form.testimonial_quote} onChange={(e) => update('testimonial_quote', e.target.value)} />
             </Field>
-            <Field label="שם הלקוח (אופציונלי)" icon={<User size={15} />}>
-              <input className={inputCls} placeholder="לדוגמה: דנה כהן"
+            <Field label="שם הלקוח (אופציונלי)" icon={<User size={15} />} htmlFor={fieldId('testimonial_author')} error={errOf('testimonial_author')}>
+              <input {...checkedProps('testimonial_author')} placeholder="לדוגמה: דנה כהן"
                 value={form.testimonial_author} onChange={(e) => update('testimonial_author', e.target.value)} />
             </Field>
           </motion.div>
@@ -1486,7 +1640,7 @@ export default function Wizard() {
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">הדף שלכם מוכן! 🎉</h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    הדף עבור <span className="font-semibold text-slate-700">{result.business_name}</span> נוצר בהצלחה.
+                    הדף עבור <Bidi text={result.business_name} className="font-semibold text-slate-700" /> נוצר בהצלחה.
                   </p>
                 </div>
                 <Link
@@ -1502,7 +1656,7 @@ export default function Wizard() {
                 {result.image_warnings && result.image_warnings.length > 0 && (
                   <div role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-right text-xs leading-relaxed text-amber-900">
                     {result.image_warnings.slice(0, 3).map((w, i) => (
-                      <p key={i}>{w.fileName ? `"${w.fileName}": ` : ''}{w.message}</p>
+                      <p key={i}>{w.fileName ? <>"<Bidi text={w.fileName} />": </> : ''}{w.message}</p>
                     ))}
                     {result.image_warnings.length > 3 && <p>ועוד {result.image_warnings.length - 3} תמונות.</p>}
                     <p className="mt-1 text-amber-800">אפשר להחליף תמונה בכל רגע, בעריכת הדף.</p>
@@ -1530,19 +1684,19 @@ export default function Wizard() {
 
                 <div className="mt-8 flex items-center justify-between gap-3">
                   {step > 0 ? (
-                    <button onClick={() => go(step - 1)}
+                    <button onClick={() => go(step - 1)} onMouseDown={keepFocus}
                       className="flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
                       <ChevronLeft size={16} />חזרה
                     </button>
                   ) : <div />}
 
                   {step < STEPS.length - 1 ? (
-                    <button onClick={() => go(step + 1)} disabled={!canNext}
+                    <button onClick={() => go(step + 1)} onMouseDown={keepFocus} disabled={!canNext}
                       className="flex-1 rounded-xl bg-[#2E63F6] py-2.5 text-sm font-semibold text-white hover:bg-[#1E4FD6] disabled:opacity-40 disabled:cursor-not-allowed transition">
                       הבא
                     </button>
                   ) : (
-                    <button onClick={submit} disabled={loading}
+                    <button onClick={submit} onMouseDown={keepFocus} disabled={loading}
                       className="flex-1 rounded-xl bg-[#2E63F6] py-2.5 text-sm font-semibold text-white hover:bg-[#1E4FD6] disabled:opacity-80 transition flex items-center justify-center gap-2">
                       {loading ? (
                         <>

@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ComponentType, ReactNode } from 'react';
 import { Camera, Phone, Plus, X } from 'lucide-react';
 import { buildPalette } from './color';
+import { Bidi } from '../../components/Bidi';
 import { TeamSection, beforeAfterHasContent, renderBeforeAfter, renderPracticalGuide, teamHasContent, type Kit } from './HealthSections';
 import type { SectionKey, TeamMember } from '../../config/pageCategory';
 import { altFor, aspectOf, buildSrcSet, focalPosition, intrinsicSize, planGallery, planHero, type ImgMeta, type MetaMap } from '../../lib/landingImages';
@@ -353,7 +354,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         <div className="wrap">
           <div className="brand">
             {c.logoUrl && <img src={c.logoUrl} alt={c.businessName} />}
-            <b>{c.businessName}</b>
+            <b><Bidi text={c.businessName} /></b>
           </div>
           {c.headerExtra}
           {c.langSwitch}
@@ -362,7 +363,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         {motion && <i className="prog" />}
       </header>
 
-      <main>
+      <main id="page-content" tabIndex={-1}>
         {/* hero: with a photo, the photo IS the opening (full width on a phone, wide on a desktop) and the
             headline sits on it under a scrim; without one, a typographic poster */}
         {photoHero ? (
@@ -447,8 +448,14 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
         {c.services.length > 1 && !health && (
           <div className="marqw" aria-hidden="true">
             <div className="marq"><div className="track">
+              {/* README part 150: one real copy; the 3 copies that make the loop seamless are drawn by CSS
+                  (data-t + ::before), so text readers and Google see each service once instead of 4 times. */}
               {[0, 1, 2, 3].map((k) => (
-                <Fragment key={k}>{c.services.map((s, i) => <span key={`${k}-${i}`}>{s.title}<i>✦</i></span>)}</Fragment>
+                <Fragment key={k}>{c.services.map((s, i) => (
+                  k === 0
+                    ? <span key={`${k}-${i}`}>{s.title}<i>✦</i></span>
+                    : <span key={`${k}-${i}`} className="dup" data-t={s.title} />
+                ))}</Fragment>
               ))}
             </div></div>
           </div>
@@ -687,7 +694,7 @@ export default function LandingV3({ ctx }: { ctx: V3Ctx }) {
       </main>
 
       <footer className="foot"><div className="wrap">
-        <span><b>{c.businessName}</b>{c.phone ? <> · <span dir="ltr">{c.phone}</span></> : null}{c.email ? <> · <a href={`mailto:${c.email}`} dir="ltr">{c.email}</a></> : null}</span>
+        <span><b><Bidi text={c.businessName} /></b>{c.phone ? <> · <span dir="ltr">{c.phone}</span></> : null}{c.email ? <> · <a href={`mailto:${c.email}`} dir="ltr">{c.email}</a></> : null}</span>
         <span className="soc">
           {c.facebookUrl && <a href={c.facebookUrl} target="_blank" rel="noopener noreferrer">Facebook</a>}
           {c.instagramUrl && <a href={c.instagramUrl} target="_blank" rel="noopener noreferrer">Instagram</a>}

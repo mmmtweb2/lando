@@ -23,6 +23,8 @@ export interface LegalText {
 
 export interface PageStrings {
   langNavLabel: string;
+  /** The skip link, the first focusable element of the page (README part 150). */
+  skipToContent: string;
   call: string;
   askOnWhatsApp: string;
   aboutFallback: string;
@@ -72,6 +74,7 @@ const list = (items: string[], and: string) => {
 
 const HE: PageStrings = {
   langNavLabel: 'שפת הדף',
+  skipToContent: 'דילוג לתוכן',
   call: 'התקשרו',
   askOnWhatsApp: 'שאלו על זה בוואטסאפ',
   aboutFallback: 'הסיפור שלנו',
@@ -93,7 +96,7 @@ const HE: PageStrings = {
   guide: { address: 'כתובת', hours: 'שעות פעילות', parking: 'חניה', accessibility: 'נגישות', areas: 'אזורי שירות' },
   reviews: {
     fromGoogle: 'ביקורות מגוגל', outOf: 'מתוך 5', count: (n) => (n === 1 ? 'ביקורת אחת' : `${n.toLocaleString('he-IL')} ביקורות`),
-    seeAll: 'לכל הביקורות בגוגל', anonymous: 'לקוח/ה מגוגל', stars: (n) => `${n} מתוך 5 כוכבים`, locale: 'he-IL',
+    seeAll: 'לכל הביקורות בגוגל', anonymous: 'ביקורת מגוגל', stars: (n) => `${n} מתוך 5 כוכבים`, locale: 'he-IL',
   },
   days: ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'],
   attrs: {
@@ -146,6 +149,7 @@ const HE: PageStrings = {
 
 const FR: PageStrings = {
   langNavLabel: 'Langue de la page',
+  skipToContent: 'Aller au contenu',
   call: 'Appeler',
   askOnWhatsApp: 'Demander sur WhatsApp',
   aboutFallback: 'Notre histoire',
@@ -224,6 +228,7 @@ const FR: PageStrings = {
 
 const EN: PageStrings = {
   langNavLabel: 'Page language',
+  skipToContent: 'Skip to content',
   call: 'Call',
   askOnWhatsApp: 'Ask about it on WhatsApp',
   aboutFallback: 'Our story',

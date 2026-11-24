@@ -16,6 +16,8 @@ import PageLegalFooter from '../components/PageLegalFooter';
 import RefundAck from '../components/RefundAck';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 import { safeHttpUrl } from '../lib/safeUrl';
+import { buildPageTitle, isolate } from '../lib/pageText';
+import { Bidi } from '../components/Bidi';
 import ImageEditor from '../components/ImageEditor';
 import type { V3Ctx } from './landingV3/LandingV3';
 import { LangSwitch, LanguagePanel, type PageTranslation } from './landingV3/PageLanguages';
@@ -2094,7 +2096,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             style={{ background: heroBg, color: onPrimary }}>
             <div className="flex items-center gap-3">
               {logo_url && <img src={logo_url} alt={business_name} className="h-9 w-9 rounded-xl object-contain" style={{ background: 'rgba(255,255,255,0.2)', padding: '4px' }} />}
-              <span className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70">{business_name}</span>
+              <span className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70"><Bidi text={business_name} /></span>
             </div>
             <EditableText as="h1" className="text-3xl sm:text-4xl font-extrabold leading-tight tracking-tight"
               value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
@@ -2187,7 +2189,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <img src={logo_url} alt={business_name} className="h-12 w-12 object-contain mb-8"
                 style={{ borderRadius: vibe === 'luxury' ? '2px' : '10px', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.12))' }} />
             )}
-            <p className="text-xs font-black tracking-[0.3em] uppercase mb-4" style={{ color: primary }}>{business_name}</p>
+            <p className="text-xs font-black tracking-[0.3em] uppercase mb-4" style={{ color: primary }}><Bidi text={business_name} /></p>
             <EditableText as="h1" className="text-5xl sm:text-6xl font-black leading-[1.05] tracking-tight mb-6 text-slate-900"
               value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
               onCommit={(v) => setEdit('hero.title', v)}
@@ -2302,7 +2304,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <img src={logo_url} alt={business_name} className="h-14 w-14 object-contain self-end"
                 style={{ borderRadius: '10px', background: 'rgba(255,255,255,0.2)', padding: '6px' }} />
             )}
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70">{business_name}</p>
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70"><Bidi text={business_name} /></p>
             <EditableText as="h1" className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight"
               value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
               onCommit={(v) => setEdit('hero.title', v)}
@@ -2392,7 +2394,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               <img src={logo_url} alt={business_name} className="h-24 w-24 object-contain shadow-xl"
                 style={{ borderRadius: vibe === 'luxury' ? '4px' : '16px', background: 'rgba(255,255,255,0.2)', padding: '8px' }} />
             )}
-            <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70">{business_name}</p>
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70"><Bidi text={business_name} /></p>
             <EditableText as="h1" className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight drop-shadow-lg"
               value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
               onCommit={(v) => setEdit('hero.title', v)}
@@ -2975,7 +2977,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
               className="h-20 w-20 object-contain shadow-xl"
               style={{ borderRadius: vibe === 'luxury' ? '4px' : '20px', background: 'rgba(255,255,255,0.22)', padding: '8px', backdropFilter: 'blur(6px)' }} />
           )}
-          <motion.p {...up(0.12)} className="text-xs font-semibold tracking-[0.28em] uppercase opacity-75">{business_name}</motion.p>
+          <motion.p {...up(0.12)} className="text-xs font-semibold tracking-[0.28em] uppercase opacity-75"><Bidi text={business_name} /></motion.p>
           <motion.div {...up(0.2)}>
             <AccentedHeroTitle
               className="text-5xl sm:text-6xl lg:text-7xl font-black leading-[1.05] tracking-tight drop-shadow-lg"
@@ -3238,7 +3240,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             <img src={logo_url} alt={business_name} className="h-24 w-24 object-contain shadow-xl"
               style={{ borderRadius: vibe === 'luxury' ? '4px' : '16px', background: 'rgba(255,255,255,0.2)', padding: '8px' }} />
           )}
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70">{business_name}</p>
+          <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70"><Bidi text={business_name} /></p>
           <AccentedHeroTitle
             className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight drop-shadow-lg"
             value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
@@ -3282,7 +3284,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             <img src={logo_url} alt={business_name} className="h-14 w-14 object-contain self-end"
               style={{ borderRadius: '10px', background: 'rgba(255,255,255,0.2)', padding: '6px' }} />
           )}
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70">{business_name}</p>
+          <p className="text-xs font-semibold tracking-[0.2em] uppercase opacity-70"><Bidi text={business_name} /></p>
           <AccentedHeroTitle
             className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight"
             value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
@@ -3322,7 +3324,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             <img src={logo_url} alt={business_name} className="h-14 w-14 object-contain"
               style={{ borderRadius: '4px', background: 'rgba(255,255,255,0.15)', padding: '6px' }} />
           )}
-          <p className="text-xs font-semibold tracking-[0.3em] uppercase opacity-80">{business_name}</p>
+          <p className="text-xs font-semibold tracking-[0.3em] uppercase opacity-80"><Bidi text={business_name} /></p>
           <AccentedHeroTitle
             className="text-4xl sm:text-6xl font-extrabold leading-[1.05] tracking-tight drop-shadow-lg"
             value={getEdit('hero.title', ai_content.hero?.title ?? business_name)}
@@ -3682,7 +3684,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   }
 
   function renderCtaBannerBlock() {
-    const ctaHeadline = `מוכנים להתחיל עם ${business_name}?`;
+    const ctaHeadline = `מוכנים להתחיל עם ${isolate(business_name)}?`;
     const ctaSubline = ai_content.cta_banner_subline || heroTagline || `נשמח לענות על כל שאלה ולעזור לכם להתחיל`;
     return (
       <section className="relative overflow-hidden px-6 py-28" style={{ background: heroBg }}>
@@ -4177,7 +4179,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   }
 
   // Shown under every lead form (privacy audit 16.11): who gets the details and that they are optional.
-  const leadPrivacyNote = T.lead.privacy(business_name);
+  const leadPrivacyNote = T.lead.privacy(isolate(business_name));
 
   function renderLeadForm(v3 = false) {
     // Design V3 (Pinkas): same state and submit handler, drawn in the page's paper and ink (landingV3.css).
@@ -4380,7 +4382,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         faq: ai_content.faq_heading || T.headings.faq,
       },
       closing: {
-        headline: isHealth ? T.closingHealth : T.closingGeneral(business_name),
+        headline: isHealth ? T.closingHealth : T.closingGeneral(isolate(business_name)),
         subline: ai_content.cta_banner_subline || '',
         waMessage: !useExternalLink && waUrl ? waMessage : null,
       },
@@ -4451,14 +4453,27 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
   const toolbarVisible = !!canEdit;
   const fabBottom = toolbarVisible ? 'bottom-20' : 'bottom-6';
 
+  // README part 150: the tab title as ONE string (src/shared/pageText.ts, the same rule as the server shell).
+  // It used to be `{title}{suffix}`: react-helmet-async hands React 19 an array, React renders an EMPTY
+  // <title>, and the published page had no name in the tab.
+  const pageTitle = buildPageTitle({
+    seoTitle: ai_content.seo_title,
+    businessName: business_name,
+    descriptor: ai_content.services_heading,
+    lang: viewLang,
+    whiteLabel: !!whiteLabel,
+  });
+
   return (
     <ImageInfoCtx.Provider value={{ meta: imgMeta, business: business_name, decorative: page.image_source === 'ai' }}>
     <div dir="rtl" className={`lp-root min-h-screen bg-white ${fontClass}`} style={{ fontFamily: `${bodyFont}, system-ui, sans-serif` }}>
+      {/* README part 150: keyboard and screen-reader visitors jump past the header straight to the content. */}
+      <a href="#page-content" className="lp-skip" dir={viewDir}>{T.skipToContent}</a>
       <Helmet>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700;900&family=Assistant:wght@300;400;600;700&family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
-        <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}`}</style>
+        <style>{`.lp-root h1,.lp-root h2,.lp-root h3{font-family:${headingFont},system-ui,sans-serif}.lp-skip{position:fixed;top:8px;inset-inline-start:8px;z-index:200;padding:10px 16px;border-radius:10px;background:#fff;color:#0f172a;font-weight:700;font-size:15px;box-shadow:0 4px 18px rgba(15,23,42,.25);outline:3px solid #2563eb;outline-offset:2px;transform:translateY(-160%);transition:transform .15s}.lp-skip:focus,.lp-skip:focus-visible{transform:none}#page-content:focus{outline:none}`}</style>
         {/* White-label is a PAID perk (the 10-page bundle's bonus, previously
             the agency plan's): when it's on, the "| Pagey" suffix
             must be gone here too. The server-rendered <title> in
@@ -4467,7 +4482,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
             "| Pagey" in the tab — the perk was sold and only half-delivered.
             (Two independent passes today hit this same bug — logic below is
             the merged, equivalent fix.) */}
-        <title>{(ai_content.seo_title || business_name || 'דף נחיתה')}{whiteLabel ? '' : ' | Pagey'}</title>
+        <title>{pageTitle}</title>
         <html lang={viewLang} dir={viewDir} />
         <link rel="canonical" href={langPath(page.canonical_url ?? shareUrl(page.slug, page.subdomain), viewLang)} />
         <meta name="robots" content={isDraft ? 'noindex,nofollow' : 'index,follow'} />
@@ -4506,7 +4521,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
           <div className="flex items-center gap-2.5 min-w-0">
             {logo_url && <img src={logo_url} alt={business_name} className="h-8 w-8 rounded-lg object-contain flex-shrink-0" />}
             <span className="font-bold text-slate-800 text-sm truncate transition-colors duration-300"
-              style={designV2 && heroV2On() && !scrolled ? { color: heroOnGradient } : undefined}>{business_name}</span>
+              style={designV2 && heroV2On() && !scrolled ? { color: heroOnGradient } : undefined}><Bidi text={business_name} /></span>
           </div>
         </div>
       </header>
@@ -4542,6 +4557,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
         </React.Suspense>
       ) : (
       <>
+      <main id="page-content" tabIndex={-1}>
       {/* Dynamic layout body */}
       {renderLayout()}
 
@@ -4551,6 +4567,7 @@ export default function LandingViewer({ slugOverride }: { slugOverride?: string 
       {/* Visit us: address / hours / map — a fixed trust section, independent
           of the AI block-composition engine (see renderVisitUsSection). */}
       {renderVisitUsSection()}
+      </main>
 
       {/* Contact footer */}
       <footer className="bg-slate-900 text-white px-6 py-16">

@@ -164,7 +164,7 @@ function call(port: number, method: string, path: string, headers: Record<string
       await createLandingPage({ body: { ...base, [field]: 'javascript:alert(document.cookie)' }, files: {}, authEmail: 'o@x.co' } as any, res);
       console.log = log;
       assert.ok(!seen.join('\n').match(/0501234567|javascript|o@x\.co|קפה/), 'request body / PII is not logged');
-      assert.equal(out.code, 400, field); assert.match(out.body.error, /אינו תקין/);
+      assert.equal(out.code, 400, field); assert.ok(out.body.field_errors?.[field], `field error: ${field}`); // README part 150: per-field errors
     }
   } finally { console.warn = quiet; server.close(); }
   console.log('security hardening checks passed');

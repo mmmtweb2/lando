@@ -135,7 +135,7 @@ export function parseLanguages(input: string): string[] {
 
 /** Text shown (in edit mode only) where the owner has not filled a field in yet. */
 export const FIELD_HINTS = {
-  name: 'הוסיפו כאן את שם הרופא/ה',
+  name: 'הוסיפו כאן את שם הרופא או הרופאה',
   role: 'הוסיפו כאן תפקיד',
   credentials: 'הוסיפו כאן הכשרה והסמכות',
   experience: 'הוסיפו כאן ניסיון',
