@@ -9,6 +9,7 @@ import { LANGUAGES, SOURCE_LANG, buildHreflang, isTranslationLang, langDir, lang
 import { loadTranslations, publicTranslations, translatedPage } from '../services/landingTranslations.service';
 import { googleBlockForPage } from '../services/pageGoogle.service';
 import { withCardFacts } from '../services/pageGoogle';
+import { buildPageTitle } from '../shared/pageText';
 
 function escapeHtml(str: string): string {
   return str
@@ -170,9 +171,18 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
       console.error('servePageWithOgTags: failed to resolve whiteLabel status', e);
     }
   }
-  // In another language the translated title for Google is used; Hebrew keeps its long-standing title.
+  // README part 150: ONE title rule for the server shell and the page in the browser (src/shared/pageText.ts):
+  // seo_title (in the page's language), or "<business name> | <short descriptor>", then " | Pagey" unless
+  // white-label. Before, the server said "<name> | Pagey" and the browser replaced it (with an EMPTY title,
+  // under React 19), so the tab showed nothing.
   const titleBase = lang !== SOURCE_LANG ? (viewContent?.seo_title?.trim() || String(page.business_name)) : String(page.business_name);
-  const title = whiteLabel ? titleBase : `${titleBase} | Pagey`;
+  const title = buildPageTitle({
+    seoTitle: viewContent?.seo_title,
+    businessName: String(page.business_name ?? ''),
+    descriptor: (view.ai_content as { services_heading?: string } | null)?.services_heading,
+    lang,
+    whiteLabel,
+  });
 
   // Canonical URL + robots directive — published pages are indexable, drafts
   // are not (drafts are still publicly fetchable via GET /:slug, so this
@@ -200,8 +210,10 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
     ? buildJsonLdScripts({ ...(page as unknown as SeoPage), ai_content: view.ai_content }, pageUrl, firstImage, { inLanguage: lang, multilingual: publishedLangs.length > 0 })
     : '';
 
+  // The shell's own <title> is replaced below (exactly one <title> in the head); the generic Pagey
+  // description is stripped and this page's own one is emitted, for every request (people and crawlers alike).
   const ogTags = `
-    <title>${escapeHtml(title)}</title>
+    <meta name="description" content="${escapeHtml(description.slice(0, 300))}" />
     <link rel="canonical" href="${escapeHtml(pageUrl)}" />
     <meta name="robots" content="${robotsContent}" />
     ${alternates}
@@ -243,8 +255,8 @@ export async function servePageWithOgTags(req: Request, res: Response): Promise<
   // Replace the generic <title> and inject this page's own OG tags before </head>
   const withHead = shellWithoutGenericTags
     .replace(/<html[^>]*>/i, `<html lang="${lang}" dir="${langDir(lang)}">`)
-    .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
-    .replace('</head>', `${ogTags}\n  </head>`);
+    .replace(/<title[^>]*>[^<]*<\/title>\s*/gi, '')
+    .replace('</head>', `    <title>${escapeHtml(title)}</title>${ogTags}\n  </head>`);
 
   // Published pages also get their real content (h1/h2/text/FAQ) inside #root so
   // crawlers see it without running JS; createRoot replaces it on load.

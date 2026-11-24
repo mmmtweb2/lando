@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CATEGORY_CONFIG, extractCity, healthSubtype, stockKeywordsFor, templateFor, type CategoryId } from './pageCategory';
 import { applyHealthTemplate, softenHealthCopy, healthCtaLabel, HEALTH_HEADINGS, type DoctorExtraction } from './healthCopy';
+import { PRODUCT_DETAILS_RULE, SPELLING_RULE, enforceFaqGate, faqRule, lintScripts } from './pageHonesty';
 
 // ─── Shared prompt fragments ───────────────────────────────────────────────────
 // This rule is injected into every prompt that can produce consumer-visible
@@ -15,6 +16,7 @@ contact details, and any user-provided marketing text). You must NEVER invent, g
 - awards, certifications, licenses, press mentions, or "as seen in" claims
 - specific dates, deadlines, or "since [year]" founding claims
 - guarantees or business-model claims (e.g. "free consultation", "money-back guarantee") unless stated in the input
+${PRODUCT_DETAILS_RULE}
 If a concrete fact was not provided, write qualitative, non-numeric language instead — e.g. "ניסיון בתחום" instead of
 "12 שנות ניסיון", "לקוחות מרוצים" instead of "500 לקוחות". When in doubt, leave the claim out entirely. This rule
 applies even if it makes the copy feel less impressive — a vague-but-true page beats a specific-but-fabricated one.`;
@@ -404,7 +406,7 @@ function getMockContent(input: GenerateInput): AiContent {
     testimonials: input.include_testimonials
       ? (input.testimonial_quote?.trim()
           ? [
-              { quote: input.testimonial_quote.trim(), author: input.testimonial_author?.trim() || 'לקוח/ה', role: '' },
+              { quote: input.testimonial_quote.trim(), author: input.testimonial_author?.trim() || 'מלקוחות העסק', role: '' },
               { quote: 'הכנס כאן ציטוט אמיתי של לקוח שמספר על החוויה שלו', author: 'שם הלקוח', role: 'תפקיד או עיר' },
             ]
           : [
@@ -520,6 +522,12 @@ LANGUAGE RULES (CRITICAL):
 - ALL consumer-visible text MUST be in natural, fluent Hebrew
 - Image prompts and imageKeywords MUST be in English
 - Return ONLY a valid JSON object — no markdown fences, no explanation
+
+${SPELLING_RULE}
+
+SERVICES RULE: list the services/products the owner NAMED. When the input names none, write 3 services in the
+general words of the niche (e.g. a bakery: "לחמים", "עוגות", "מאפים מלוחים") with descriptions that make no
+specific claim about how they are made, what is in them, or what they cost.
 
 WORD DIET (STRICT — no exceptions):
 - heroTitle: maximum 7 Hebrew words
@@ -720,6 +728,8 @@ LANGUAGE RULES (CRITICAL):
 - ALL text MUST be in natural, fluent Hebrew
 - Return ONLY a valid JSON object — no markdown fences, no explanation
 
+${SPELLING_RULE}
+
 WORD DIET (STRICT — no exceptions):
 - Each benefit title: 2-4 Hebrew words
 - Each benefit description: maximum 15 Hebrew words — direct, factual, scannable
@@ -742,7 +752,7 @@ ${buildVibeVoiceBlock(input)}
 SECTION RULES:
 - benefits: EXACTLY 3 items — concrete value, never invented facts, grounded in the business niche
 - processSteps: EXACTLY 3 items — Contact → Action → Result arc
-- faq: 3 to 5 items — realistic questions a real customer of THIS specific business would ask
+${faqRule(input)}
 
 TRUST BADGES RULE:
 - Generate EXACTLY 3 trust badges relevant to the specific niche
@@ -783,9 +793,7 @@ Return EXACTLY this JSON (ALL fields required):
   "processHeading": "Hebrew — max 4 words, specific to this business, not generic",
   "processKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
   "faq": [
-    { "question": "Hebrew question specific to this business", "answer": "Hebrew max 25 words" },
-    { "question": "...", "answer": "..." },
-    { "question": "...", "answer": "..." }
+    { "question": "Hebrew question answered by the input", "answer": "Hebrew max 25 words, only what the input states" }
   ],
   "faqHeading": "Hebrew — max 4 words, specific to this business, not generic",
   "faqKicker": "Hebrew — max 3 words, short uppercase eyebrow label",
@@ -987,6 +995,8 @@ Return ONLY a valid JSON object — no markdown fences, no explanation.
 
 ${NO_FABRICATION_RULE}
 
+${SPELLING_RULE}
+
 ${WORD_DIET_RULE}
 
 ${ANTI_CLICHE_RULE}
@@ -1098,7 +1108,7 @@ export class GenerationUnavailable extends Error { constructor() { super('unavai
 
 export async function generateAiContent(input: GenerateInput, opts: GenerateOptions = {}): Promise<AiContent> {
   const raw = await generateRaw(input, opts);
-  if (templateFor(input.category) !== 'health') return raw.content;
+  if (templateFor(input.category) !== 'health') return honestContent(raw.content, input);
   const sourceText = sourceTextOf(input);
   if (raw.isMock) raw.content = { ...raw.content, services_or_benefits: [] };
   const { content, report } = applyHealthTemplate(raw.content, {
@@ -1113,6 +1123,18 @@ export async function generateAiContent(input: GenerateInput, opts: GenerateOpti
   const kw = stockKeywordsFor('health', sourceText);
   if (kw) content.design_system = { ...content.design_system, image_keywords: kw };
   return content;
+}
+
+/**
+ * README part 150, applied to every general page after the writer: no FAQ when the owner wrote too little
+ * (pageHonesty.faqAllowed), and FAQ items / benefits / badges with a mixed-alphabet word dropped.
+ * (A health page gets its FAQ from the template, which writes neutral, system-owned answers.)
+ */
+export function honestContent(content: AiContent, input: Pick<GenerateInput, 'about_business' | 'user_provided_text'>): AiContent {
+  const gated = enforceFaqGate(content, input);
+  const { content: linted, dropped, flagged } = lintScripts(gated);
+  if (dropped.length || flagged.length) console.warn('[AI] mixed-alphabet words — dropped:', dropped.join(',') || '-', '| flagged:', flagged.join(',') || '-');
+  return linted;
 }
 
 async function generateRaw(input: GenerateInput, opts: GenerateOptions = {}): Promise<RawGeneration> {

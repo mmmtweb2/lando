@@ -20,6 +20,8 @@ import { deleteLeadsForPageTree } from '../services/pageTree.service';
 import { getExternalLeads } from '../services/externalLeads.service';
 import { isLeadEventType, recordLeadEvent, SMOKE_SOURCE } from '../services/leadEvents.service';
 import { optionalHttpUrl } from '../utils/safeUrl';
+import { INPUT_MESSAGES, validatePageInput, type PageInputDraft } from '../shared/pageInput';
+import { editErrorBody, inputErrorBody, validateContentEdit } from '../utils/pageEditInput';
 import { serverError } from '../utils/httpErrors';
 import { loadTranslations, ownerTranslations, publicTranslations } from '../services/landingTranslations.service';
 import { isMissingTranslationsTable } from '../services/landingLanguages';
@@ -206,6 +208,23 @@ export async function updateLandingPage(req: Request, res: Response): Promise<vo
 
   if (!ai_content) {
     res.status(400).json({ error: 'ai_content is required' });
+    return;
+  }
+
+  // README part 150: what the owner CHANGED is checked with the wizard's rules (a changed phone must be a
+  // valid Israeli number, ...); what was already stored is not, so an older page can always be saved.
+  const { data: stored, error: readErr } = await supabase
+    .from('landing_pages')
+    .select('ai_content')
+    .eq('id', id)
+    .maybeSingle();
+  if (readErr) {
+    serverError(res, readErr, '[LANDING]');
+    return;
+  }
+  const editErrors = validateContentEdit((stored as { ai_content?: unknown } | null)?.ai_content ?? null, ai_content);
+  if (Object.keys(editErrors).length) {
+    res.status(400).json(editErrorBody(editErrors));
     return;
   }
 
@@ -588,20 +607,30 @@ export async function createLandingPage(req: Request, res: Response): Promise<vo
       google_category?: string;
     };
 
-    if (!business_name || !phone_number || !vibe) {
-      res.status(400).json({ error: 'business_name, phone_number, and vibe are required' });
+    // README part 150: the same rules the wizard shows field by field (src/shared/pageInput.ts) —
+    // an Israeli phone, a real email, a facebook.com / instagram.com page, an http(s) link, and a
+    // length limit per field. Checked BEFORE any credit or AI cost is spent; 400 with every field's
+    // error, so the wizard can show each one under its field. Never trusts the client.
+    const checked = validatePageInput(req.body as PageInputDraft, { combinedUserText: true });
+    if (!checked.ok) {
+      res.status(400).json(inputErrorBody(checked.errors));
       return;
     }
 
     // Owner-supplied links end up as <a href> on a PUBLIC page (and in JSON-LD). Only absolute
-    // http(s) URLs are accepted — a `javascript:`/`data:` value would be stored XSS. Checked
-    // BEFORE any credit or AI cost is spent. A scheme-less "facebook.com/x" is upgraded to https.
+    // http(s) URLs are accepted — a `javascript:`/`data:` value would be stored XSS. The shared rules
+    // above already enforce it; safeUrl stays as the second, independent gate.
     const fbUrl = optionalHttpUrl(facebook_url);
     const igUrl = optionalHttpUrl(instagram_url);
     const extUrl = optionalHttpUrl(external_link);
     if (!fbUrl.ok || !igUrl.ok || !extUrl.ok) {
-      const which = !fbUrl.ok ? 'קישור הפייסבוק' : !igUrl.ok ? 'קישור האינסטגרם' : 'הקישור החיצוני';
-      res.status(400).json({ error: `${which} אינו תקין. יש להזין כתובת מלאה שמתחילה ב-https://` });
+      const field = !fbUrl.ok ? 'facebook_url' : !igUrl.ok ? 'instagram_url' : 'external_link';
+      res.status(400).json(inputErrorBody({ [field]: INPUT_MESSAGES[field] }));
+      return;
+    }
+    // Required by the check above; narrowed here for the type checker.
+    if (!business_name || !phone_number || !vibe) {
+      res.status(400).json(inputErrorBody({ business_name: INPUT_MESSAGES.required }));
       return;
     }
 

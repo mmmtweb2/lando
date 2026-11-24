@@ -66,7 +66,7 @@ const LONG = (s: string) => `${s} הגענו בזמן, קיבלנו הסבר ב�
     assert.ok(sel.every((r) => r.text.length >= 20), 'only reviews with a real text');
     assert.ok(!sel.some((r) => r.text.includes('ישן')), 'a 2.5-year-old review loses to recent ones');
     assert.deepEqual(sel.map((r) => r.date), [...sel.map((r) => r.date)].sort().reverse(), 'newest first');
-    assert.ok(sel.some((r) => r.name === null), 'an anonymous review keeps no name (the page writes "לקוח/ה מגוגל")');
+    assert.ok(sel.some((r) => r.name === null), 'an anonymous review keeps no name (the page writes "ביקורת מגוגל")');
     assert.ok(sel.some((r) => r.name === 'Yossi'), 'first name only');
     assert.ok(!JSON.stringify(sel).includes('כהן') && !JSON.stringify(sel).includes('Levi'), 'no last names stored');
     assert.ok(sel.every((r) => list.some((x) => x.text === r.text)), 'texts exactly as written');

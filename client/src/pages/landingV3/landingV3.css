@@ -173,6 +173,8 @@
 .lp3 .marq .track{display:flex;width:max-content;direction:rtl;animation:marq 38s linear infinite}
 .lp3 .marq span{font-family:var(--head);font-weight:800;font-size:20px;padding:11px 0;white-space:nowrap}
 .lp3 .marq span i{font-style:normal;color:var(--accent);margin-inline:22px}
+.lp3 .marq span.dup::before{content:attr(data-t)}
+.lp3 .marq span.dup::after{content:'✦';color:var(--accent);margin-inline:22px}
 @keyframes marq{to{transform:translateX(50%)}}
 .lp3 .marq:hover .track{animation-play-state:paused}
 .lp3.m .folio .rule{transform:scaleX(0);transform-origin:right;transition:transform 1.1s cubic-bezier(.6,.1,.2,1) .15s}

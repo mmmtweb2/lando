@@ -11,6 +11,7 @@ import {
   anthropicTranslateCall, deleteTranslation, loadTranslation, loadTranslations, ownerTranslations, saveTranslation,
 } from '../services/landingTranslations.service';
 import { serverError } from '../utils/httpErrors';
+import { editErrorBody, validateTranslationChanges } from '../utils/pageEditInput';
 
 /** Swappable for tests and dev harnesses; production uses the real model. */
 let translateCall: TranslateCall = anthropicTranslateCall;
@@ -87,6 +88,8 @@ export async function editTranslation(req: Request, res: Response): Promise<void
   if (!lang) return;
   const changes = (req.body as { changes?: unknown } | undefined)?.changes;
   if (!changes || typeof changes !== 'object' || Array.isArray(changes)) { res.status(400).json({ error: 'בקשה לא תקינה.' }); return; }
+  const tooLong = validateTranslationChanges(changes as Record<string, unknown>);
+  if (Object.keys(tooLong).length) { res.status(400).json(editErrorBody(tooLong)); return; }
   try {
     const page = await loadPage(req.params.id);
     if (!page) { res.status(404).json({ error: 'הדף לא נמצא.' }); return; }
