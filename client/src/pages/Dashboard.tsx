@@ -29,7 +29,8 @@ import { dashV3Enabled } from '../dashboard/v3/flag';
 import DashboardShell from '../dashboard/shell/DashboardShell';
 import { AREA_LABEL, PAGES_LABEL, PROMO_LABEL, accountKind, isPromoArea, navFor, navParent, resolveArea, type PromoMode } from '../dashboard/shell/areas';
 import { dropQuery, useArea } from '../dashboard/shell/useArea';
-import type { IncludedPage, PromoBridge } from '../dashboard/shell/bridge';
+import type { IncludedPage, MenuSwitch, PageSummary, PromoBridge } from '../dashboard/shell/bridge';
+import PromoteScreen from '../dashboard/shell/PromoteScreen';
 import CouponField, { type CouponQuote } from '../components/CouponField';
 import { PageRefreshButton } from '../components/PageRefreshDialog';
 import { REFRESH } from '../lib/pageRefresh';
@@ -495,7 +496,9 @@ export default function Dashboard() {
   // effect below to re-run when the user clicks "try again".
   const [dataError, setDataError]     = useState(false);
   const [retryTick, setRetryTick]     = useState(0);
-  const { requested, go } = useArea();
+  const { requested, go, replace } = useArea();
+  // "מצב הגדרה" / "התפריט המלא": the promotion screens report it while a setup is open (shell/setupMode.ts)
+  const [menuSwitch, setMenuSwitch] = useState<MenuSwitch | null>(null);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [buying, setBuying] = useState(false);
   const [buyMsg, setBuyMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -578,7 +581,7 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, []);
 
-  // ?leads=1 (the publish-success modal's "see your leads" nudge) opens the leads area: shell/areas.ts.
+  // ?leads=1 (the publish-success modal's old "see your leads" link) opens the inquiries: shell/areas.ts.
 
   async function handleDeletePage(id: string, name: string) {
     if (!window.confirm(`למחוק את הדף "${name}"? פעולה זו אינה הפיכה.`)) return;
@@ -656,6 +659,15 @@ export default function Dashboard() {
     fetchData();
     return () => { cancelled = true; };
   }, [user, retryTick]);
+
+  // The address names the screen that shows: a link to an area this account has under another name
+  // (?area=leads on a promotion-only account, ?area=inquiries on a pages-only one) is corrected in place.
+  useEffect(() => {
+    if (dataLoading || !requested) return;
+    const k = accountKind({ hasSeo: plan?.entitlements?.seo_autopilot === true, pageCount: pages.length, pageCredits: plan?.pageCredits ?? 0, pageCreditsTotal: plan?.pageCreditsTotal ?? 0 });
+    const r = resolveArea(k, requested);
+    if (r !== requested) replace(r);
+  }, [dataLoading, requested, plan, pages.length, replace]);
 
   // Auth resolving — full-screen spinner
   if (authLoading) {
@@ -806,9 +818,15 @@ export default function Dashboard() {
   const includedPage: IncludedPage | null = includedRow
     ? { id: includedRow.id, slug: includedRow.slug, status: includedRow.status ?? 'draft', url: shareUrl(includedRow.slug, includedRow.subdomain) }
     : null;
+  // Every page of the account, newest first (the server already orders them; sorted again so the order never
+  // depends on it): the promotion screens list them all, published or not, connected business or not.
+  const pageList: PageSummary[] = dataError ? [] : [...pages]
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    .map((p) => ({ id: p.id, slug: p.slug, name: p.business_name, status: p.status ?? 'draft', url: shareUrl(p.slug, p.subdomain), createdAt: p.created_at ?? null }));
   const bridge: PromoBridge = {
     area: isPromoArea(area) ? area : 'home', go, onMode: setPromoMode,
     page: dataError ? null : includedPage, morePagesLink: kind === 'promo',
+    pages: pageList, onMenu: setMenuSwitch,
   };
 
   const openCredits = () => { setCreditsAck(false); setShowBuyCredits(true); };
@@ -819,6 +837,7 @@ export default function Dashboard() {
     leads: { title: AREA_LABEL.leads, sub: 'פניות שהגיעו דרך הדפים שלכם.' },
     credits: { title: AREA_LABEL.credits, sub: 'יתרת הדפים לפרסום, וקרדיטים ליצירה ולעריכה.' },
     settings: { title: AREA_LABEL.settings, sub: hasSeo ? 'המנוי, הסיסמה והחשבון.' : 'הסיסמה, התמיכה והחשבון.' },
+    promote: { title: AREA_LABEL.promote, sub: 'מוצר נפרד מדפי הנחיתה, במנוי חודשי.' },
   };
   const head = !kind || inPromo ? null : HEAD[area];
   // Credits belong to the pages product: they show inside its area only, never for promotion only.
@@ -858,6 +877,7 @@ export default function Dashboard() {
     <DashboardShell
       nav={nav} active={navParent(area, mode)} onGo={go} email={user.email ?? ''} onLogout={handleLogout}
       title={head?.title} sub={head?.sub} tools={tools} footer={legalFooter}
+      menuSwitch={inPromo ? menuSwitch : null} screenKey={kind ? area : undefined}
       srTitle={inPromo ? `${PROMO_LABEL}: ${AREA_LABEL[area]}` : kind ? `${PAGES_LABEL}: ${AREA_LABEL[area]}` : 'הדשבורד שלכם'}
     >
 
@@ -1145,6 +1165,9 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
+          ) : area === 'promote' ? (
+            /* ── a pages-only account: what the promotion product is, without leaving the dashboard ── */
+            <PromoteScreen />
           ) : inPromo ? (
             /* ── קידום בגוגל: its own screens; the sidebar chooses which one ── */
             dashV2 ? <SeoDashboardV2 showPageUpsell={kind === 'promo'} bridge={bridge} /> : <SeoProductPanel showPageUpsell={kind === 'promo'} />

@@ -21,11 +21,20 @@ import { buildRecommendations } from '../lib/recommendations';
 interface Suggestion { placeId: string; name: string; details: string }
 interface SavedBusiness { id: string; name: string; google_place_id: string | null }
 
+// The last audit of each place in this page load, so the dashboard's profile screen opens with the score at once
+// when the customer comes back to it (README part 149). "בדיקה מחדש" always asks the server again.
+const lastAudit = new Map<string, { at: number; body: Record<string, unknown> }>();
+const LAST_AUDIT_MS = 10 * 60_000;
+
 function newSessionToken(): string {
   try { return crypto.randomUUID(); } catch { return `s${Date.now()}${Math.random().toString(36).slice(2, 10)}`; }
 }
 
-export default function BusinessAuditCard({ mode = 'account', onSelect, onPending, hideNoProfile = false }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void; onPending?: (name: string) => Promise<void> | void; hideNoProfile?: boolean }) {
+/**
+ * `connectedView` (the dashboard's profile screen): when a business is already connected, the card opens on THAT
+ * business with its score, and searching another business is one button away (README part 149).
+ */
+export default function BusinessAuditCard({ mode = 'account', onSelect, onPending, hideNoProfile = false, connectedView = false }: { mode?: 'account' | 'public'; onSelect?: (placeId: string) => void; onPending?: (name: string) => Promise<void> | void; hideNoProfile?: boolean; connectedView?: boolean }) {
   // 'public' = the signed-out /audit page: no login, no saved businesses, a lead form instead of
   // "connect this business to my account". Same card, same score (the server wraps the same code).
   const isPublic = mode === 'public';
@@ -51,6 +60,8 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
   const listId = useId();
   const [activeIdx, setActiveIdx] = useState(-1);
   const [listOpen, setListOpen] = useState(true);
+  const [searchOther, setSearchOther] = useState(false);
+  const autoRan = useRef(false);
 
   // Debounced business search.
   useEffect(() => {
@@ -101,12 +112,12 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
     })();
   }, []);
 
-  async function runAudit(placeId: string, name: string) {
+  async function runAudit(placeId: string, name: string, quiet = false) {
     // Skip the search the programmatic setQuery below would trigger — but only when it WILL change
     // the query: if the name equals what was typed, React bails out, the effect never runs, and the
     // flag would stay set and swallow the user's next real search.
     if (query !== name) pickedRef.current = true;
-    onSelect?.(placeId);
+    if (!quiet) onSelect?.(placeId);
     seq.current++; // drop any in-flight search
     setQuery(name);
     setSuggestions([]);
@@ -120,9 +131,12 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
     try {
       trackEvent('Audit_Started', { mode });
       if (isPublic) trackPublic('audit_started', { place_id: placeId });
-      const r = await api(auditUrl(placeId));
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
+      const kept = quiet ? lastAudit.get(placeId) : undefined;
+      const fresh = kept && Date.now() - kept.at < LAST_AUDIT_MS ? kept.body : null;
+      const r = fresh ? null : await api(auditUrl(placeId));
+      const body = fresh ?? await r!.json().catch(() => ({}));
+      if (r && !r.ok) { setError(body.error ?? 'הבדיקה נכשלה. נסו שוב.'); return; }
+      if (!isPublic) lastAudit.set(placeId, { at: Date.now(), body });
       setAudit(body.audit as Audit);
       if (isPublic) trackPublic('audit_completed', { place_id: placeId, score: (body.audit as Audit).score });
       setAiReadiness((body.aiReadiness ?? null) as AiReadiness | null);
@@ -135,6 +149,15 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
       setAuditing(false);
     }
   }
+
+  // The connected business opens with its score: no need to press "בדיקה מחדש" first.
+  useEffect(() => {
+    if (!connectedView || isPublic || autoRan.current || audit || auditing) return;
+    const first = saved.find((b) => b.google_place_id);
+    if (!first) return;
+    autoRan.current = true;
+    void runAudit(first.google_place_id!, first.name, true);
+  }, [connectedView, saved]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The recommendations list is on screen as soon as the audit is (public funnel step).
   useEffect(() => {
@@ -200,14 +223,23 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
     : suggestions.length > 0 ? `נמצאו ${suggestions.length} עסקים. אפשר לבחור עם מקשי החיצים ו-Enter.`
     : '';
   const noResults = searched && !searching && !auditing && !audit && suggestions.length === 0 && query.trim().length >= 2 && !error;
+  const connected = connectedView && !isPublic ? saved.find((b) => b.google_place_id) ?? null : null;
+  // With a connected business, the search box is for checking ANOTHER business, behind its own button.
+  const showSearch = !connected || searchOther;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 flex flex-col gap-5">
       <div>
         <h3 className="text-base font-semibold text-slate-900">בדיקת מצב העסק בגוגל מפות</h3>
-        <p className="mt-1 text-sm text-slate-500">
-          הקלידו את שם העסק והעיר, ונראה איך כרטיס העסק שלכם בגוגל נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
-        </p>
+        {connected ? (
+          <p className="mt-1 text-sm text-slate-500">
+            העסק שמחובר לחשבון: <strong className="font-semibold text-slate-900">{connected.name}</strong>. כאן רואים איך הכרטיס שלו בגוגל נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">
+            הקלידו את שם העסק והעיר, ונראה איך כרטיס העסק שלכם בגוגל נראה היום ביחס לעסקים דומים באזור, ומה כדאי לחזק.
+          </p>
+        )}
       </div>
 
       {!isPublic && saved.length > 0 && !noProfile && (
@@ -236,7 +268,19 @@ export default function BusinessAuditCard({ mode = 'account', onSelect, onPendin
         </div>
       )}
 
-      {noProfile ? (
+      {connected && !searchOther && !noProfile && (
+        <button type="button" onClick={() => { setSearchOther(true); setQuery(''); setAudit(null); }} className="self-start text-sm font-medium text-[#2E63F6] hover:underline">
+          בדיקה של עסק אחר
+        </button>
+      )}
+
+      {connected && auditing && !audit && (
+        <p role="status" className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 size={15} className="animate-spin" aria-hidden /> בודקים את {connected.name}…
+        </p>
+      )}
+
+      {!showSearch ? null : noProfile ? (
         <NoProfileGuide onBack={() => setNoProfile(false)} onPending={isPublic ? undefined : onPending} />
       ) : (
         <>

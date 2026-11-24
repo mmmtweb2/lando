@@ -14,11 +14,12 @@ export type PromoArea =
   /* the screens of an account where the automatic product is not open yet */
   | 'progress' | 'more' | 'profile' | 'content' | 'inquiries' | 'setup';
 export type PagesArea = 'pages' | 'leads' | 'credits';
-export type AreaId = PromoArea | PagesArea | 'settings';
+/** `promote`: what the promotion product is, inside the dashboard, for an account that does not hold it */
+export type AreaId = PromoArea | PagesArea | 'settings' | 'promote';
 
 const PROMO: readonly PromoArea[] = ['home', 'reviews', 'site', 'business', 'automation', 'activity', 'extras', 'progress', 'more', 'profile', 'content', 'inquiries', 'setup'];
 const PAGES: readonly PagesArea[] = ['pages', 'leads', 'credits'];
-const ALL: readonly string[] = [...PROMO, ...PAGES, 'settings'];
+const ALL: readonly string[] = [...PROMO, ...PAGES, 'settings', 'promote'];
 
 export const isPromoArea = (a: AreaId): a is PromoArea => (PROMO as readonly string[]).includes(a);
 export const isPagesArea = (a: AreaId): a is PagesArea => (PAGES as readonly string[]).includes(a);
@@ -59,6 +60,7 @@ export const AREA_LABEL: Record<AreaId, string> = {
   progress: 'התקדמות', more: 'עוד', profile: 'הכרטיס שלכם בגוגל', content: 'תוכן', inquiries: 'פניות', setup: 'רשימת ההקמה',
   pages: 'הדפים שלי', leads: 'לידים', credits: 'קרדיטים',
   settings: 'הגדרות וחיוב',
+  promote: 'קידום העסק בגוגל',
 };
 
 export const PROMO_LABEL = 'קידום בגוגל';
@@ -86,11 +88,18 @@ export function navFor(kind: AccountKind, mode: PromoMode): NavModel {
   return { groups, offer: kind === 'pages' ? 'promo' : kind === 'promo' ? 'pages' : null, bottom: ['settings'] };
 }
 
-/** An area the account cannot have falls back to the nearest one it does have. */
+/**
+ * An area the account cannot have falls back to the nearest one it does have.
+ * The inquiries are one list with two names: "פניות" in the promotion product (`inquiries`) and "לידים" in the
+ * pages product (`leads`). A link to either lands on the one this account has.
+ */
 export function resolveArea(kind: AccountKind, requested: AreaId | null): AreaId {
   const fallback: AreaId = kind === 'pages' ? 'pages' : 'home';
   if (!requested) return fallback;
   if (requested === 'settings') return requested;
+  if (requested === 'promote') return kind === 'pages' ? requested : 'home';
+  if (requested === 'inquiries' && kind === 'pages') return 'leads';
+  if (requested === 'leads' && kind === 'promo') return 'inquiries';
   if (isPromoArea(requested)) return kind === 'pages' ? fallback : requested;
   // promotion only: the page lives under the promotion product, and there are no credits to show
   if (kind === 'promo') return requested === 'pages' ? 'site' : fallback;

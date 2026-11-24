@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import BusinessAuditCard from '../../components/BusinessAuditCard';
 import ReviewsCard from '../../components/ReviewsCard';
 import ReviewRequestsCard from '../../components/ReviewRequestsCard';
@@ -39,6 +39,9 @@ import { ACTIVITY_SCREEN, BACK_HOME, EXTRAS, HOME, KIT, REVIEWS_AREA } from './a
 import { useAutopilot } from './autopilot/useAutopilot';
 import type { AreaId, PromoArea, PromoMode } from '../shell/areas';
 import type { PromoBridge } from '../shell/bridge';
+import { promoScreen, readMenu, showsMenuSwitch, writeMenu, type Menu, type SetupKind } from '../shell/setupMode';
+import SetupBanner from './SetupBanner';
+import MyPagesCard from './MyPagesCard';
 import { SETUP_DONE_FLASH, buildMonthTasks, buildSetupTasks, flashText, nextOpenAfter } from './tasks';
 import '../dashboard.css';
 import './dashboard-v3.css';
@@ -58,7 +61,7 @@ export default function SeoDashboardV3({ showPageUpsell = false, bridge }: { sho
   const [own, setOwn] = useState<PromoArea>('home');
   const fallback: PromoBridge = {
     area: own, onMode: () => undefined, page: null, morePagesLink: showPageUpsell,
-    go: (a) => setOwn(a === 'settings' || a === 'pages' || a === 'leads' || a === 'credits' ? 'home' : a),
+    go: (a) => setOwn(a === 'settings' || a === 'pages' || a === 'leads' || a === 'credits' || a === 'promote' ? 'home' : a),
   };
   if (!data.input.loaded) return <div className="dv2 dv3 dv4" dir="rtl"><HomeSkeleton /></div>;
   return <Loaded data={data} bridge={bridge ?? fallback} />;
@@ -81,9 +84,10 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
   const { user } = useAuth();
   const email = user?.email ?? 'anonymous';
   const reduce = useReducedMotion();
-  const [fullMenu, setFullMenu] = useState<boolean>(() => {
-    try { return new URLSearchParams(window.location.search).has('gbp'); } catch { return false; }
-  });
+  // "מצב הגדרה" or "התפריט המלא" (shell/setupMode.ts): remembered per account in this browser, so a reload
+  // keeps the menu the customer chose. WHICH screen shows comes from the URL alone (bridge.area).
+  const [menu, setMenuState] = useState<Menu>(() => readMenu(email));
+  const setMenu = useCallback((m: Menu) => { setMenuState(m); writeMenu(email, m); }, [email]);
   const asked = bridge.area;
   // The open task belongs to the area it was opened in: moving to another area closes it.
   const [task, setTask] = useState<{ id: MonthlyId; area: PromoArea } | null>(null);
@@ -151,19 +155,25 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
     setSeenMode(hmode);
     if (seenMode === 'pending' && hmode === 'approved') { setFinishing(true); if (!previewOngoing) writeFinish(email); }
   }
-  const shortSetup = (hmode === 'pending' || (hmode === 'approved' && finishing)) && asked !== 'automation';
-  // The older focused setup (five manual tasks): only where the automatic product is not open.
-  // While we do not know yet which of the two this account gets, neither is shown.
-  const inSetup = hmode === 'legacy' && phase === 'setup' && !fullMenu && !data.failed;
-  const mode: PromoMode = inSetup || shortSetup || (hmode === 'pending' && asked === 'automation') ? 'setup' : hmode === 'loading' ? 'unknown' : isAuto ? 'auto' : 'legacy';
-  const { onMode, go: goArea } = bridge;
-  useEffect(() => { onMode(mode); }, [mode, onMode]);
+  // Which setup is open, if any. The automatic product has its short setup until the details are approved; the
+  // older five-step setup runs only where the automatic product is not open. While we do not know yet which of
+  // the two this account gets, neither is open.
+  const finishingNow = hmode === 'approved' && finishing;
+  const setupKind: SetupKind = hmode === 'pending' ? 'short' : hmode === 'legacy' && phase === 'setup' && !data.failed ? 'guided' : 'none';
 
   // An area this account does not have falls back to the nearest one it does.
   const area: PromoArea = isAuto
     ? (asked === 'more' ? 'extras' : asked)
-    : AUTO_ONLY.includes(asked) ? (asked === 'business' && mode === 'legacy' ? 'profile' : 'home') : asked;
+    : AUTO_ONLY.includes(asked) ? (asked === 'business' && hmode === 'legacy' ? 'profile' : 'home') : asked;
   const view: View | null = AREA_VIEW[area] ?? null;
+  // The setup shows only on the home, in the setup menu. Every other area shows its own screen (README part 149).
+  const choice = promoScreen({ area, setup: setupKind, menu, finishing: finishingNow });
+  const mode: PromoMode = choice.menu === 'setup' && setupKind !== 'none' ? 'setup' : hmode === 'loading' ? 'unknown' : isAuto ? 'auto' : 'legacy';
+  const { onMode, onMenu, go: goArea } = bridge;
+  useEffect(() => { onMode(mode); }, [mode, onMode]);
+  // Opening another area (a click or a direct link) is a move to the full menu: remember it, so the home that
+  // follows keeps the full menu too, until the customer goes back to the setup.
+  useEffect(() => { if (setupKind !== 'none' && !finishingNow && choice.menu !== menu) setMenu(choice.menu); }, [setupKind, finishingNow, choice.menu, menu, setMenu]);
 
   const { reload } = data;
   const go = useCallback((a: AreaId) => {
@@ -171,6 +181,15 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
     if (a === 'home') reload();   // numbers may have changed in another view
     goArea(a);
   }, [reload, goArea]);
+  const backToSetup = useCallback(() => { setMenu('setup'); go('home'); }, [setMenu, go]);
+  const toFullMenu = useCallback(() => setMenu('full'), [setMenu]);
+  const switchOn = showsMenuSwitch(setupKind, finishingNow);
+  const shownMenu = choice.menu;
+  useEffect(() => {
+    if (!onMenu) return;
+    onMenu(switchOn ? { menu: shownMenu, onSwitch: shownMenu === 'setup' ? toFullMenu : backToSetup } : null);
+  }, [onMenu, switchOn, shownMenu, toFullMenu, backToSetup]);
+  useEffect(() => () => onMenu?.(null), [onMenu]);
   const goView = useCallback((v: View) => go(VIEW_AREA[v]), [go]);
 
   const skipStep = (id: GuidedId) => {
@@ -181,20 +200,20 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
 
   const motionProps = reduce
     ? {}
-    : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: { duration: 0.12 } };
+    : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.12 } };
 
   const pendingReplies = previewOngoing ? samplePendingReplies() : data.pendingReplies ?? 0;
   const summary = previewOngoing ? sampleSummary() : data.summary;
   const items = previewOngoing ? sampleItems() : data.items;
   const pastDue = data.input.subscriptionStatus === 'past_due';
 
-  if (inSetup) {
+  if (choice.screen === 'guided-setup') {
     return (
       <div className="dv2 dv3 dv4" dir="rtl">
         <SetupScreen
           input={data.input} email={email} ticksOnServer={data.ticksOnServer} tasks={setup.tasks} view={setup.view}
           currentKey={setup.currentKey} flash={flash} setTick={data.setTick} reload={data.reload}
-          onSkip={(id) => skipStep(id as GuidedId)} onFullMenu={() => setFullMenu(true)}
+          onSkip={(id) => skipStep(id as GuidedId)} onFullMenu={toFullMenu}
         />
         <FeedbackBox page="setup" />
       </div>
@@ -203,7 +222,7 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
 
   if (hmode === 'loading' && phase === 'setup') return <div className="dv2 dv3 dv4" dir="rtl"><HomeSkeleton /></div>;
 
-  if (shortSetup) {
+  if (choice.screen === 'short-setup') {
     return (
       <div className="dv2 dv3 dv4" dir="rtl">
         <ShortSetup
@@ -236,98 +255,108 @@ function Loaded({ data, bridge }: { data: SeoOverview; bridge: PromoBridge }) {
 
   return (
     <div className="dv2 dv3 dv4" dir="rtl">
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={area + (openTask ?? '')} {...motionProps}>
-          {area === 'business' && <BusinessCardScreen auto={auto} onSettings={() => go('automation')} onProfile={() => go('profile')} pageSlug={bridge.page?.slug ?? null} />}
-          {area === 'automation' && <AutomationScreen auto={auto} onCard={() => go('business')} />}
-          {area === 'site' && <SiteScreen auto={auto} page={bridge.page} onBusiness={() => go('business')} onPlan={() => go('settings')} morePagesLink={bridge.morePagesLink} />}
-          {area === 'activity' && (
-            <ViewShell title={ACTIVITY_SCREEN.title} hint={ACTIVITY_SCREEN.hint} back={{ label: BACK_HOME, onClick: () => go('home') }}>
-              {auto.preview && <SampleBanner />}
-              <ActivityFeed activity={auto.activity} onRetry={auto.reload} />
-              <PostHistory auto={auto} />
-            </ViewShell>
-          )}
-          {area === 'extras' && (taskScreen || (
-            <ExtrasScreen
-              tasks={monthTasks} email={email} views={EXTRA_VIEWS}
-              onOpen={(id) => setOpenTask(id as MonthlyId)} onView={goView} onBack={() => go('home')}
-            />
-          ))}
-          {area === 'home' && (phase === 'ongoing' || isAuto) && !data.failed && (
-            taskScreen || (
-              <OverviewV3
-                tasks={monthTasks} summary={data.summary} input={data.input} email={email} flash={flash}
-                pastDue={pastDue} goPlan={() => go('settings')}
-                onOpen={(id) => setOpenTask(id as MonthlyId)}
-                onRetry={() => { data.reload(); auto.reload(); }}
-                mode={hmode}
-                home={hmode === 'approved' ? (
-                  <>
-                    {auto.preview && <SampleBanner />}
-                    <AutoHome
-                      auto={auto} summary={summary} items={items} pendingReplies={pendingReplies}
-                      onReviews={() => go('reviews')} onProfile={() => go('profile')} onActivity={() => go('activity')} onExtras={() => go('extras')}
-                      onRefresh={() => { data.reload(); auto.reload(); }}
-                    />
-                  </>
-                ) : hmode === 'error' ? (
-                  <LoadError text={HOME.loadError} onRetry={() => { data.reload(); auto.reload(); }} />
-                ) : (
-                  <>
-                    {auto.preview && <SampleBanner />}
-                    <FirstStep auto={auto} onOpen={() => go('business')} />
-                  </>
-                )}
-              />
-            )
-          )}
-          {area === 'home' && phase === 'welcome' && !isAuto && !data.failed && <WelcomeV3 setTick={data.setTick} />}
-          {area === 'home' && ((phase === 'setup' && !isAuto) || data.failed) && (
-            <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={goView} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
-          )}
-          {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={goView} />}
-          {view === 'more' && <MoreV3 go={goView} />}
-          {view === 'setup' && (
-            <ViewFrame view="setup" fromMore={fromMore} go={goView} backLabel={backLabel}><SetupArchive input={data.input} go={goView} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
-          )}
-          {view === 'profile' && (
-            <ViewFrame view="profile" fromMore={fromMore} go={goView} backLabel={backLabel}>
-              <GbpCard />
-              <BusinessAuditCard />
-            </ViewFrame>
-          )}
-          {view === 'reviews' && (
-            <ViewFrame view="reviews" fromMore={fromMore} go={goView}>
-              {isAuto ? (
+      {choice.banner && (
+        <SetupBanner
+          onSetup={backToSetup}
+          progress={setupKind === 'guided' ? { done: setup.view.doneCount, total: setup.view.total } : null}
+        />
+      )}
+      {/* A new key = a new screen. No exit animation: the previous screen is gone the moment the area changes. */}
+      <motion.div key={area + (openTask ?? '')} {...motionProps}>
+        {area === 'business' && <BusinessCardScreen auto={auto} onSettings={() => go('automation')} onProfile={() => go('profile')} pageSlug={bridge.page?.slug ?? null} />}
+        {area === 'automation' && <AutomationScreen auto={auto} onCard={() => go('business')} />}
+        {area === 'site' && <SiteScreen auto={auto} page={bridge.page} onBusiness={() => go('business')} onPlan={() => go('settings')} morePagesLink={bridge.morePagesLink} />}
+        {area === 'activity' && (
+          <ViewShell title={ACTIVITY_SCREEN.title} hint={ACTIVITY_SCREEN.hint} back={{ label: BACK_HOME, onClick: () => go('home') }}>
+            {auto.preview && <SampleBanner />}
+            <ActivityFeed activity={auto.activity} onRetry={auto.reload} />
+            <PostHistory auto={auto} />
+          </ViewShell>
+        )}
+        {area === 'extras' && (taskScreen || (
+          <ExtrasScreen
+            tasks={monthTasks} email={email} views={EXTRA_VIEWS}
+            onOpen={(id) => setOpenTask(id as MonthlyId)} onView={goView} onBack={() => go('home')}
+          />
+        ))}
+        {area === 'home' && (phase === 'ongoing' || isAuto) && !data.failed && (
+          taskScreen || (
+            <OverviewV3
+              tasks={monthTasks} summary={data.summary} input={data.input} email={email} flash={flash}
+              pastDue={pastDue} goPlan={() => go('settings')}
+              onOpen={(id) => setOpenTask(id as MonthlyId)}
+              onRetry={() => { data.reload(); auto.reload(); }}
+              mode={hmode}
+              home={hmode === 'approved' ? (
                 <>
-                  {/* one order, nothing twice: what waits for you, asking for reviews, the widget */}
                   {auto.preview && <SampleBanner />}
-                  <div className="dv4-touch"><ReviewDraftsCard fetcher={reviewsFetch} title={REVIEWS_AREA.draftsTitle} emptyText={REVIEWS_AREA.draftsEmpty} hint={REVIEWS_AREA.draftsHint} /></div>
-                  <ReviewKit
-                    auto={auto} onBusiness={() => go('business')}
-                    personal={<ReviewRequestsCard fetcher={reviewsFetch} embedded={{ title: KIT.personalTitle, lead: KIT.personalLead }} />}
+                  <AutoHome
+                    auto={auto} summary={summary} items={items} pendingReplies={pendingReplies}
+                    onReviews={() => go('reviews')} onProfile={() => go('profile')} onActivity={() => go('activity')} onExtras={() => go('extras')}
+                    onRefresh={() => { data.reload(); auto.reload(); }}
                   />
-                  <ReviewsEmbed fetcher={reviewsFetch} preview={auto.preview} />
                 </>
+              ) : hmode === 'error' ? (
+                <LoadError text={HOME.loadError} onRetry={() => { data.reload(); auto.reload(); }} />
               ) : (
                 <>
-                  <ReviewsCard />
-                  <ReviewDraftsCard />
-                  <ReviewRequestsCard />
+                  {auto.preview && <SampleBanner />}
+                  <FirstStep auto={auto} onOpen={() => go('business')} />
                 </>
               )}
-            </ViewFrame>
-          )}
-          {view === 'content' && <ViewFrame view="content" fromMore={fromMore} go={goView} backLabel={backLabel}><ContentPlanCard /></ViewFrame>}
-          {view === 'leads' && (
-            <ViewFrame view="leads" fromMore={fromMore} go={goView} backLabel={backLabel}>
-              <LeadsTable items={data.items} summary={data.summary} />
-              <ExternalSiteCard />
-            </ViewFrame>
-          )}
-        </motion.div>
-      </AnimatePresence>
+            />
+          )
+        )}
+        {area === 'home' && phase === 'welcome' && !isAuto && !data.failed && <WelcomeV3 setTick={data.setTick} />}
+        {area === 'home' && ((phase === 'setup' && !isAuto) || data.failed) && (
+          <Overview input={data.input} summary={data.summary} phase={phase} loading={data.loading} failed={data.failed} ticksOnServer={data.ticksOnServer} gbpEnabled={data.gbpEnabled} go={goView} setTick={data.setTick} onRetry={data.reload} monthly={monthly} requestsSent={data.requestsSent} email={email} />
+        )}
+        {view === 'progress' && <ProgressV3 summary={data.summary} monthly={monthly} go={goView} />}
+        {view === 'more' && <MoreV3 go={goView} />}
+        {view === 'setup' && (
+          <ViewFrame view="setup" fromMore={fromMore} go={goView} backLabel={backLabel}><SetupArchive input={data.input} go={goView} setTick={data.setTick} ticksOnServer={data.ticksOnServer} /></ViewFrame>
+        )}
+        {view === 'profile' && (
+          <ViewFrame view="profile" fromMore={fromMore} go={goView} backLabel={backLabel}>
+            <GbpCard />
+            <BusinessAuditCard connectedView />
+          </ViewFrame>
+        )}
+        {view === 'reviews' && (
+          <ViewFrame view="reviews" fromMore={fromMore} go={goView}>
+            {isAuto ? (
+              <>
+                {/* one order, nothing twice: what waits for you, asking for reviews, the widget */}
+                {auto.preview && <SampleBanner />}
+                <div className="dv4-touch"><ReviewDraftsCard fetcher={reviewsFetch} title={REVIEWS_AREA.draftsTitle} emptyText={REVIEWS_AREA.draftsEmpty} hint={REVIEWS_AREA.draftsHint} /></div>
+                <ReviewKit
+                  auto={auto} onBusiness={() => go('business')}
+                  personal={<ReviewRequestsCard fetcher={reviewsFetch} embedded={{ title: KIT.personalTitle, lead: KIT.personalLead }} />}
+                />
+                <ReviewsEmbed fetcher={reviewsFetch} preview={auto.preview} />
+              </>
+            ) : (
+              <>
+                <ReviewsCard />
+                <ReviewDraftsCard />
+                <ReviewRequestsCard />
+              </>
+            )}
+          </ViewFrame>
+        )}
+        {view === 'content' && (
+          <ViewFrame view="content" fromMore={fromMore} go={goView} backLabel={backLabel}>
+            <MyPagesCard pages={bridge.pages ?? []} ownPageId={bridge.page?.id ?? null} />
+            <ContentPlanCard ownPageId={bridge.page?.id ?? null} />
+          </ViewFrame>
+        )}
+        {view === 'leads' && (
+          <ViewFrame view="leads" fromMore={fromMore} go={goView} backLabel={backLabel}>
+            <LeadsTable items={data.items} summary={data.summary} />
+            <ExternalSiteCard />
+          </ViewFrame>
+        )}
+      </motion.div>
       <FeedbackBox page={view ?? area} />
     </div>
   );

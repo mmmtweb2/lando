@@ -21,6 +21,8 @@ export interface AreaState {
   /** what the URL asks for; null = the account's default area */
   requested: AreaId | null;
   go: (area: AreaId) => void;
+  /** correct the address in place (no new history entry): a link that landed on another area than it named */
+  replace: (area: AreaId) => void;
 }
 
 export function useArea(): AreaState {
@@ -51,5 +53,13 @@ export function useArea(): AreaState {
     try { window.scrollTo({ top: 0 }); } catch { /* old browsers */ }
   }, []);
 
-  return { requested, go };
+  const replace = useCallback((area: AreaId) => {
+    setRequested(area);
+    try {
+      const next = window.location.pathname + queryWithArea(window.location.search, area, false) + window.location.hash;
+      window.history.replaceState(window.history.state, '', next);
+    } catch { /* the address keeps the old name; the screen is right */ }
+  }, []);
+
+  return { requested, go, replace };
 }
